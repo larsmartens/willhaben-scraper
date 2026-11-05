@@ -2,7 +2,31 @@
   "main_module": "worker.mjs",
   "compatibility_date": "2026-06-01",
   "bindings": [
-    { "type": "kv_namespace", "name": "STUDIES", "namespace_id": "REPLACE_WITH_SNAPSHOT_KV_ID" },
-    { "type": "ratelimit", "name": "REQUEST_LIMITER", "namespace_id": "6598", "simple": { "limit": 60, "period": 60 } }
-  ]
+    {
+      "type": "kv_namespace",
+      "name": "STUDIES",
+      "namespace_id": "REPLACE_WITH_SNAPSHOT_KV_ID"
+    },
+    {
+      "type": "ratelimit",
+      "name": "REQUEST_LIMITER",
+      "namespace_id": "6598",
+      "simple": {
+        "limit": 60,
+        "period": 60
+      }
+    },
+    {
+      "type": "ratelimit",
+      "name": "PERSONAL_LIMITER",
+      "namespace_id": "76598",
+      "simple": {
+        "limit": 12,
+        "period": 60
+      }
+    }
+  ],
+  "observability": {
+    "enabled": false
+  }
 }

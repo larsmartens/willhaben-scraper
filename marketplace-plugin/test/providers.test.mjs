@@ -82,6 +82,41 @@ test('a page-local count never ends pagination on a populated page',async t=>{
   t.mock.method(globalThis,'fetch',async()=>embed(page([1,2],1,2)));
   const first=await live().search({query:'q'});assert.equal(first.end,false);assert.equal(first.nextCursor,'2');
 });
+test('private personal test uses ordinary public pages, a bounded budget and usable continuations',async t=>{
+  const responses=[];
+  const fetcher=t.mock.method(globalThis,'fetch',async (url,init)=>{
+    assert.equal(init.headers['User-Agent'].includes('authorized'),false);
+    assert.match(init.headers['User-Agent'],/Marktplatz-Studie/);
+    assert.equal(init.headers.Authorization,undefined);
+    assert.equal(init.headers.Cookie,undefined);
+    assert.equal(init.redirect,'manual');
+    responses.push(url.pathname);
+    if(url.pathname==='/iad/object')return embed({advertDetails:rawRow(url.searchParams.get('adId'))});
+    assert.equal(url.searchParams.get('rows'),'10');
+    return embed(page([7],Number(url.searchParams.get('page')),15));
+  });
+  const env={LIVE_ACCESS:'personal_test'}, p=getProvider('live',env);
+  const first=await p.search({query:'BANKAMP'});
+  assert.equal(first.nextCursor,'2');assert.equal(first.end,false);
+  await assert.rejects(p.facets({query:'BANKAMP'}),code('personal_test_budget'));
+  assert.equal(fetcher.mock.callCount(),1);
+  const next=await getProvider('live',env).search({query:'BANKAMP',cursor:first.nextCursor});
+  assert.equal(next.nextCursor,'3');
+  await p.detail('7');await p.detail('8');
+  await assert.rejects(p.detail('9'),code('personal_test_budget'));
+  assert.equal(responses.filter(v=>v==='/iad/object').length,2);
+});
+test('origin refusal or challenge stops subsequent reads on the same request',async t=>{
+  let response;
+  const fetcher=t.mock.method(globalThis,'fetch',async()=>response);
+  for(const [status,headers,expected] of [[401,{},'upstream_forbidden'],[403,{},'upstream_forbidden'],[429,{},'upstream_rate_limited'],[200,{'cf-mitigated':'challenge'},'upstream_blocked']]){
+    const p=getProvider('live',{LIVE_ACCESS:'personal_test'}), calls=fetcher.mock.callCount();
+    response=new Response('stop',{status,headers});
+    await assert.rejects(p.search({query:'test'}),code(expected));
+    await assert.rejects(p.detail('7'),code(expected));
+    assert.equal(fetcher.mock.callCount(),calls+1);
+  }
+});
 test('structured detail values, title fallback, inactive offers and evidence on category ancestry',async t=>{
   const row=rawRow(100);delete row.description;row.taggingData={tmsDataValues:{tmsData:{ad_title:'Vier Opalgläser'}}};
   row.advertStatus={id:'inactive'};

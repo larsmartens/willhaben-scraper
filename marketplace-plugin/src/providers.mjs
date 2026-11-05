@@ -5,6 +5,9 @@ const CONDITIONS = {new:22, as_new:2546, refurbished:5013256, used:23, defective
 const SORTS = {newest:1, price_asc:3, price_desc:4, relevance:7};
 const MAX_PROVIDED = 300;
 const PAGE_SIZE = 30;
+export const PERSONAL_TEST = "personal_test";
+export const PERSONAL_LIMITS = {pages:1,details:2,rows:10};
+export const CLIENT_AGENT = "Marktplatz-Studie/1.0 (+https://github.com/larsmartens/willhaben-scraper)";
 const plain = v => v !== null && typeof v === "object" && !Array.isArray(v);
 const fail = (code, message) => { throw Object.assign(new Error(message), {code}); };
 const invalid = msg => fail("invalid_input", msg);
@@ -260,12 +263,13 @@ async function pageProps(url, allowGone=false) {
     let target=new URL(url);
     for(let i=0;i<4;i++){
       if(!allowedPath(target)) fail("upstream_redirect","Refused an unexpected redirect");
-      const response=await fetch(target,{redirect:"manual",signal,headers:{Accept:"text/html","User-Agent":"Marktplatz-Studie/1.0 (authorized read-only research)"}});
+      const response=await fetch(target,{redirect:"manual",signal,headers:{Accept:"text/html","User-Agent":CLIENT_AGENT}});
       if([301,302,303,307,308].includes(response.status)){
         const redirect=response.headers.get("location"); await response.body?.cancel();
         if(!redirect) schemaError("Redirect without destination"); target=new URL(redirect,target);continue;
       }
       if(allowGone && [404,410].includes(response.status)){await response.body?.cancel();return null;}
+      if(response.headers.get("cf-mitigated")==="challenge"){await response.body?.cancel();fail("upstream_blocked","willhaben requested a browser challenge; stopping");}
       if (!response.ok){await response.body?.cancel();fail(response.status===429?"upstream_rate_limited":[401,403].includes(response.status)?"upstream_forbidden":"upstream_error","willhaben returned HTTP "+response.status);}
       const html=await limitedText(response);
       const match=html.match(/<script\b[^>]*\bid\s*=\s*["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script\s*>/i);
@@ -281,9 +285,9 @@ async function pageProps(url, allowGone=false) {
     fail(signal.aborted?"upstream_timeout":"upstream_error",signal.aborted?"willhaben timed out":"Could not read willhaben");
   }
 }
-async function readPage(query, filters, page) {
+async function readPage(query, filters, page, pageSize) {
   const u=new URL(buildSearchLink(query,filters));
-  u.searchParams.set("page",String(page)); u.searchParams.set("rows",String(PAGE_SIZE));
+  u.searchParams.set("page",String(page)); u.searchParams.set("rows",String(pageSize));
   const props=await pageProps(u), data=props.searchResult;
   // Landing-page suggestions may ignore filters. A missing result is a schema error.
   if(!plain(data) || !Array.isArray(data.advertSummaryList?.advertSummary)) schemaError("Expected a structured marketplace result list");
@@ -316,9 +320,21 @@ function metaFacets(page) {
   return {scope:"provider facets for this query",total:page.rowsFound??null,dimensions};
 }
 function liveProvider(env) {
-  if(env?.LIVE_ACCESS!=="authorized") fail("live_access_not_configured","Live access requires willhaben authorization and server-side activation. Use a search link or provide a dataset.");
+  const personal=env?.LIVE_ACCESS===PERSONAL_TEST;
+  if(!personal && env?.LIVE_ACCESS!=="authorized") fail("live_access_not_configured","Live access is disabled on this connection. Use a search link or provide a dataset.");
+  const remaining={pages:PERSONAL_LIMITS.pages,details:PERSONAL_LIMITS.details};
+  let denied;
+  async function request(kind,action) {
+    if(denied) throw denied;
+    if(personal && remaining[kind]--<=0) fail("personal_test_budget","Personal test request budget reached");
+    try {return await action();} catch(error) {
+      if(["upstream_forbidden","upstream_rate_limited","upstream_blocked"].includes(error.code)) denied=error;
+      throw error;
+    }
+  }
+  const searchPage=(query,filters,page)=>request("pages",()=>readPage(query,filters,page,personal?PERSONAL_LIMITS.rows:PAGE_SIZE));
   return {kind:"live", async search({query,filters={},cursor}) {
-    const page=parseCursor(cursor), raw=await readPage(query,filters,page), rows=raw.advertSummaryList.advertSummary;
+    const page=parseCursor(cursor), raw=await searchPage(query,filters,page), rows=raw.advertSummaryList.advertSummary;
     if(rows.length>200) schemaError("Unexpected page size");
     const total=raw.rowsFound??null;
     if(total===0 && rows.length) schemaError("Non-empty result contradicts zero total");
@@ -327,10 +343,10 @@ function liveProvider(env) {
     const items=rows.map(liveListing);
     const end=rows.length===0;
     return {items,total,end,nextCursor:end?null:String(page+1)};
-  },async facets({query,filters={}}){return metaFacets(await readPage(query,filters,1));},
+  },async facets({query,filters={}}){return metaFacets(await searchPage(query,filters,1));},
   async detail(id) {
     if(typeof id!=="string" || !/^\d{1,20}$/.test(id)) invalid("Expected a numeric willhaben listing ID");
-    const props=await pageProps(objectUrl(id),true);
+    const props=await request("details",()=>pageProps(objectUrl(id),true));
     if(props===null || props.is404===true) return null;
     if(String(props.advertDetails?.id)!==id) schemaError("Detail response has a different or missing ID");
     return liveListing(props.advertDetails);

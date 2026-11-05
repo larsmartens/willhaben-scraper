@@ -216,3 +216,19 @@ test("photo tools return real MCP image blocks only for the configured live imag
   assert.ok(!result.content[0].text.includes(png));
   assert.ok(!JSON.stringify(result.structuredContent).includes(png));
 });
+
+test("a personal capability enables live search and photos only on its own connection", async () => {
+  const token="45".repeat(32);
+  const digest=Buffer.from(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(token))).toString("hex");
+  const env={PERSONAL_TEST_TOKEN_SHA256:digest,PERSONAL_TEST_EXPIRES_AT:"2099-01-01T00:00:00Z"};
+  const body=JSON.stringify(message("tools/call",{name:"plan_search",arguments:{queries:["BANKAMP"]}}));
+  const ask=(path)=>worker.fetch(new Request("https://market.example"+path,{method:"POST",headers,body}),env);
+  const open=(await (await ask("/mcp")).json()).result.structuredContent;
+  assert.deepEqual([open.liveAvailable,open.imageAvailable],[false,false]);
+  const hit=await ask("/p/"+token+"/mcp");
+  const scoped=(await hit.json()).result.structuredContent;
+  assert.equal(scoped.mode,"personal_test");
+  assert.deepEqual([scoped.liveAvailable,scoped.imageAvailable],[true,true]);
+  assert.equal(hit.headers.get("referrer-policy"),"no-referrer");
+  assert.equal((await ask("/p/"+digest+"/mcp")).status,404);
+});

@@ -1,4 +1,4 @@
-import { buildSearchLink, getProvider, FILTER_SCHEMA, LISTING_SCHEMA, validateFilters } from "./providers.mjs";
+import { buildSearchLink, getProvider, PERSONAL_TEST, PERSONAL_LIMITS, CLIENT_AGENT, FILTER_SCHEMA, LISTING_SCHEMA, validateFilters } from "./providers.mjs";
 import { runStudy, evaluateListing } from "./engine.mjs";
 
 const string = (maxLength) => ({type:"string",minLength:1,maxLength});
@@ -21,7 +21,7 @@ export const toolDefinitions = [
   def("discover_filters","Filter ermitteln","Discover filters in a source for a specific keyword. Include listings for provided. Where possible discover numeric category and facet IDs before narrowing.",object(search,["source","query"]),{...read,openWorldHint:true}),
   def("search_listings","Inserate suchen","Read a result page with source, time and continuation. A null upstream total means unknown. Use study_market for a multi-query study.",object({...search,cursor:string(40)},["source","query"]),{...read,openWorldHint:true}),
   def("inspect_listings","Inserate prüfen","Read up to ten listing details and evidence for explicit criteria. Images are links, never a measured dimension. Include the data for provided.",object({...data,ids:array(string(96),1,10),criteria},["source","ids"]),{...read,openWorldHint:true}),
-  def("inspect_listing_image","Inseratfoto ansehen","Retrieve one actual photo (index starts at zero) from the authorized live source for visual inspection. Requires explicit upstream image rights and server setup. Geometry from an unscaled image remains unknown.",object({id:string(20),index:integer(0,11)},["id","index"]),{...read,openWorldHint:true}),
+  def("inspect_listing_image","Inseratfoto ansehen","Retrieve one actual photo (index starts at zero) from a private photo-enabled connection for visual inspection. Geometry from an unscaled image remains unknown.",object({id:string(20),index:integer(0,11)},["id","index"]),{...read,openWorldHint:true}),
   def("study_market","Marktstudie rechnen","Deduplicate multiple queries, check requirements, rank offers and compute asking-price cohorts. Report the source, exclusions, counts, uncertainty and coverage. Request-scoped.",object(spec,["source","queries"]),{...read,openWorldHint:true}),
   def("save_study","Studie für Folgefragen speichern","Only on explicit request to save or compare across chats. Run a study and store its report, search terms and criteria for 24h on Cloudflare. Anyone with its secret ID can read it.",object(spec,["source","queries"]),{...read,readOnlyHint:false,idempotentHint:false,openWorldHint:true}),
   def("get_study","Gespeicherte Studie lesen","Read a previously saved report without fetching fresh listings. Keep the ID private.",object({study_id:handle},["study_id"])),
@@ -40,15 +40,17 @@ function checkArgs(name,args) {
   if(args.source!==undefined && !source.enum.includes(args.source)) throw new Error("Unknown source");
   if(args.source!==undefined && (args.source==="provided")!==(args.listings!==undefined)) throw new Error("Pass listings exactly when source is provided");
 }
-const scope = {demo:"Synthetic demonstration catalogue",provided:"Only the submitted listings; upstream marketplace coverage is unknown",live:"Observed authorized willhaben search scope during this run"};
+const scope = {demo:"Synthetic demonstration catalogue",provided:"Only the submitted listings; upstream marketplace coverage is unknown",live:"Observed willhaben search scope during this run"};
 const ttl=86400;
 
 function plan(args,env) {
   const f={...args.filters}, verifyInDetail={};
   for (const key of ["shipping","paylivery"]) if(f[key]!==undefined && (key==="shipping" || f[key]===false)) {verifyInDetail[key]=f[key];delete f[key];}
-  return {liveAvailable:env.LIVE_ACCESS==="authorized" && Boolean(env.MCP_BEARER_TOKEN),source:"search_plan",resultCount:null,filtersInLinks:f,verifyInDetail,
+  return {liveAvailable:env.LIVE_ACCESS===PERSONAL_TEST || (env.LIVE_ACCESS==="authorized" && Boolean(env.MCP_BEARER_TOKEN)),
+    imageAvailable:env.LIVE_ACCESS===PERSONAL_TEST && env.IMAGE_ACCESS===PERSONAL_TEST || (env.LIVE_ACCESS==="authorized" && env.IMAGE_ACCESS==="authorized" && Boolean(env.MCP_BEARER_TOKEN)),
+    ...(env.LIVE_ACCESS===PERSONAL_TEST ? {mode:PERSONAL_TEST,perCallLimits:PERSONAL_LIMITS}:{}),source:"search_plan",resultCount:null,filtersInLinks:f,verifyInDetail,
     searches:[...new Set(args.queries.map(q=>q.trim()))].map(query=>({query,url:buildSearchLink(query,f),webQuery:"site:willhaben.at/iad/kaufen-und-verkaufen/d/ "+query})),
-    guidance:"Use native web search for indexed leads when available. Verify price, condition, date and URL per source. Index coverage and availability may be unknown. Pass only evidence-backed rows into provided; do not invent missing values."};
+    guidance:env.LIVE_ACCESS===PERSONAL_TEST ? "Use search_listings with source=live, then inspect_listing_image for one photo from a returned ad ID. Pages are bounded. Report actual coverage." : "Use native web search for indexed leads when available. Verify price, condition, date and URL per source. Index coverage and availability may be unknown. Pass only evidence-backed rows into provided; do not invent missing values."};
 }
 async function readSaved(id,env) {
   if(typeof id!=="string" || !/^ms_[a-f0-9]{32}$/.test(id)) throw new Error("Invalid study ID");
@@ -87,6 +89,7 @@ export async function invokeTool(name,args,env={}) {
   if(name==="search_listings") return {...meta,...await provider.search({query:args.query,filters:args.filters??{},cursor:args.cursor??null})};
   if(name==="inspect_listings") {
     if(!Array.isArray(args.ids) || !args.ids.length || args.ids.length>10 || args.ids.some(s=>typeof s!=="string" || !/^[A-Za-z0-9_-]{1,96}$/.test(s))) throw new Error("Provide 1–10 listing IDs");
+    if(provider.kind==="live" && env.LIVE_ACCESS===PERSONAL_TEST && new Set(args.ids).size>PERSONAL_LIMITS.details) throw new Error("Choose at most two ads per personal detail request");
     const results=[];
     for(const id of new Set(args.ids)) {
       const row=await provider.detail(id);
@@ -95,6 +98,10 @@ export async function invokeTool(name,args,env={}) {
     return {...meta,results};
   }
   const definition={source:args.source,queries:args.queries,filters:args.filters??{},criteria:args.criteria??[],maxPages:args.maxPages??12,maxDetails:args.maxDetails??8};
+  if(provider.kind==="live" && env.LIVE_ACCESS===PERSONAL_TEST) {
+    definition.maxPages=Math.min(definition.maxPages, PERSONAL_LIMITS.pages);
+    definition.maxDetails=Math.min(definition.maxDetails, PERSONAL_LIMITS.details);
+  }
   const report=await runStudy(provider,definition);
   if(name==="study_market") return report;
   const study_id="ms_"+crypto.randomUUID().replaceAll("-","");
@@ -106,14 +113,15 @@ export async function invokeTool(name,args,env={}) {
 }
 
 async function readImage({id,index},env) {
-  if(env.LIVE_ACCESS!=="authorized" || env.IMAGE_ACCESS!=="authorized" || !env.MCP_BEARER_TOKEN)
+  const personal=env.LIVE_ACCESS===PERSONAL_TEST && env.IMAGE_ACCESS===PERSONAL_TEST;
+  if(!personal && (env.LIVE_ACCESS!=="authorized" || env.IMAGE_ACCESS!=="authorized" || !env.MCP_BEARER_TOKEN))
     throw new Error("Photo retrieval requires authorized live and image access. Use a photo supplied in this chat for visual inspection.");
   if(!/^\d{1,20}$/.test(id) || !Number.isInteger(index) || index<0 || index>11) throw new Error("Invalid listing ID or photo index");
   const row=await getProvider("live",env).detail(id);
   if(!row?.images?.[index]) throw new Error("Photo unavailable");
   const url=new URL(row.images[index]);
   if(url.origin!=="https://cache.willhaben.at" || !url.pathname.startsWith("/mmo/") || url.username || url.password) throw new Error("Unexpected photo source");
-  const r=await fetch(url,{redirect:"error",signal:AbortSignal.timeout(8000)});
+  const r=await fetch(url,{redirect:"error",signal:AbortSignal.timeout(8000),headers:{"User-Agent":CLIENT_AGENT,Accept:"image/webp,image/jpeg,image/png"}});
   const mimeType=r.headers.get("content-type")?.split(";")[0].toLowerCase();
   const max=1536*1024;
   if(!r.ok || !["image/jpeg","image/png","image/webp"].includes(mimeType) || Number(r.headers.get("content-length"))>max || !r.body) {

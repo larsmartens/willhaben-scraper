@@ -5,7 +5,7 @@ const MIN_COMPARABLE = 5;
 const SOURCE_SCOPE = {
   demo: 'Synthetic demonstration catalogue only',
   provided: 'Only supplied records, searched during the run. Coverage of the marketplace is unknown.',
-  live: 'Authorized live search variants during the observation interval. Listings may change between requests.'
+  live: 'Live search variants during the observation interval. Listings may change between requests.'
 };
 const stopProvider = code => ['upstream_rate_limited','upstream_denied','upstream_blocked','upstream_forbidden','live_access_not_configured'].includes(code);
 const primitive = v => typeof v === 'string' || typeof v === 'boolean' || Number.isFinite(v);
