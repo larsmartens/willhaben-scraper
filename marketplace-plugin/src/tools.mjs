@@ -121,7 +121,7 @@ async function readImage({id,index},env) {
   if(!row?.images?.[index]) throw new Error("Photo unavailable");
   const url=new URL(row.images[index]);
   if(url.origin!=="https://cache.willhaben.at" || !url.pathname.startsWith("/mmo/") || url.username || url.password) throw new Error("Unexpected photo source");
-  const r=await fetch(url,{redirect:"error",signal:AbortSignal.timeout(8000),headers:{"User-Agent":CLIENT_AGENT,Accept:"image/webp,image/jpeg,image/png"}});
+  const r=await fetch(url,{redirect:"manual",signal:AbortSignal.timeout(8000),headers:{"User-Agent":CLIENT_AGENT,Accept:"image/webp,image/jpeg,image/png"}});
   const mimeType=r.headers.get("content-type")?.split(";")[0].toLowerCase();
   const max=1536*1024;
   if(!r.ok || !["image/jpeg","image/png","image/webp"].includes(mimeType) || Number(r.headers.get("content-length"))>max || !r.body) {

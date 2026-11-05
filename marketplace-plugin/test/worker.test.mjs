@@ -193,8 +193,9 @@ test("photo tools return real MCP image blocks only for the configured live imag
   const calls = [];
   const photo = "https://cache.willhaben.at/mmo/fixtures/photo.png";
   const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
-  t.mock.method(globalThis, "fetch", async (url) => {
+  t.mock.method(globalThis, "fetch", async (url, options) => {
     calls.push(String(url));
+    assert.equal(options.redirect,"manual","Cloudflare supports follow/manual; photo redirects must not be followed");
     if (String(url) === photo) return new Response(Buffer.from(png, "base64"), {headers:{ "content-type":"image/png" }});
     assert.equal(String(url), "https://www.willhaben.at/iad/object?adId=12345");
     const advertDetails = {id:"12345",verticalId:5,description:"Ersatzglas",attributes:{attribute:[]},
