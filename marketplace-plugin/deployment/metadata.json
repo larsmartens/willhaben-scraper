@@ -1,5 +1,5 @@
 {
-  "main_module": "worker.mjs",
+  "main_module": "index.mjs",
   "compatibility_date": "2026-06-01",
   "bindings": [
     {
@@ -21,12 +21,28 @@
       "name": "PERSONAL_LIMITER",
       "namespace_id": "76598",
       "simple": {
-        "limit": 12,
+        "limit": 120,
         "period": 60
       }
+    },
+    {
+      "type": "durable_object_namespace",
+      "name": "ORIGIN_GATE",
+      "class_name": "OriginGate"
+    },
+    {
+      "type": "plain_text",
+      "name": "REQUIRE_ORIGIN_GATE",
+      "text": "true"
     }
   ],
   "observability": {
     "enabled": false
+  },
+  "migrations": {
+    "new_tag": "origin-gate-v1",
+    "new_sqlite_classes": [
+      "OriginGate"
+    ]
   }
 }

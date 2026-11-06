@@ -40,6 +40,21 @@ test('schema failure, empty result, explicit undercount and changed total are di
   assert.equal((await run(pages(sample(60),{effectiveTotal:x => x ? 60:80}))).coverage.queries[0].stopReason,'total_changed');
 });
 
+test('cached page observation time reaches study rows and freshness without a detail fetch', async () => {
+  const observedAt = new Date(Date.now() - 120000).toISOString();
+  const ownTime = new Date(Date.now() - 60000).toISOString();
+  const report = await run({kind:'live', search:async()=>({
+    items:[listing(1),listing(2,{observedAt:ownTime,cacheAgeSeconds:60})],
+    total:2,end:true,nextCursor:null,observedAt,cacheAgeSeconds:120,cacheHit:true,
+  })});
+  assert.equal(report.shortlist[0].observedAt,observedAt);
+  assert.equal(report.shortlist[0].cacheAgeSeconds,120);
+  assert.equal(report.shortlist[1].observedAt,ownTime);
+  assert.deepEqual(report.dataFreshness,{
+    oldestObservationAt:observedAt,newestObservationAt:ownTime,cachedRecords:2,
+  });
+});
+
 test('deduplicates across variants and pages; restating one query does not spend quota',async()=>{
   const list = sample(5);
   const r = await run(pages([list[0],...list],{total:5,size:3}),{queries:['A','B','A']});
@@ -71,7 +86,7 @@ test('rate limiting halts the study and secondary detail traffic',async()=>{
   const r = await run(p,{queries:['A','B','C'],maxDetails:6});
   assert.equal(upstreamCalls,2); assert.equal(r.counts.unique,1);
   assert.equal(r.counts.detailsAttempted,0); assert.equal(r.coverage.status,'partial');
-  assert(r.coverage.queries.every(q=>q.continuation===undefined));
+  assert(r.coverage.queries.every(q=>q.continuation));
   assert.doesNotMatch(JSON.stringify(r),/secret/);
 });
 
@@ -115,7 +130,37 @@ test('prices are asking prices; group verified units and distinguish shipping fr
   assert.deepEqual(c.askingEUR,{n:5,min:10,max:50,p25:20,median:30,p75:40});
   assert.deepEqual(c.shippedEUR,{n:4,min:23,max:53});
   assert.equal(r.shortlist.find(r=>r.id==='1').shippedUnitEUR,null);
+  assert.deepEqual(r.shortlist.find(r=>r.id==='1').priceContext,{sampleSize:5,medianUnitEUR:30,belowMedianPercent:66.67});
+  assert.equal(r.shortlist.find(r=>r.id==='6').priceContext,undefined);
   assert.equal(r.cohorts.filter(c=>!c.comparable).every(c=>c.askingEUR.median===undefined),true);
+});
+
+test('wall-clock interruption preserves acquired records and the next search position', async (t) => {
+  let now = 1000;
+  t.mock.method(Date, 'now', () => now);
+  const provider = {kind:'live', async search({cursor,pageSize}) {
+    assert.equal(cursor,null);
+    assert.equal(pageSize,100);
+    now = 3000;
+    return {items:[listing(1)],total:200,end:false,nextCursor:'2'};
+  }};
+  const result = await runStudy(provider,{queries:['Kugel'],pageSize:100,maxPages:32,maxDetails:0},{deadline:2000});
+  assert.equal(result.counts.unique,1);
+  assert.equal(result.coverage.queries[0].stopReason,'time_budget');
+  assert.deepEqual(result.coverage.queries[0].continuation,{cursor:'2',firstPage:false});
+});
+
+test('shared cooldown reports the full retry time and leaves details available for later calls', async () => {
+  const retryAt = '2040-01-01T00:30:00.000Z';
+  const provider = pages(sample(3),{detail:async () => {
+    throw Object.assign(new Error('untrusted upstream message'),{code:'upstream_cooldown',recoverable:true,retryAfterSeconds:1800,retryAt});
+  }});
+  const result = await run(provider,{maxDetails:100});
+  assert.equal(result.counts.detailsAttempted,1);
+  assert.equal(result.coverage.retryAfterSeconds,1800);
+  assert.equal(result.coverage.retryAt,retryAt);
+  assert.deepEqual(result.coverage.remainingDetailIds,['1','2','3']);
+  assert.doesNotMatch(JSON.stringify(result),/untrusted upstream/);
 });
 
 test('invalid input and hostile fields are isolated',async()=>{

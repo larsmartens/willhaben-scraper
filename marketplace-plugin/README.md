@@ -1,42 +1,91 @@
 # Marktplatz-Studie
 
-A read-only marketplace research plugin for regular ChatGPT chats. Run the full local suite with Node 22 or newer using `npm test` from this directory. The Worker has no package or build dependencies.
+Ein MCP-Plugin für die Recherche auf willhaben Marktplatz in ChatGPT. Version 1.2.0 unterstützt aktuelle Suchseiten, gezielte Detailprüfungen, echte Inseratfotos und vergleichbare Angebotspreise.
 
-## Connect
+## Verbindung
 
-On ChatGPT web, open Plugins, choose **Add custom MCP server**, and register **Marktplatz-Studie** with `https://marktplatz-studie.lars-e82.workers.dev/mcp`. The public installation uses **No authentication**. Install it and select it with @ in a fresh chat. The same connection can be tested on Android. Open `/health` to check the version and live availability. The portable plugin manifest and bilingual research skill are under `plugin/`.
+Die persönliche Live-Verbindung verwendet die separat bereitgestellte Installations-URL. Sie ist bis zur ausdrücklichen Deaktivierung gültig. Nach einem Update der Tool-Schemata die Verbindung in ChatGPT öffnen und die Werkzeuge aktualisieren. Der Server stellt elf Tools bereit. Die aktuelle OpenAI-Anleitung beschreibt den Refresh auf der Detailseite des Plugins. [Verbindung und Tests](https://developers.openai.com/plugins/deploy/connect-chatgpt)
 
-## Data and evidence
+Der öffentliche Endpunkt für Demo- und bereitgestellte Daten lautet `https://marktplatz-studie.lars-e82.workers.dev/mcp`. Das portable Plugin-Paket unter `plugin/` enthält diesen öffentlichen Endpunkt und den Forschungs-Skill. Für Live-Recherche die persönliche Verbindung verwenden.
 
-- A real buying request begins with `plan_search`. It returns direct willhaben searches, query variants for native web search and any constraints requiring detail checks. The Worker never sends that planning request to willhaben. Indexed, user-supplied and synthetic records have distinct provenance.
-- Pass `source: "provided"` with up to 300 distinct records to analyze material the user can process. Each record requires an ID, title and numeric asking price or null. Retain listing links and use typed attributes for evidence. Photos and missing measurements have different evidentiary value.
-- Invoke `source: "demo"` only to demonstrate the workflow. The included BANKAMP and smartphone examples are synthetic. `discover_filters`, `search_listings` and `inspect_listings` support drilldown. `study_market` searches up to eight variants and checks independent criteria with explicit unknowns. Query exhaustion describes only the source and variants at the observation time. Large studies can reach their page/detail budgets.
-- Studies group comparable asking prices by category, model, condition and known unit basis. The default minimum cohort size for a median is five. Shipping-inclusive metrics require known shipping. An absent listing is not proof of a sale.
-- `study_market` is request-scoped. Explicit `save_study` retains the computed report, terms and criteria in Cloudflare KV for 24 hours. A random capability ID permits reading; keep it private. `get_study` and `compare_studies` use the saved observations. Cross-region KV reads may briefly lag a save.
-- The hosted setup uses no willhaben credentials. For a general-purpose live deployment, provision the appropriate platform access grant, operator configuration `LIVE_ACCESS=authorized` and an operator-managed `MCP_BEARER_TOKEN`. Photos also require `IMAGE_ACCESS=authorized`. Store tokens as secrets. Verify live fixtures and scoped permissions before enabling. A private OAuth or an API-key-capable connection is required to use a protected route from a hosted client. For a private operator test, see below. There is no periodic crawling.
+## Werkzeuge
 
-## Cloudflare deployment
+| Tool | Aufgabe |
+| --- | --- |
+| `plan_search` | Suchvarianten, native Suchlinks, verfügbare Zugriffe und detailpflichtige Kriterien vorbereiten |
+| `parse_search_url` | Eine willhaben-Such-URL in Tool-Argumente übersetzen und zusätzliche Parameter sichtbar machen |
+| `discover_filters` | Kategorien, Regionen und Attribute entdecken, Werte suchen und weiterblättern |
+| `search_listings` | Eine kompakte Suchseite mit Fortsetzung, Feldwahl und optionalen Titelbildern lesen |
+| `inspect_listings` | Ausgewählte Inserate, Beschreibungen, Attribute und Kriterienbelege prüfen |
+| `inspect_listing_images` | Einzelne Fotoindizes oder fortsetzbare Galeriepakete als Bildinhalt oder Links lesen |
+| `inspect_listing_image` | Einen Fotoindex über die bisherige Einzelfoto-Schnittstelle lesen |
+| `study_market` | Suchvarianten deduplizieren, Anforderungen bewerten und Preiskohorten berechnen |
+| `save_study` | Auf ausdrücklichen Wunsch eine Studie für 24 Stunden speichern |
+| `get_study` | Eine gespeicherte Beobachtung mit ihrem ursprünglichen Zeitpunkt lesen |
+| `compare_studies` | Zwei Beobachtungen nach Definition, Abdeckung und Angebotspreisen vergleichen |
 
-The deployment consists of the ES modules in `src/`. Upload them as JavaScript modules with their basenames, using the Workers Scripts API multipart upload and `deployment/metadata.json`. Replace the placeholder with a dedicated KV namespace ID and select a rate-limit namespace unused by your other Workers. Enable the Worker subdomain for public HTTPS. Leave live and image activation unset for a deployment equivalent to the public version. Review existing bindings and secrets before updating a customized installation.
+## Praktische Defaults
 
-The metadata is the template used by the Cloudflare connector. No third-party handler, account-wide route, scheduled task, or browser extension is required.
+| Bereich | Standard | Explizite Auswahl und Fortsetzung |
+| --- | --- | --- |
+| Treffer pro Suchseite | 50 | 1–100 mit `pageSize` |
+| Suchseiten | Eine pro `search_listings`-Aufruf | `nextCursor` so oft wiederholen, wie die Recherche weitere Seiten braucht |
+| Suchfelder | ID, Titel, URL, Preis, Ort, Status, Fotoanzahl und Galerie-Vollständigkeit, soweit verfügbar | `fields` wählt zusätzliche oder weniger Felder |
+| Detailabrufe | Fünf pro Aufruf | Bis zu zehn pro Paket, bis zu 100 ausgewählte IDs, weitere Pakete über `nextCursor` |
+| Beschreibungen | 1.500 Zeichen | Bis zu 6.000 mit `descriptionLimit`, Gesamtlänge und Kürzungsstatus werden ausgegeben |
+| Suchbilder | Abruf auf Anforderung | `images=links` oder `images=thumbnails`, vier Covers standardmäßig, höchstens acht |
+| Gezielte Titelbilder | IDs aus der aktuellen Suchseite | `imageIds` wählt bis zu acht Kandidaten, alternativ `imageLimit` |
+| Galeriefotos | Vier Fotos | Bis zu acht pro Paket, alle verfügbaren Indizes über `nextIndex` oder `indices` erreichbar |
+| Filterwerte | Übersicht mit drei Beispielen je Dimension | Gezielte Suche mit `dimension`, `filter`, `valueQuery` und weiteren Seiten |
+| Live-Studie | Eine Suchseite insgesamt, null automatische Details | Bis zu 32 Seiten insgesamt und 100 Detailversuche je Aufruf, begrenzt durch die Aufrufzeit |
+| Aufrufzeit | 35 Sekunden | Teilergebnisse mit offenen IDs, Positionen und gegebenenfalls `retryAt` |
+| Gespeicherte Studie | 24 Stunden | Der zurückgegebene geheime Studien-Identifier ermöglicht Folgefragen |
 
-## Try it
+Detail- und Galeriepakete sind wiederholt abrufbar. Die Seitengröße gehört zur Cursor-Identität. Eine veränderte Suchdefinition beginnt mit einem neuen ersten Aufruf.
 
-- „Suche nach matten, kugelförmigen Ersatzgläsern mit 60 mm Durchmesser. Zeige nur bestätigte Maße und separat die Kandidaten mit offenen Fragen.“
-- „Teste das mit dem BANKAMP-Demokatalog. Vergleiche Ersatzglas, Lampengläser und Ersatzschirm und prüfe diameterMm, openingMm, shape und finish.“
-- “Compare these provided listings by unit price and confirmed shipping. Mark unknown measurements. Save the result for tomorrow.”
+Ein Foto darf bis zu 4 MiB umfassen. Das gemeinsame Bildbudget einer Antwort liegt unter 8 MiB nach Base64-Kodierung. Ein erreichtes Antwortbudget erhält die erste unbearbeitete Position. Für größere Dateien sind kleinere Bildvarianten oder Links verfügbar. Fehlt eine native Miniatur, weist die Antwort den Vollbild-Fallback als `full` aus.
 
-## References
+## Raten und Aktualität
 
-- Existing local SDK audit: https://github.com/larsmartens/smartphone-market-monitor/blob/19478a50cbb08d56d4350e8ec297921393909cb3/docs/research/marketplace-options.md
-- Filter and pricing reference: https://github.com/taneron/willmehr/tree/908a82eebc6c204eeae3ccad346f7152dcc0ea4f
-- Detail, photos and pagination reference: https://github.com/Samxel/willhaben-mcp/tree/757459c55ea5a7e87a34cce0910780ea4c0465dd
-- Embedded-page shape and bounded research reference: https://github.com/aliildan/willhaben-mcp/tree/3ddd9a39176a7e72ca255b7e8116b61b5fc6da73
-- Access conditions: https://www.willhaben.at/iad/nutzungsbedingungen and https://www.willhaben.at/robots.txt
+Die persönliche MCP-Verbindung erlaubt 120 Aufrufe pro Minute. Diese Zählung gilt für die Verbindung über wechselnde Client-IP-Adressen hinweg. Die tatsächlich ausgehenden Abrufe koordiniert ein gemeinsames SQLite-Durable-Object je Origin.
 
-## Personal test connection
+| Datenquelle | Abstand zwischen Anfragen |
+| --- | --- |
+| willhaben-Such- und Detailseiten | Mindestens zwei Sekunden plus 0–500 ms positiver Jitter |
+| Bild-CDN | Mindestens 500 ms plus 0–250 ms positiver Jitter |
 
-The personal connection uses a separate HTTPS install URL and has no automatic expiration. The 256-bit key is a bearer credential. Pass this URL only to your ChatGPT connector and keep it out of issues, screenshots and logs. The public endpoint keeps its own capabilities. Set the Worker secret `PERSONAL_TEST_TOKEN_SHA256` (SHA-256 of the lowercase, 64-hex install token as UTF-8 text) to provision the connection. Leave `PERSONAL_TEST_EXPIRES_AT` unset for access without an expiration date, and remove any existing expiry binding when updating an earlier deployment. Delete or rotate the secret to revoke access. Disable invocation logging for a deployment serving capability URLs.
+Jeder Weiterleitungsschritt und jeder Wiederholungsversuch benötigt einen eigenen Abrufslot. `Retry-After` gilt vollständig als Sekundenwert oder HTTP-Datum. Netzwerkfehler und HTTP 502/503/504 erhalten bis zu zwei Wiederholungen innerhalb der Aufrufzeit. HTTP 429, Zugriffsablehnungen und Challenges führen zu einem gemeinsamen Cooldown mit strukturiertem Rückgabestatus.
 
-The private endpoint limits requests per client to 12 per minute. Each personal search requests one page of 10 ads. A study can inspect up to two details; selecting one photo retrieves its actual bytes. This mode makes individually requested standard public HTTPS reads and stops on denials, challenges and rate limits. Personal activation records the operator’s test choice and does not represent a permission grant from willhaben. The platform’s published access conditions apply.
+Suchseiten, Facetten und Kurzbeobachtungen werden fünf Minuten, Details 15 Minuten wiederverwendet. `fresh=true` fordert eine neue Beobachtung unter derselben Anfragesteuerung an. Ergebnisse enthalten den ursprünglichen Beobachtungszeitpunkt und das Cache-Alter. Studien erhalten diese Zeiten auch für reine Suchseiten-Beobachtungen.
+
+## Aussagekraft
+
+Kriterien werden als bestätigt, widersprochen oder unbekannt ausgewiesen. Preisvergleiche berücksichtigen Kategorie, Modell, Zustand, Menge und bekannte Versandkosten. Ein vergleichbarer Median erfordert mindestens fünf geeignete Beobachtungen. `priceContext` ordnet einen Kandidaten innerhalb dieser beobachteten Kohorte ein.
+
+Eine Studie umfasst ihren eigenen Abruflauf. Eine Suchfortsetzung erzeugt zusätzliche Beobachtungen. Für eine gemeinsame spätere Auswertung können deduplizierte Daten als `source=provided` mit bis zu 300 Datensätzen eingebracht werden. Der Studienbericht benennt Abdeckung, offene Detailprüfungen und verbleibende Suchpositionen.
+
+## Entwicklung
+
+Node 22 oder neuer verwenden. Die Produktionsmodule verwenden die Workers-Laufzeit. Miniflare ist ausschließlich eine Entwicklungsabhängigkeit für echte workerd- und SQLite-Tests.
+
+```sh
+npm ci
+npm test
+npm run test:runtime
+```
+
+Die Runtime-Suiten arbeiten mit synthetischen Upstreamdaten. Sie prüfen auch parallele Slot-Anforderungen, Cache-Persistenz nach Neustart, lange Cooldowns und tatsächliche Anfrageabstände.
+
+## Cloudflare-Deployment
+
+Die ES-Module in `src/` unter ihren Dateinamen hochladen. `src/index.mjs` exportiert den Worker und `OriginGate`. Die Vorlage steht in `deployment/metadata.json`.
+
+- Den KV-Platzhalter durch den Namespace für Studien ersetzen.
+- Beim ersten Deployment die SQLite-Migration `origin-gate-v1` anwenden. Bei weiteren Code-Uploads die bereits angewandte Migration auslassen.
+- `ORIGIN_GATE` und `REQUIRE_ORIGIN_GATE=true` bereitstellen.
+- Bestehende Geheimnisse mit `keep_bindings: ["secret_text"]` erhalten.
+- Für die persönliche Verbindung `PERSONAL_TEST_TOKEN_SHA256` als Secret verwenden. Der Wert ist SHA-256 des 64-stelligen Installationsschlüssels.
+- `PERSONAL_TEST_EXPIRES_AT` für einen Zugang bis zur Deaktivierung entfernen.
+- Request- und Invocation-Logging deaktiviert halten, da die persönliche URL ein Zugangsgeheimnis trägt.
+
+Die Betriebsentscheidungen und die geprüften GitHub-Implementierungen sind nachvollziehbar dokumentiert. [Recherche und Funktionsvergleich](docs/research-and-decisions.md) · [Verifikationsübersicht](docs/feature-map.md)

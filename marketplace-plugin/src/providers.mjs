@@ -1,15 +1,17 @@
 /** Read-only catalogue adapters. A provider instance lasts for one tool call. */
+import { fetchPublic, CLIENT_AGENT } from "./traffic.mjs";
+export { CLIENT_AGENT };
+
 const ORIGIN = "https://www.willhaben.at";
 const SEARCH = "/iad/kaufen-und-verkaufen/marktplatz";
 const CONDITIONS = {new:22, as_new:2546, refurbished:5013256, used:23, defective:24, display_item:2539};
 const SORTS = {newest:1, price_asc:3, price_desc:4, relevance:7};
 const MAX_PROVIDED = 300;
-const PAGE_SIZE = 30;
+export const DEFAULT_PAGE_SIZE = 50;
+export const MAX_PAGE_SIZE = 100;
 export const PERSONAL_TEST = "personal_test";
-export const PERSONAL_LIMITS = {pages:1,details:2,rows:10};
-export const CLIENT_AGENT = "Marktplatz-Studie/1.0 (+https://github.com/larsmartens/willhaben-scraper)";
 const plain = v => v !== null && typeof v === "object" && !Array.isArray(v);
-const fail = (code, message) => { throw Object.assign(new Error(message), {code}); };
+const fail = (code, message, details = {}) => { throw Object.assign(new Error(message), {code, ...details}); };
 const invalid = msg => fail("invalid_input", msg);
 const schemaError = msg => fail("upstream_schema",msg);
 const positive = {type:"integer", minimum:1, maximum:2147483647};
@@ -32,7 +34,7 @@ const itemFields = {
   category:str(160), description:str(6000), model:str(180), categoryId:positive, areaId:positive, categoryPathIds:ids, areaPathIds:ids,
   sellerType:filterFields.sellerType, paylivery:{type:"boolean"}, attributeIds:ids,
   attributes:{type:"object",maxProperties:45,additionalProperties:{type:["string","number","boolean"]}},
-  images:{type:"array",maxItems:12,items:str(1200)}, publishedAt:str(36)
+  images:{type:"array",items:str(1200)}, publishedAt:str(36)
 };
 export const LISTING_SCHEMA = {type:"object",required:["id","title","price"],additionalProperties:false,properties:itemFields};
 const textFrom = (v, limit) => typeof v === "string" ? v.trim().slice(0,limit) : "";
@@ -43,7 +45,7 @@ function validateValue(v, def, key) {
   if (def.type === "boolean" && typeof v !== "boolean") invalid("Invalid " + key);
   if (["integer","number"].includes(def.type) && (!Number.isFinite(v) || v < def.minimum || v > def.maximum || (def.type === "integer" && !Number.isInteger(v)))) invalid("Invalid " + key);
   if (def.type === "array") {
-    if (!Array.isArray(v) || v.length > def.maxItems || (def.uniqueItems && new Set(v).size !== v.length)) invalid("Invalid " + key);
+    if (!Array.isArray(v) || (def.maxItems !== undefined && v.length > def.maxItems) || (def.uniqueItems && new Set(v).size !== v.length)) invalid("Invalid " + key);
     v.forEach(x=>validateValue(x,def.items,key));
   }
 }
@@ -66,8 +68,13 @@ function queryText(query) {
 const fold = s => String(s??"").toLowerCase().normalize("NFKD").replace(/\p{M}/gu,"").replaceAll("ß","ss");
 function parseCursor(cursor) {
   if (cursor == null) return 1;
-  if (typeof cursor !== "string" || !/^[1-9]\d{0,4}$/.test(cursor)) invalid("Invalid page cursor");
+  if (typeof cursor !== "string" || !/^[1-9]\d*$/.test(cursor) || !Number.isSafeInteger(Number(cursor)) || Number(cursor) >= Number.MAX_SAFE_INTEGER) invalid("Invalid page cursor");
   return Number(cursor);
+}
+function validatePageSize(pageSize) {
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE)
+    invalid("pageSize must be between 1 and " + MAX_PAGE_SIZE);
+  return pageSize;
 }
 export function buildSearchLink(query,filters={}) {
   const kw=queryText(query), f=validateFilters(filters);
@@ -81,12 +88,79 @@ export function buildSearchLink(query,filters={}) {
   for (const n of [CONDITIONS[f.condition],...(f.attributeIds??[])]) if(n) u.searchParams.append("treeAttributes",String(n));
   return u.href;
 }
+
+export function parseSearchUrl(value) {
+  if (typeof value !== "string" || value.length > 6000) invalid("Provide a willhaben Marketplace search URL");
+  let url;
+  try { url = new URL(value); } catch { invalid("Invalid search URL"); }
+  if (url.protocol !== "https:" || !["willhaben.at", "www.willhaben.at"].includes(url.hostname) ||
+      url.port || url.username || url.password || url.hash ||
+      !(url.pathname === SEARCH || url.pathname.startsWith(SEARCH + "/")))
+    invalid("Use an HTTPS willhaben Marketplace search URL without credentials or fragments");
+
+  const params = url.searchParams;
+  const single = name => {
+    const values = [...new Set(params.getAll(name))];
+    if (values.length > 1) invalid("Conflicting values for " + name);
+    return values[0];
+  };
+  const filters = {};
+  const unsupportedParameters = [];
+  const numericFilters = { PRICE_FROM: "priceMin", PRICE_TO: "priceMax", ATTRIBUTE_TREE: "categoryId", areaId: "areaId" };
+  for (const [nativeName, name] of Object.entries(numericFilters)) {
+    const raw = single(nativeName);
+    if (raw === undefined) continue;
+    if (!/^\d+(?:\.\d+)?$/.test(raw)) invalid("Invalid " + nativeName);
+    filters[name] = Number(raw);
+  }
+  const categoryPath = url.pathname.slice(SEARCH.length).replace(/\/$/, "");
+  if (categoryPath) {
+    const categoryId = Number(categoryPath.match(/-([1-9]\d*)$/)?.[1]);
+    if (categoryId && (filters.categoryId === undefined || filters.categoryId === categoryId)) filters.categoryId = categoryId;
+    else unsupportedParameters.push({ name: "path", values: [url.pathname] });
+  }
+  const privateValue = single("ISPRIVATE");
+  if (privateValue !== undefined) {
+    if (!["0", "1"].includes(privateValue)) invalid("Invalid ISPRIVATE");
+    filters.sellerType = privateValue === "1" ? "private" : "dealer";
+  }
+  const sortValue = single("sort");
+  if (sortValue !== undefined) {
+    const match = Object.entries(SORTS).find(([, id]) => String(id) === sortValue);
+    if (match) filters.sort = match[0];
+    else unsupportedParameters.push({ name: "sort", values: [sortValue] });
+  }
+  const paylivery = single("paylivery");
+  if (["true", "1"].includes(paylivery)) filters.paylivery = true;
+  else if (paylivery !== undefined) unsupportedParameters.push({ name: "paylivery", values: [paylivery] });
+
+  const attributes = [...new Set(params.getAll("treeAttributes"))];
+  if (attributes.some(id => !/^[1-9]\d*$/.test(id))) invalid("Invalid treeAttributes");
+  const conditionNames = new Map(Object.entries(CONDITIONS).map(([name, id]) => [String(id), name]));
+  const conditions = attributes.filter(id => conditionNames.has(id));
+  if (conditions.length === 1) filters.condition = conditionNames.get(conditions[0]);
+  else if (conditions.length > 1) unsupportedParameters.push({ name: "treeAttributes", values: conditions });
+  const attributeIds = attributes.filter(id => !conditionNames.has(id)).map(Number);
+  if (attributeIds.length) filters.attributeIds = attributeIds;
+
+  const handled = new Set(["keyword", "page", "rows", "ISPRIVATE", "sort", "paylivery", "treeAttributes", ...Object.keys(numericFilters)]);
+  for (const name of new Set(params.keys())) {
+    if (!handled.has(name)) unsupportedParameters.push({ name, values: params.getAll(name) });
+  }
+  const page = parseCursor(single("page"));
+  const rows = single("rows");
+  if (rows !== undefined && !/^[1-9]\d*$/.test(rows)) invalid("Invalid rows");
+  const pageSize = validatePageSize(rows === undefined ? 30 : Number(rows));
+  return { query: queryText(single("keyword") ?? ""), filters: validateFilters(filters), page, pageSize,
+    unsupportedParameters, fullyRepresented: unsupportedParameters.length === 0, url: url.href };
+}
+
 function safeWebUrl(value, type) {
   if (typeof value!=="string" || value.length>1200) return null;
   let u;
   try {u=new URL(value);} catch {return null;}
   if (u.protocol!=="https:" || u.username || u.password || u.port) return null;
-  if (type==="image") return u.hostname==="cache.willhaben.at" && (u.pathname.startsWith("/mmo/") || /\.(?:jpe?g|webp|png|avif)$/i.test(u.pathname)) ? u.href : null;
+  if (type==="image") return u.hostname==="cache.willhaben.at" && u.pathname.startsWith("/mmo/") ? u.href : null;
   if (!["willhaben.at","www.willhaben.at"].includes(u.hostname)) return null;
   if (u.pathname.startsWith("/iad/kaufen-und-verkaufen/d/") || (u.pathname==="/iad/object" && /^\d+$/.test(u.searchParams.get("adId")??""))) return u.href;
   return null;
@@ -149,21 +223,30 @@ function selectRows(rows, query, filters) {
   return selected;
 }
 function localProvider(kind, rows) {
-  const byId=new Map(rows.map(r=>[r.id,r]));
+  const observedAt = new Date().toISOString();
+  const records = rows.map(row => {
+    const images = [...new Set(row.images ?? [])];
+    const gallery = images.map((url, index) => ({index, url, thumbnailUrl:null}));
+    return {...row, images, gallery, imageCount:images.length, thumbnailUrl:null,
+      galleryComplete:row.images !== undefined, observedAt, cacheAgeSeconds:0};
+  });
+  const byId=new Map(records.map(r=>[r.id,r]));
   if(byId.size!==rows.length) invalid("Duplicate listing IDs in the supplied catalogue");
   return {
-    kind, async search({query,filters={},cursor}) {
-      const hits=selectRows(rows,query,filters), page=parseCursor(cursor);
-      const items=hits.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE), end=page*PAGE_SIZE>=hits.length;
-      return {items,total:hits.length,end,nextCursor:end?null:String(page+1)};
-    }, async detail(id){return byId.get(id)??null;},
+    kind, async search({query,filters={},cursor,pageSize=DEFAULT_PAGE_SIZE}) {
+      validatePageSize(pageSize);
+      const hits=selectRows(records,query,filters), page=parseCursor(cursor);
+      const items=hits.slice((page-1)*pageSize,page*pageSize), end=page*pageSize>=hits.length;
+      return {items,total:hits.length,end,nextCursor:end?null:String(page+1), page,
+        requestedPageSize:pageSize, returnedCount:items.length, observedAt, cacheAgeSeconds:0};
+    }, async detail(id){return byId.get(id)??null;}, async summary(id){return byId.get(id)??null;},
     async facets({query,filters={}}) {
-      const hits=selectRows(rows,query,filters);
+      const hits=selectRows(records,query,filters);
       const dimensions=Object.fromEntries(["categoryId","areaId","condition","sellerType","shipping","paylivery","model"].map(key=>{
         const seen=new Map(); for(const row of hits){const v=row[key];if(v!=null)seen.set(v,(seen.get(v)??0)+1);}
-        return [key,Array.from(seen,([value,count])=>({value,count,...(key==="categoryId"?{label:hits.find(r=>r.categoryId===value)?.category}:key==="areaId"?{label:hits.find(r=>r.areaId===value)?.location}:{})})).slice(0,80)];
+        return [key,Array.from(seen,([value,count])=>({value,count,...(key==="categoryId"?{label:hits.find(r=>r.categoryId===value)?.category}:key==="areaId"?{label:hits.find(r=>r.areaId===value)?.location}:{})}))];
       }));
-      return {scope:kind==="demo"?"synthetic catalogue":"submitted records only",total:hits.length,dimensions};
+      return {scope:kind==="demo"?"synthetic catalogue":"submitted records only",total:hits.length,dimensions,observedAt,cacheAgeSeconds:0};
     }
   };
 }
@@ -181,7 +264,45 @@ function normalizeMoney(v) {
   return /^\d+(?:\.\d+)?$/.test(s) && Number(s)<=1e9 ? Number(s):null;
 }
 const numericIds = entries => [...new Set(entries.filter(v=>/^\d{1,9}$/.test(String(v))).map(Number).filter(n=>n>0))];
-function liveListing(raw){
+function imageUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const path = value.trim();
+  if (path.startsWith("//")) return safeWebUrl("https:" + path, "image");
+  if (/^[a-z][a-z\d+.-]*:/i.test(path)) return safeWebUrl(path, "image");
+  return safeWebUrl("https://cache.willhaben.at/mmo/" + path.replace(/^\/+/, "").replace(/^mmo\//, ""), "image");
+}
+function photoIdentity(url) {
+  return new URL(url).pathname.replace(/_(?:hoved|thumb)(?=\.[^./]+$)/, "");
+}
+function normalizeGallery(raw, allImages, cover, detailed) {
+  const entries = raw?.advertImage;
+  if (entries !== undefined && !Array.isArray(entries)) schemaError("Invalid image gallery");
+  const gallery = [], seen = new Set();
+  let rejected = false;
+  for (const entry of entries ?? []) {
+    const reference = imageUrl(entry?.referenceImageUrl) ?? imageUrl(entry?.reference) ?? imageUrl(entry?.name);
+    const url = imageUrl(entry?.mainImageUrl) ?? reference;
+    if (!url) { rejected = true; continue; }
+    // Image IDs repeat across different photos. Full reference paths identify their size variants.
+    const identity = photoIdentity(reference ?? url);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    gallery.push({index:gallery.length, url, thumbnailUrl:imageUrl(entry?.thumbnailImageUrl)});
+  }
+  const hasAllImages = typeof allImages === "string" && Boolean(allImages.trim());
+  const extra = String(hasAllImages ? allImages : cover ?? "").split(";").filter(value => value.trim());
+  for (const value of extra) {
+    const url = imageUrl(value);
+    if (!url) { rejected = true; continue; }
+    const identity = photoIdentity(url);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    gallery.push({index:gallery.length, url, thumbnailUrl:null});
+  }
+  return {gallery, images:gallery.map(photo => photo.url), imageCount:gallery.length,
+    thumbnailUrl:gallery[0]?.thumbnailUrl ?? null, galleryComplete:(hasAllImages || (detailed && Array.isArray(entries))) && !rejected};
+}
+function liveListing(raw, detailed = false){
   if (!plain(raw) || !/^\d{1,20}$/.test(String(raw.id)) || Number(raw.verticalId)!==5) schemaError("Unrecognized marketplace listing");
   const fields=raw.attributes?.attribute;
   if (!Array.isArray(fields)) schemaError("Invalid listing attribute array");
@@ -202,9 +323,7 @@ function liveListing(raw){
     }
   }
   const explicit=Object.fromEntries(Object.entries(attributes).map(([k,v])=>[fold(k),v]));
-  const candidates=[...(raw.advertImageList?.advertImage??[]).map(x=>x.mainImageUrl??x.referenceImageUrl??x.reference),
-    ...String(attr("ALL_IMAGE_URLS")??attr("MMO")??"").split(";")];
-  const images=[...new Set(candidates.filter(x=>typeof x==="string" && x.trim()).map(x=>safeWebUrl(x.includes("://")?x:"https://cache.willhaben.at/mmo/"+x.replace(/^\/+|^mmo\//g,""),"image")).filter(Boolean))].slice(0,12);
+  const photos = normalizeGallery(raw.advertImageList, attr("ALL_IMAGE_URLS"), attr("MMO"), detailed);
   const priceLabel=fold(attr("PRICE_FOR_DISPLAY"));
   const isFree=/verschenken|kostenlos|gratis/.test(priceLabel);
   const price=normalizeMoney(attr("PRICE/AMOUNT")??attr("PRICE")??tms.exact_price)??(isFree?0:null);
@@ -230,7 +349,10 @@ function liveListing(raw){
   const qty=/^\d+(?:\s*St(?:k\.?|ück))?$/i.test(unitCount)?parseInt(unitCount,10):null;
   const shippingCost=normalizeMoney(explicit.versandkosten??attr("SHIPPING_COST"));
   const when=raw.publishedDate??attr("PUBLISHED_String")??tms.publish_date;
-  return {id:String(raw.id),title,price,url,description:textFrom(attr("DESCRIPTION")??attr("BODY_DYN"),6000),attributes,images,status,
+  const descriptionValue = attr("DESCRIPTION") ?? attr("BODY_DYN");
+  const description = typeof descriptionValue === "string" ? descriptionValue.trim() : "";
+  return {id:String(raw.id),title,price,url,description:description.slice(0,6000),descriptionLength:description.length,
+    descriptionTruncated:description.length>6000,attributes,...photos,status,
     ...(price!==null?{priceType:isFree&&price===0?"free":/verhand|\bvb\b/.test(priceLabel)?"negotiable":"asking"}:/anfrage/.test(priceLabel)?{priceType:"on_request"}:{}),
     ...(qty && qty<=100000?{quantity:qty}:{}),...(shippingCost!==null?{shippingCost}:{}),
     ...(cond?{condition:cond}:{}), ...(ships||pickup?{shipping:ships&&pickup?"both":ships?"shipping":"pickup"}:{}),
@@ -257,13 +379,17 @@ async function limitedText(response) {
     return body+decoder.decode();
   } finally {reader.releaseLock();}
 }
-async function pageProps(url, allowGone=false) {
-  const signal=AbortSignal.timeout(9000);
+async function pageProps(url, env, {allowGone=false, deadline} = {}) {
+  const endsAt = Math.min(Date.now()+9000,
+    Number.isFinite(deadline) ? deadline : Infinity,
+    Number.isFinite(env.REQUEST_DEADLINE) ? env.REQUEST_DEADLINE : Infinity);
   try {
     let target=new URL(url);
     for(let i=0;i<4;i++){
       if(!allowedPath(target)) fail("upstream_redirect","Refused an unexpected redirect");
-      const response=await fetch(target,{redirect:"manual",signal,headers:{Accept:"text/html","User-Agent":CLIENT_AGENT}});
+      const remaining = endsAt - Date.now();
+      if (remaining < 100) fail("time_budget","Continue in another call to read this page",{recoverable:true});
+      const response=await fetchPublic(target,{...env,REQUEST_DEADLINE:endsAt},{accept:"text/html",timeoutMs:remaining});
       if([301,302,303,307,308].includes(response.status)){
         const redirect=response.headers.get("location"); await response.body?.cancel();
         if(!redirect) schemaError("Redirect without destination"); target=new URL(redirect,target);continue;
@@ -277,18 +403,17 @@ async function pageProps(url, allowGone=false) {
       let props;
       try {props=JSON.parse(match[1]).props?.pageProps;} catch{schemaError("Embedded page JSON changed");}
       if(!plain(props)) schemaError("Missing page metadata");
-      return props;
+      return {props, url:target.href};
     }
     fail("upstream_redirect","Too many redirects");
   } catch(error) {
     if(typeof error?.code==="string") throw error;
-    fail(signal.aborted?"upstream_timeout":"upstream_error",signal.aborted?"willhaben timed out":"Could not read willhaben");
+    const timedOut = Date.now() >= endsAt;
+    fail(timedOut?"upstream_timeout":"upstream_error",timedOut?"willhaben timed out":"Could not read willhaben",{recoverable:true});
   }
 }
-async function readPage(query, filters, page, pageSize) {
-  const u=new URL(buildSearchLink(query,filters));
-  u.searchParams.set("page",String(page)); u.searchParams.set("rows",String(pageSize));
-  const props=await pageProps(u), data=props.searchResult;
+async function readPage(url, page, env, deadline) {
+  const {props}=await pageProps(url,env,{deadline}), data=props.searchResult;
   // Landing-page suggestions may ignore filters. A missing result is a schema error.
   if(!plain(data) || !Array.isArray(data.advertSummaryList?.advertSummary)) schemaError("Expected a structured marketplace result list");
   if(Number(data.verticalId)!==5 || Number(data.pageRequested)!==page) schemaError("Marketplace or page identity not verified");
@@ -308,49 +433,142 @@ function metaFacets(page) {
         for(const p of entry.urlParamRepresentationForValue??[]){
           if(!Object.hasOwn(nativeParams,p.urlParameterName) || !/^\d+$/.test(String(p.value))) continue;
           values.push({label:textFrom(entry.label,120),filter:nativeParams[p.urlParameterName],value:Number(p.value),count:entry.hits??entry.count??null});
-          if(values.length>=50)break;
         }
-        if(values.length>=50)break;
       }
-      if(values.length) dimensions.push({id:textFrom(nav.id,100),label:textFrom(nav.label,100),values,truncated:all.length>50});
-      if(dimensions.length>=32)break;
+      if(values.length) dimensions.push({id:textFrom(nav.id,100),label:textFrom(nav.label,100),values,truncated:false});
     }
-    if(dimensions.length>=32)break;
   }
   return {scope:"provider facets for this query",total:page.rowsFound??null,dimensions};
 }
 function liveProvider(env) {
   const personal=env?.LIVE_ACCESS===PERSONAL_TEST;
   if(!personal && env?.LIVE_ACCESS!=="authorized") fail("live_access_not_configured","Live access is disabled on this connection. Use a search link or provide a dataset.");
-  const remaining={pages:PERSONAL_LIMITS.pages,details:PERSONAL_LIMITS.details};
+  const cache = env.ORIGIN_GATE?.getByName(ORIGIN);
   let denied;
-  async function request(kind,action) {
+  async function request(action) {
     if(denied) throw denied;
-    if(personal && remaining[kind]--<=0) fail("personal_test_budget","Personal test request budget reached");
     try {return await action();} catch(error) {
-      if(["upstream_forbidden","upstream_rate_limited","upstream_blocked"].includes(error.code)) denied=error;
+      if(["upstream_forbidden","upstream_rate_limited","upstream_blocked","upstream_cooldown"].includes(error.code)) denied=error;
       throw error;
     }
   }
-  const searchPage=(query,filters,page)=>request("pages",()=>readPage(query,filters,page,personal?PERSONAL_LIMITS.rows:PAGE_SIZE));
-  return {kind:"live", async search({query,filters={},cursor}) {
-    const page=parseCursor(cursor), raw=await searchPage(query,filters,page), rows=raw.advertSummaryList.advertSummary;
+  async function cacheKey(prefix, url) {
+    const canonical = new URL(url);
+    canonical.searchParams.sort();
+    const bytes = await crypto.subtle.digest("SHA-256",new TextEncoder().encode(prefix + "\n" + canonical.href));
+    const hash = Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2,"0")).join("");
+    return "search:" + hash;
+  }
+  async function cacheCall(method, args, deadline) {
+    const taskDeadline = Math.min(Number.isFinite(deadline) ? deadline : Infinity,
+      Number.isFinite(env.REQUEST_DEADLINE) ? env.REQUEST_DEADLINE : Infinity);
+    const timeout = Math.min(2000,taskDeadline-Date.now());
+    if (timeout <= 0) fail("time_budget","Continue in another call to read this observation",{recoverable:true});
+    let timer;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(() => cache[method](...args)),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Cache coordinator timed out")),timeout); })
+      ]);
+    } catch {
+      if (Date.now() >= taskDeadline) fail("time_budget","Continue in another call to read this observation",{recoverable:true});
+      fail("traffic_unavailable","The shared observation cache is unavailable. Retry this call.",{recoverable:true});
+    } finally { clearTimeout(timer); }
+  }
+  async function readCache(key, deadline) {
+    if (!cache) return null;
+    const entry = await cacheCall("getCached",[key],deadline);
+    if (!entry || !Number.isFinite(Date.parse(entry.observedAt)) || !Number.isFinite(Date.parse(entry.expiresAt)) || Date.parse(entry.expiresAt) <= Date.now()) return null;
+    return entry;
+  }
+  async function writeCache(entries, deadline) {
+    if (!cache) return;
+    for (let offset = 0; offset < entries.length; offset += 101)
+      await cacheCall("putCached",[entries.slice(offset,offset+101)],deadline);
+  }
+  function observation(value, observedAt, cacheHit) {
+    return {...value, observedAt, cacheAgeSeconds:cacheHit ? Math.max(0,Math.floor((Date.now()-Date.parse(observedAt))/1000)) : 0, cacheHit};
+  }
+  function checkFresh(fresh) {
+    if (typeof fresh !== "boolean") invalid("fresh must be a boolean");
+  }
+  async function searchPage(query, filters, page, pageSize, fresh, deadline) {
+    const base = new URL(buildSearchLink(query,filters));
+    const url = new URL(base);
+    url.searchParams.set("page",String(page));
+    url.searchParams.set("rows",String(pageSize));
+    const key = await cacheKey("page",url);
+    if (!fresh) {
+      const entry = await readCache(key,deadline);
+      if (entry) return {...entry,cacheHit:true};
+    }
+    const raw = await request(() => readPage(url,page,env,deadline));
+    const rows = raw.advertSummaryList.advertSummary;
     if(rows.length>200) schemaError("Unexpected page size");
     const total=raw.rowsFound??null;
     if(total===0 && rows.length) schemaError("Non-empty result contradicts zero total");
-    // Confirm termination with an empty, correctly numbered page. A shorter
-    // page or an omitted/page-local count never proves there is nothing left.
-    const items=rows.map(liveListing);
+    const items=rows.map(row => liveListing(row));
     const end=rows.length===0;
-    return {items,total,end,nextCursor:end?null:String(page+1)};
-  },async facets({query,filters={}}){return metaFacets(await searchPage(query,filters,1));},
-  async detail(id) {
+    const facets = Array.isArray(raw.navigatorGroups) ? metaFacets(raw) : null;
+    const observedAt = new Date().toISOString();
+    // Only an empty, correctly numbered page confirms exhaustion when the source clamps page sizes.
+    const value = {items,total,end,nextCursor:end?null:String(page+1),page,requestedPageSize:pageSize,
+      returnedCount:items.length,upstreamPageSize:Number.isSafeInteger(raw.rowsRequested)?raw.rowsRequested:null,facets};
+    const entries = [{key,value,observedAt,ttlSeconds:300},
+      ...items.map(row => ({key:"summary:"+row.id,value:row,observedAt,ttlSeconds:300}))];
+    if (facets) entries.push({key:await cacheKey("facets",base),value:facets,observedAt,ttlSeconds:300});
+    await writeCache(entries,deadline);
+    return {value,observedAt,cacheHit:false};
+  }
+  function listingId(id) {
     if(typeof id!=="string" || !/^\d{1,20}$/.test(id)) invalid("Expected a numeric willhaben listing ID");
-    const props=await request("details",()=>pageProps(objectUrl(id),true));
-    if(props===null || props.is404===true) return null;
-    if(String(props.advertDetails?.id)!==id) schemaError("Detail response has a different or missing ID");
-    return liveListing(props.advertDetails);
-  }};
+  }
+  return {
+    kind:"live",
+    async search({query,filters={},cursor,pageSize=DEFAULT_PAGE_SIZE,fresh=false,deadline}) {
+      validatePageSize(pageSize);
+      checkFresh(fresh);
+      const entry = await searchPage(query,filters,parseCursor(cursor),pageSize,fresh,deadline);
+      const {facets,...value} = entry.value;
+      return observation(value,entry.observedAt,entry.cacheHit);
+    },
+    async facets({query,filters={},fresh=false,deadline}) {
+      checkFresh(fresh);
+      if (!fresh) {
+        const entry = await readCache(await cacheKey("facets",buildSearchLink(query,filters)),deadline);
+        if (entry) return observation(entry.value,entry.observedAt,true);
+      }
+      const entry = await searchPage(query,filters,1,DEFAULT_PAGE_SIZE,fresh,deadline);
+      if (!entry.value.facets) schemaError("Filter metadata missing");
+      return observation(entry.value.facets,entry.observedAt,entry.cacheHit);
+    },
+    async summary(id) {
+      listingId(id);
+      const entry = await readCache("summary:"+id) ?? await readCache("detail:"+id);
+      return entry?.value && !entry.value.gone ? observation(entry.value,entry.observedAt,true) : null;
+    },
+    async detail(id,{fresh=false,deadline}={}) {
+      listingId(id);
+      checkFresh(fresh);
+      const key = "detail:"+id;
+      const prior = await readCache(key,deadline);
+      if (prior && !fresh) return prior.value && !prior.value.gone ? observation(prior.value,prior.observedAt,true) : null;
+      const hint = prior?.value ?? (await readCache("summary:"+id,deadline))?.value;
+      const target = hint?.url && allowedPath(new URL(hint.url)) ? hint.url : objectUrl(id);
+      const result = await request(() => pageProps(target,env,{allowGone:true,deadline}));
+      const observedAt = new Date().toISOString();
+      if (result === null || result.props.is404 === true) {
+        const value = {id,gone:true};
+        await writeCache([{key,value,observedAt,ttlSeconds:60},{key:"summary:"+id,value,observedAt,ttlSeconds:60}],deadline);
+        return null;
+      }
+      if(String(result.props.advertDetails?.id)!==id) schemaError("Detail response has a different or missing ID");
+      const row = liveListing(result.props.advertDetails,true);
+      if (row.url === objectUrl(id) && allowedPath(new URL(result.url))) row.url = result.url;
+      await writeCache([{key,value:row,observedAt,ttlSeconds:900}],deadline);
+      return observation(row,observedAt,false);
+    }
+  };
 }
 export function getProvider(source,env={},listings) {
   if(source==="provided") {

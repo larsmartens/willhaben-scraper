@@ -1,8 +1,14 @@
 {
   "name": "marktplatz-studie",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test test/*.test.mjs" },
-  "engines": { "node": ">=22" }
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:runtime": "node test/origin-gate.runtime.mjs && node test/provider.runtime.mjs"
+  },
+  "engines": { "node": ">=22" },
+  "devDependencies": {
+    "miniflare": "4.20260730.0"
+  }
 }

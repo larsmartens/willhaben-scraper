@@ -7,7 +7,7 @@ const SOURCE_SCOPE = {
   provided: 'Only supplied records, searched during the run. Coverage of the marketplace is unknown.',
   live: 'Live search variants during the observation interval. Listings may change between requests.'
 };
-const stopProvider = code => ['upstream_rate_limited','upstream_denied','upstream_blocked','upstream_forbidden','live_access_not_configured'].includes(code);
+const stopProvider = code => ['upstream_rate_limited','upstream_cooldown','upstream_busy','upstream_denied','upstream_blocked','upstream_forbidden','upstream_unavailable','upstream_timeout','live_access_not_configured','traffic_not_configured','traffic_unavailable','time_budget'].includes(code);
 const primitive = v => typeof v === 'string' || typeof v === 'boolean' || Number.isFinite(v);
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const text = (v, max) => typeof v === 'string' ? v.trim().slice(0, max) : '';
@@ -27,7 +27,7 @@ function limit(v, fallback, min, max, name) {
   return v;
 }
 
-function validateCriteria(criteria) {
+export function validateCriteria(criteria) {
   if (!Array.isArray(criteria) || criteria.length > MAX_CRITERIA) throw invalid('criteria must contain at most 12 entries');
   for (const c of criteria) {
     if (!object(c) || typeof c.key !== 'string' || !/^[\p{L}][\p{L}\d _.-]{0,63}$/u.test(c.key) || forbiddenKeys.has(c.key)) {
@@ -163,27 +163,37 @@ function validatePage(page) {
 
 const errorCode = error => typeof error?.code === 'string' && /^[a-z_]{2,55}$/.test(error.code) ? error.code : 'provider_error';
 
-async function collect(provider, queries, filters, budget) {
+function retryInfo(error) {
+  return {
+    ...(Number.isFinite(error?.retryAfterSeconds) && error.retryAfterSeconds >= 0 ? {retryAfterSeconds:error.retryAfterSeconds} : {}),
+    ...(typeof error?.retryAt === 'string' && Number.isFinite(Date.parse(error.retryAt)) ? {retryAt:error.retryAt} : {}),
+    ...(error?.recoverable === true ? {recoverable:true} : {}),
+  };
+}
+
+async function collect(provider, queries, filters, budget, pageSize, fresh, deadline) {
   const states = queries.map(query => ({query, cursor: null, seenCursors: new Set(), ids: new Set(), raw: 0,
     pages: 0, reported: null, stop: null, changed: false}));
   const listings = new Map();
   let remaining = budget;
   let providerStopped = null;
+  let retry = {};
   while (remaining && !providerStopped && states.some(s => !s.stop)) {
     for (const s of states) {
       if (!remaining || providerStopped) break;
       if (s.stop) continue;
+      if (Date.now() >= deadline) { providerStopped = 'time_budget'; break; }
       remaining--;
-      s.pages++;
       let page;
       try {
-        page = await provider.search({ query: s.query, filters, cursor: s.cursor });
+        page = await provider.search({ query: s.query, filters, cursor: s.cursor, pageSize, fresh });
       } catch (error) {
         s.stop = errorCode(error);
-        if (stopProvider(s.stop)) providerStopped = s.stop;
+        if (stopProvider(s.stop)) { providerStopped = s.stop; retry = retryInfo(error); }
         continue;
       }
       if (!validatePage(page)) { s.stop = 'upstream_schema'; continue; }
+      s.pages++;
       if (page.total !== null) {
         if (s.reported !== null && page.total !== s.reported) s.changed = true;
         s.reported = page.total;
@@ -192,7 +202,12 @@ async function collect(provider, queries, filters, budget) {
       for (const item of page.items) {
         s.raw++;
         s.ids.add(item.id);
-        if (!listings.has(item.id)) listings.set(item.id, item);
+        if (!listings.has(item.id)) listings.set(item.id, {
+          ...item,
+          observedAt:item.observedAt ?? page.observedAt,
+          cacheAgeSeconds:item.cacheAgeSeconds ?? page.cacheAgeSeconds ?? 0,
+          cacheHit:item.cacheHit ?? page.cacheHit ?? false,
+        });
       }
       if (page.end) {
         if (s.changed) s.stop = 'total_changed';
@@ -204,12 +219,13 @@ async function collect(provider, queries, filters, budget) {
     }
   }
   return {
-    listings, providerStopped,
+    listings, providerStopped, retry,
     queries: states.map(s => {
       const stopReason = s.stop ?? providerStopped ?? 'page_budget';
       return {query:s.query, pages:s.pages, raw:s.raw, unique:s.ids.size, reportedTotal:s.reported,
         totalChanged:s.changed, stopReason,
-        ...(stopReason === 'page_budget' ? {continuation:{cursor:s.cursor,firstPage:s.cursor === null}} : {})};
+        ...(['page_budget','time_budget','upstream_rate_limited','upstream_cooldown','upstream_busy','upstream_unavailable','upstream_timeout','traffic_unavailable'].includes(stopReason)
+          ? {continuation:{cursor:s.cursor,firstPage:s.cursor === null},...retry} : {})};
     }),
   };
 }
@@ -235,6 +251,7 @@ function summary(l, evaluation, detailed) {
   return { id:l.id, title:text(l.title, 180), url:publicUrl(l.url), model:text(l.model, 100) || null,
     location:text(l.location, 100) || null, condition:text(l.condition, 60) || null, status:text(l.status, 60) || null,
     priceType:text(l.priceType, 30) || null,
+    ...(l.observedAt ? {observedAt:l.observedAt,cacheAgeSeconds:l.cacheAgeSeconds ?? 0} : {}),
     detailed, ...pricing(l), verdict:evaluation.status, evidence:evaluation.criteria };
 }
 
@@ -267,9 +284,10 @@ function addCohort(cohorts, l, p) {
   const c = cohorts.get(key);
   c.asking.push(p.unitEUR ?? p.askingEUR);
   if (p.shippedUnitEUR !== null) c.shipped.push(p.shippedUnitEUR);
+  return key;
 }
 
-export async function runStudy(provider, spec) {
+export async function runStudy(provider, spec, {deadline = Date.now() + 35000} = {}) {
   const startedAt = new Date().toISOString();
   if (!object(spec) || !Array.isArray(spec.queries) || !spec.queries.length || spec.queries.length > MAX_QUERIES ||
       spec.queries.some(q => typeof q !== 'string' || !q.trim() || q.length > 150)) throw invalid('Supply 1–8 search phrases, 1–150 characters each');
@@ -279,20 +297,23 @@ export async function runStudy(provider, spec) {
   if (!object(filters)) throw invalid('filters must be an object');
   if (['priceMin','priceMax'].some(k => k in filters && !money(filters[k])) || filters.priceMin > filters.priceMax) throw invalid('Invalid price range');
   const maxPages = limit(spec.maxPages, 12, 1, 32, 'maxPages');
-  const maxDetails = limit(spec.maxDetails, 8, 0, 16, 'maxDetails');
+  const maxDetails = limit(spec.maxDetails, 8, 0, 100, 'maxDetails');
+  const pageSize = limit(spec.pageSize, 50, 1, 100, 'pageSize');
   const queries = [...new Set(spec.queries.map(q => q.trim()))];
-  const { listings, queries:reports, providerStopped } = await collect(provider, queries, filters, maxPages);
+  const { listings, queries:reports, providerStopped, retry } = await collect(provider, queries, filters, maxPages, pageSize, spec.fresh === true, deadline);
   const records = [...listings.values()].map(l => ({ l, evaluation:observe(l, criteria, filters), detailed:false }));
   // Detail requests are spent first on candidates whose hard requirements are still unverified.
   const pending = records.filter(r => r.evaluation.status !== 'contradicted');
   pending.sort((a,b) => Number(b.evaluation.status === 'unknown') - Number(a.evaluation.status === 'unknown'));
   let details = 0, failed = 0, detailStop = providerStopped;
   const detailErrors = Object.create(null);
+  let detailRetry = retry;
   for (const r of pending) {
     if (details >= maxDetails || detailStop) break;
+    if (Date.now() >= deadline) { detailStop = 'time_budget'; break; }
     details++;
     try {
-      const detail = await provider.detail(r.l.id);
+      const detail = await provider.detail(r.l.id, {fresh:spec.fresh === true});
       if (!detail || detail.id !== r.l.id || !validateListing(detail)) throw Object.assign(new Error(), {code: detail ? 'upstream_schema' : 'detail_unavailable'});
       // Missing keys leave list-only fields intact; an explicit null from detail supersedes a stale price.
       r.l = {...r.l, ...detail, attributes:{...r.l.attributes, ...detail.attributes}};
@@ -302,14 +323,14 @@ export async function runStudy(provider, spec) {
       const code = errorCode(error);
       r.detailError = code;
       detailErrors[code] = (detailErrors[code] ?? 0) + 1;
-      if (stopProvider(code)) detailStop = code;
+      if (stopProvider(code)) { detailStop = code; detailRetry = retryInfo(error); }
       failed++;
     }
   }
   const counts = { raw:reports.reduce((n,q) => n+q.raw, 0), unique:records.length, confirmed:0, unknown:0, contradicted:0,
     priceEligible:0, detailsAttempted:details, detailsFetched:details-failed, detailsFailed:failed };
   const byStatus = {confirmed:[], unknown:[], contradicted:[]};
-  const exceptions = Object.create(null), cohortMap = new Map();
+  const exceptions = Object.create(null), cohortMap = new Map(), rowCohorts = new Map();
   for (const r of records) {
     const {l, evaluation} = r;
     counts[evaluation.status]++;
@@ -320,21 +341,32 @@ export async function runStudy(provider, spec) {
     byStatus[evaluation.status].push(row);
     if (evaluation.status === 'confirmed') {
       if (reason) exceptions[reason] = (exceptions[reason] ?? 0) + 1;
-      else { counts.priceEligible++; addCohort(cohortMap, l, row); }
+      else { counts.priceEligible++; rowCohorts.set(row, addCohort(cohortMap, l, row)); }
     }
   }
-  const cohorts = [...cohortMap.values()].sort((a,b) => b.asking.length-a.asking.length).map(c => {
+  const cohortStats = new Map([...cohortMap].map(([key,c]) => {
     const comparable = [c.category,c.model,c.condition].every(v => v && !['unknown','unbekannt'].includes(norm(v))) && c.basis === 'per_item';
-    return {category:c.category, model:c.model, condition:c.condition, basis:c.basis,
-      comparable:comparable && c.asking.length >= MIN_COMPARABLE, askingEUR:stats(c.asking,comparable), shippedEUR:stats(c.shipped,comparable)};
-  });
+    return [key, {category:c.category, model:c.model, condition:c.condition, basis:c.basis,
+      comparable:comparable && c.asking.length >= MIN_COMPARABLE, askingEUR:stats(c.asking,comparable), shippedEUR:stats(c.shipped,comparable)}];
+  }));
+  const cohorts = [...cohortStats.values()].sort((a,b) => b.askingEUR.n-a.askingEUR.n);
+  for (const [row,key] of rowCohorts) {
+    const cohort = cohortStats.get(key);
+    if (cohort.comparable && cohort.askingEUR.median > 0) row.priceContext = {
+      sampleSize:cohort.askingEUR.n, medianUnitEUR:cohort.askingEUR.median,
+      belowMedianPercent:cent(100 * (cohort.askingEUR.median-row.unitEUR) / cohort.askingEUR.median),
+    };
+  }
   for (const group of Object.values(byStatus)) group.sort((a,b) => Number(!!a.pricingExclusion)-Number(!!b.pricingExclusion) ||
     (a.unitEUR ?? a.askingEUR ?? Infinity) - (b.unitEUR ?? b.askingEUR ?? Infinity) || a.id.localeCompare(b.id));
   const searchExhausted = reports.every(r => r.stopReason === 'exhausted');
-  return {source:provider.kind, startedAt, observedAt:new Date().toISOString(), request:{queries,filters,criteria,maxPages,maxDetails},
+  const observations = records.map(r => r.l.observedAt).filter(value => typeof value === 'string' && Number.isFinite(Date.parse(value))).sort();
+  return {source:provider.kind, startedAt, observedAt:new Date().toISOString(), request:{queries,filters,criteria,maxPages,maxDetails,pageSize},
+    ...(observations.length ? {dataFreshness:{oldestObservationAt:observations[0],newestObservationAt:observations.at(-1),cachedRecords:records.filter(r => r.l.cacheHit === true || r.l.cacheAgeSeconds > 0).length}} : {}),
     coverage:{status:searchExhausted ? 'exhausted' : 'partial', scope:SOURCE_SCOPE[provider.kind],
       ...(reports.some(r => r.continuation) ? {continuationScope:'A later search_listings call is a separate observation; it does not extend this snapshot.'} : {}),
-      searchExhausted, detailsComplete:counts.detailsFetched === pending.length, queries:reports, detailErrors, detailStop,
+      searchExhausted, detailsComplete:counts.detailsFetched === pending.length, queries:reports, detailErrors, detailStop, ...detailRetry,
+      remainingDetailIds:pending.filter(r => !r.detailed).map(r => r.l.id),
       detailsUnexamined:pending.length-counts.detailsFetched},
     counts, pricing:{currency:'EUR', kind:'asking', minimumComparable:MIN_COMPARABLE, excluded:exceptions, cohortsTotal:cohorts.length},
     cohorts:cohorts.slice(0,32), shortlist:byStatus.confirmed.slice(0,24), unknown:byStatus.unknown.slice(0,16), excluded:byStatus.contradicted.slice(0,12) };

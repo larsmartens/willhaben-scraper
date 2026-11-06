@@ -165,7 +165,24 @@ test("rate-limit binding returns a retry time and scopes requests to the Cloudfl
   assert.deepEqual(seen, ["192.0.2.1", "192.0.2.1"]);
 });
 
-test("real MCP study walks four pages per variant and never prices unknown or contradicted specifications", async () => {
+test("personal request accounting uses the private connection across changing client IPs", async () => {
+  const token = "67".repeat(32);
+  const digest = Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token))).toString("hex");
+  const keys = [];
+  const env = {PERSONAL_TEST_TOKEN_SHA256:digest,PERSONAL_LIMITER:{async limit({key}) {
+    keys.push(key);
+    return {success:true};
+  }}};
+  for (const ip of ["192.0.2.1","192.0.2.2"]) {
+    const response = await worker.fetch(new Request("https://market.example/p/" + token + "/mcp", {
+      method:"POST",headers:{...headers,"cf-connecting-ip":ip},body:JSON.stringify(message("ping")),
+    }),env);
+    assert.equal(response.status,200);
+  }
+  assert.deepEqual(keys,["personal-access","personal-access"]);
+});
+
+test("real MCP study walks all pages per variant and never prices unknown or contradicted specifications", async () => {
   const listings = Array.from({length:120}, (_, i) => ({
     id: String(i+1), title: "BANKAMP Lampenglas " + i, model: "Kugel 60", category: "Glas", condition: "used",
     quantity: 1, price: 30 + i, attributes: i < 118 ? { diameterMm:60 } : i === 118 ? {} : { diameterMm:50 },
@@ -180,7 +197,7 @@ test("real MCP study walks four pages per variant and never prices unknown or co
   assert.equal(report.source, "provided");
   assert.equal(report.coverage.searchExhausted, true);
   assert.equal(report.coverage.detailsComplete, false);
-  assert.deepEqual(report.coverage.queries.map(q=>q.pages), [4,4]);
+  assert.deepEqual(report.coverage.queries.map(q=>q.pages), [3,3]);
   assert.equal(report.counts.raw, 240);
   assert.equal(report.counts.unique, 120);
   assert.equal(report.counts.confirmed, 118);
