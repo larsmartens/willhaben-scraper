@@ -120,13 +120,53 @@ test("modern discovery, cached shared tool definitions, private per-call data an
     assert.equal(mismatch.status, 400);
     assert.equal((await mismatch.json()).error.code, -32020);
   }
-  const invalid = stateless("tools/list");
-  delete invalid.params._meta["io.modelcontextprotocol/clientInfo"];
-  assert.equal((await (await post(invalid, modernHeaders("tools/list"))).json()).error.code, -32602);
+  const missingCapabilities = stateless("tools/list");
+  delete missingCapabilities.params._meta["io.modelcontextprotocol/clientCapabilities"];
+  assert.equal((await (await post(missingCapabilities, modernHeaders("tools/list"))).json()).error.code, -32602);
   const badVersion = await post(message("ping"), { "MCP-Protocol-Version": "1900-01-01" });
   assert.equal((await badVersion.json()).error.code, -32022);
   const unknown = await post(stateless("unregistered/method"), modernHeaders("unregistered/method"));
   assert.equal(unknown.status, 404);
+});
+
+test("modern discovery and UI resources accept omitted optional clientInfo on public and personal endpoints", async (t) => {
+  const token = "89".repeat(32);
+  const digest = Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token))).toString("hex");
+  const env = { PERSONAL_TEST_TOKEN_SHA256: digest };
+  const uri = "ui://marktplatz/listings-v1.html";
+  for (const [scope, path] of [["public", "/mcp"], ["personal", "/p/" + token + "/mcp"]]) {
+    for (const [method, params] of [["server/discover", {}], ["resources/read", { uri }]]) {
+      await t.test(scope + " " + method, async () => {
+        const body = stateless(method, params);
+        delete body.params._meta["io.modelcontextprotocol/clientInfo"];
+        const response = await worker.fetch(new Request(new URL(path, endpoint), {
+          method: "POST", headers: { ...headers, ...modernHeaders(method, params.uri) },
+          body: JSON.stringify(body),
+        }), env);
+        const payload = await response.json();
+        assert.equal(response.status, 200, JSON.stringify(payload));
+        assert.equal(payload.result.resultType, "complete");
+        if (method === "server/discover") {
+          assert.ok(payload.result.supportedVersions.includes(protocol));
+        } else {
+          assert.equal(payload.result.contents[0].uri, uri);
+          assert.equal(payload.result.contents[0].mimeType, "text/html;profile=mcp-app");
+          assert.match(payload.result.contents[0].text, /<!doctype html>/i);
+        }
+      });
+    }
+  }
+});
+
+test("modern requests reject malformed clientInfo when provided", async () => {
+  for (const info of [null, [], "client", {}, { name: "test" }, { version: "1" },
+    { name: 1, version: "1" }, { name: "test", version: 1 }]) {
+    const body = stateless("server/discover");
+    body.params._meta["io.modelcontextprotocol/clientInfo"] = info;
+    const response = await post(body, modernHeaders("server/discover"));
+    assert.equal(response.status, 400, JSON.stringify(info));
+    assert.equal((await response.json()).error.code, -32602);
+  }
 });
 
 test("MCP access stays closed for hostile origins and unprotected live configuration", async () => {
