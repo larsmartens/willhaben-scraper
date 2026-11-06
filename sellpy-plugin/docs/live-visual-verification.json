@@ -1,0 +1,22 @@
+{
+  "checked_at": "2026-11-06T23:01:06.936Z",
+  "outcome": "passed",
+  "image_source": "https://prod.images.sellpy.net/photoRobot-standard-9-k-2/gFAXkBNutz-b7e3-0.jpg",
+  "actual_image_mime": "image/webp",
+  "observed_type": "dress",
+  "matching_features": [
+    "Dark red garment with visible floral lace texture.",
+    "Short sleeves and a rounded neckline.",
+    "Shaped waist and a gently flared skirt."
+  ],
+  "uncertainties": [
+    "Material composition and exact measurements cannot be established from this front image.",
+    "The reverse view has not been inspected."
+  ],
+  "exact_checked_image_ids": [
+    "image_cca40ef528dda922"
+  ],
+  "assessment_recorded": true,
+  "status_visually_assessed_items": 1,
+  "private_test_search_saved_and_listed": true
+}

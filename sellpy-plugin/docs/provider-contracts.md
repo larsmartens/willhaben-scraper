@@ -32,6 +32,19 @@ Endpoints must match the observed first-party hosts and paths. A changed format
 or endpoint fails explicitly instead of sending public keys to an unknown host.
 Public configuration is not returned in tools, fixtures, errors or logs.
 
+### Observed regional stale-asset recovery
+
+The first deployed capability call exposed a real regional difference: the edge
+received 255,057-byte search HTML referencing `config.prod.CY9fKIHd.bundle.js`.
+That retired asset returned HTTP 200 with 11,585-byte SPA HTML instead of
+JavaScript. The returned HTML referenced `config.prod.C-K-4R31.bundle.js`, whose
+9,756-byte JavaScript contained the valid current configuration. The provider now
+follows only observed, quoted relative or exact first-party asset references,
+tracks visited paths and attempts at most three distinct assets per call. It
+rediscovers paths only from HTML and caches only successfully parsed JavaScript.
+Malformed JavaScript still fails explicitly. A temporary diagnostic Worker was
+deleted after confirming this cause; no public keys were logged or committed.
+
 ## Search, sorting and facets
 
 The current catalog endpoint is:
@@ -302,3 +315,26 @@ Remaining external uncertainties are source stability, native retrieval recall,
 image formats beyond the JPEG live sample, unverified multipart filters, and the
 absence of an outfit cursor. These are surfaced as constraints; they do not turn
 into invented API contracts or a promise of exhaustive catalog coverage.
+
+## Final deployed-route confirmation
+
+The deployed official SDK v2 check uses protocol **2026-07-28** and default page
+size 50 for normal, similar, image-URL, uploaded-image and outfit requests.
+Observed results: 50 catalog items plus a disjoint 50-item continuation; 50 similar
+items; 50 source-image matches; 50 uploaded-image matches plus 50 further matches;
+59 hydrated outfit items drained as 50 + 9 from the finite native window of 60;
+and a 12-item style page across strict and category-relaxed retrieval arms. These
+are observed candidates, not a claim that all meet a subjective style.
+
+The independently reproduced native outfit validation establishes
+`limit_per_part <= 20`. The adapter requests 20 per part independently of the
+display page size; the frontend's ten was only its own default. One native
+recommendation in the live 60-item window was explicitly excluded by market or
+hard-filter hydration. The source supplies no outfit continuation cursor.
+
+Canonical detail enrichment expanded the first remotely tested item from three
+catalog photo references to four. Its actual image bytes were WebP despite the
+original `.jpg` URL; byte-signature detection identified the format correctly.
+The public-reference upload succeeded with those actual WebP bytes. This adds a
+live WebP observation to the earlier JPEG probe; PNG upload remains contract and
+fixture coverage rather than a claimed live format test.

@@ -164,11 +164,27 @@ export function createConfigLoader(ttlMs = 30 * 60 * 1000): (context: RequestCon
   return async (context) => {
     if (cached && cached.expires > Date.now()) return cached.config;
     const html = await requestText(`${SOURCE_ORIGIN}/search`, { headers: { accept: 'text/html' } }, context);
-    const path = /(?:https:\/\/www\.sellpy\.com)?(\/market\/config\.prod\.[\w-]+\.bundle\.js)/.exec(html)?.[1];
-    if (!path) throw contractError('The current Sellpy frontend did not expose its public service configuration.');
-    const url = new URL(path, SOURCE_ORIGIN).href;
-    const config = parsePublicConfig(await requestText(url, {}, context, 512 * 1024), url);
-    cached = { config, expires: Date.now() + ttlMs };
-    return config;
+    const paths = (document: string): string[] => [...document.matchAll(/["'](?:https:\/\/www\.sellpy\.com)?(\/market\/config\.prod\.[\w-]+\.bundle\.js)["']/g)].map(match => match[1]!);
+    const pending = paths(html);
+    const visited = new Set<string>();
+    if (!pending.length) throw contractError('The current Sellpy frontend did not expose its public service configuration.');
+    // A stale regional HTML cache can reference a retired asset. Sellpy answers
+    // that asset with its current SPA HTML (HTTP 200), which names the fresh asset.
+    // Follow only observed first-party references; never evaluate the response.
+    while (pending.length && visited.size < 3) {
+      const path = pending.shift()!;
+      if (visited.has(path)) continue;
+      visited.add(path);
+      const url = new URL(path, SOURCE_ORIGIN).href;
+      const source = await requestText(url, {}, context, 512 * 1024);
+      if (/^\s*</.test(source)) {
+        pending.push(...paths(source).filter(candidate => !visited.has(candidate)));
+        continue;
+      }
+      const config = parsePublicConfig(source, url);
+      cached = { config, expires: Date.now() + ttlMs };
+      return config;
+    }
+    throw contractError('A current Sellpy configuration asset could not be discovered from the frontend references.');
   };
 }

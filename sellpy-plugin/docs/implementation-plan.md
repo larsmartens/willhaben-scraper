@@ -42,7 +42,7 @@ The initial estimate is approximately 12 to 16 focused tools, one provider, one 
 
 Willhaben PR 1 at e377ee85aa911a689148ba220bc33f2d3203ff9d provides progressive search, image retrieval, coordinated pacing and a versioned MCP Apps gallery. Its request path authenticates a personal connection, invokes a typed tool contract, gathers provider observations, returns compact model-visible evidence and places presentation hydration in widget-only metadata. This informs user experience and operating behavior. Sellpy remains a separate package on a branch from main, so this work does not modify the in-flight Willhaben implementation.
 
-Current environment observations: GitHub clone and npm registry access work; Cloudflare account access is available; direct public Sellpy requests work. No deployment or plugin-install success has yet been observed for Sellpy.
+Current release observations: the isolated `sellpy-studio` Worker is deployed at `https://sellpy-studio.lars-e82.workers.dev`. Official SDK v2 negotiates MCP 2026-07-28; SDK v1 negotiates 2025-11-25. Both authenticate and resume the same private search owner. The complete remote workflow passes; see the verification record. The available ChatGPT browser is signed out, so actual account installation and ChatGPT-hosted gallery rendering remain a distinct final handoff.
 
 ## Explicit boundaries
 

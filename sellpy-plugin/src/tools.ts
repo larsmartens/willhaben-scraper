@@ -211,13 +211,13 @@ export async function invokeTool(name:ToolName,args:unknown,context:ToolContext)
       }
       case 'get_item_images': {
         const input=inputSchemas.get_item_images.parse(args);
-        const {candidates}=await getCandidates(context,input.run_id,[input.item_id]);
+        const {candidates,warnings}=await getCandidates(context,input.run_id,[input.item_id],true);
         const item=candidates[0]?.item;
         if (!item) throw new ToolError('item_not_found','This item could not be loaded.');
         const batch=await loadImages(item,input.start_index,input.batch_size,providerContext(context),{for_model:input.for_model});
         if (input.for_model && batch.delivered_ids.length) await actor(context,input.run_id).markImagesDelivered(item.id,batch.delivered_ids);
         const {contents,hydration,delivered_ids,...result}=batch;
-        const response=payload(result,input.for_model ? 'Actual image content follows in the same order as ready image records. Cite their IDs when recording visual evidence.' : 'Images delivered only to the gallery. This does not establish model visual inspection.');
+        const response=payload({...result,warnings},input.for_model ? 'Actual image content follows in the same order as ready image records. Cite their IDs when recording visual evidence.' : 'Images delivered only to the gallery. This does not establish model visual inspection.');
         response.content.push(...contents);
         response._meta={images:hydration};
         return response;

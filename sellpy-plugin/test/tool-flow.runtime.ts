@@ -1,7 +1,8 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
+import type { ItemObservation } from '../src/domain.js';
 
-const calls=vi.hoisted(()=>({ attempted:[] as string[], received:[] as string[][] }));
+const calls=vi.hoisted(()=>({ attempted:[] as string[], received:[] as string[][], enriched:null as ItemObservation|null }));
 vi.mock('../src/sellpy/client.js',()=>({
   createSellpyProvider:()=>({
     details:async(ids:string[])=>{
@@ -9,7 +10,7 @@ vi.mock('../src/sellpy/client.js',()=>({
       const unique=[...new Set(ids)];
       const done=unique.slice(0,10);
       calls.attempted.push(...done);
-      return {items:[],failures:[],remaining_ids:unique.slice(10)};
+      return {items:calls.enriched && done.includes(calls.enriched.id)?[calls.enriched]:[],failures:[],remaining_ids:unique.slice(10)};
     },
   }),
 }));
@@ -46,5 +47,23 @@ describe('tool continuation and corrective errors',()=>{
     }
     console.log(JSON.stringify({nextIndices,received:calls.received,attempted:calls.attempted}));
     expect(new Set(calls.attempted)).toEqual(new Set(ids));
+  });
+  it('the first image request enriches catalog thumbnails with every canonical photo',async()=>{
+    const run_id=crypto.randomUUID();
+    const stub=env.SEARCH_RUNS.getByName(`review-user:${run_id}`);
+    await stub.start({market:'AT',language:'de',page_size:10,intent:{query:'photos'},arms:[]},run_id);
+    const catalog:ItemObservation={id:'photo-item',market:'AT',language:'de',url:'https://www.sellpy.at/item/photo-item',
+      title:'Photo test',brand:null,price:null,original_price:null,size:null,size_system:null,condition:null,
+      categories:[],colors:[],materials:[],measurements:{},description:null,defects:[],availability:'unknown',
+      images:[{id:'cover',index:0,url:'https://prod.images.sellpy.net/cover.jpg'}],
+      source:'catalog',observed_at:new Date().toISOString(),attributes:{}};
+    await stub.updateItems([catalog]);
+    calls.enriched={...catalog,source:'detail',images:[...catalog.images,{id:'extra',index:1,url:'https://prod.images.sellpy.net/extra.jpg'}]};
+    try {
+      const result=await invokeTool('get_item_images',{run_id,item_id:catalog.id,start_index:2,for_model:false},context());
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toMatchObject({total_images:2,warnings:[]});
+      expect((await stub.getCandidates([catalog.id]))[0]?.item.images.map(image=>image.id)).toEqual(['cover','extra']);
+    } finally { calls.enriched=null; }
   });
 });

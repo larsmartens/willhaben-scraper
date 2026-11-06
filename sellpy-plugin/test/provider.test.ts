@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import type { ProviderPageRequest, RequestContext } from '../src/domain.js';
 import { createSellpyProvider } from '../src/sellpy/client.js';
-import { parsePublicConfig, SERVICE_PATHS, VERIFIED_RELEASE } from '../src/sellpy/config.js';
+import { createConfigLoader, parsePublicConfig, SERVICE_PATHS, VERIFIED_RELEASE } from '../src/sellpy/config.js';
 import { algoliaFilterParams, effectiveFilters, imageIdentity, matchesFilters, nativeFilters, normalizeItem } from '../src/sellpy/normalize.js';
 
 const item = JSON.parse(readFileSync(new URL('./fixtures/provider/item.json', import.meta.url), 'utf8')) as Record<string, unknown>;
@@ -51,6 +51,43 @@ test('current static first-party configuration parses without evaluating code or
   assert.throws(() => parsePublicConfig(configSource.replace('https://services.sellpy.net/similar-items-app/get-similar-by-text', 'https://attacker.invalid/collect'), sourceUrl), /endpoint changed/);
   assert.throws(() => parsePublicConfig(configSource.replace('searchKey:"fixture-public-search-value"', 'searchKey:globalThis.secret'), sourceUrl), /format has changed/);
   assert.throws(() => parsePublicConfig(configSource.replace('locales:{', 'locales:{__proto__:{},'), sourceUrl), /format has changed/);
+});
+
+test('configuration discovery recovers a retired asset through current SPA HTML and caches only success', async () => {
+  const stale = 'https://www.sellpy.com/market/config.prod.retired.bundle.js';
+  const calls: string[] = [];
+  const context: RequestContext = { deadline: Date.now() + 60000, fetch: (async input => {
+    const url = String(input); calls.push(url);
+    if (url === 'https://www.sellpy.com/search') return new Response(`<link href="${stale}">`);
+    if (url === stale) return new Response(`<!DOCTYPE html><link href="${sourceUrl}">`, { headers: { 'content-type': 'text/html' } });
+    assert.equal(url, sourceUrl); return new Response(configSource);
+  }) as typeof fetch };
+  const load = createConfigLoader();
+  const config = await load(context);
+  assert.equal(config.source_url, sourceUrl);
+  assert.equal(config.source_version, VERIFIED_RELEASE);
+  assert.equal(await load(context), config);
+  assert.deepEqual(calls, ['https://www.sellpy.com/search', stale, sourceUrl]);
+});
+
+test('configuration discovery terminates repeated HTML paths and never fetches an external asset', async () => {
+  const calls: string[] = [];
+  const context: RequestContext = { deadline: Date.now() + 60000, fetch: (async input => {
+    calls.push(String(input));
+    return new Response(`<!DOCTYPE html><link href="https://attacker.invalid/market/config.prod.evil.bundle.js"><link href="${sourceUrl}">`);
+  }) as typeof fetch };
+  await assert.rejects(createConfigLoader()(context), /could not be discovered/);
+  assert.deepEqual(calls, ['https://www.sellpy.com/search', sourceUrl]);
+});
+
+test('configuration discovery reports malformed JavaScript without treating it as an HTML fallback', async () => {
+  const calls: string[] = [];
+  const context: RequestContext = { deadline: Date.now() + 60000, fetch: (async input => {
+    calls.push(String(input));
+    return new Response(calls.length === 1 ? `<link href="${sourceUrl}">` : 'var changedConfiguration = {};');
+  }) as typeof fetch };
+  await assert.rejects(createConfigLoader()(context), /algolia configuration is missing/);
+  assert.equal(calls.length, 2);
 });
 
 test('normalization uses explicit market minor units, preserves literal images and strips private fields', () => {

@@ -1,0 +1,516 @@
+{
+  "checked_at": "2026-11-06T22:59:01.387Z",
+  "endpoint": "https://sellpy-studio.lars-e82.workers.dev/mcp",
+  "checks": [
+    {
+      "name": "health_and_access_control",
+      "status": 200,
+      "service": "sellpy-studio",
+      "unauthenticated": 401,
+      "hostile_origin": 403
+    },
+    {
+      "name": "modern_sdk_handshake",
+      "sdk_version": "2.4.0",
+      "protocol": "2026-07-28",
+      "server": {
+        "name": "sellpy-studio",
+        "title": "Sellpy Studio",
+        "version": "1.0.0"
+      }
+    },
+    {
+      "name": "tools_and_gallery_resource",
+      "tools": 16,
+      "tool_names": [
+        "get_capabilities",
+        "discover_filters",
+        "search_items",
+        "search_style",
+        "find_similar",
+        "search_by_image",
+        "find_outfit",
+        "continue_search",
+        "get_search_status",
+        "list_search_items",
+        "get_items",
+        "get_item_images",
+        "record_visual_assessment",
+        "present_items",
+        "save_search",
+        "list_saved_searches"
+      ],
+      "reference_file_parameter": true,
+      "gallery_bytes": 701667
+    },
+    {
+      "name": "get_capabilities",
+      "milliseconds": 1715,
+      "is_error": false
+    },
+    {
+      "name": "discover_filters",
+      "milliseconds": 2512,
+      "is_error": false,
+      "response_keys": [
+        "market",
+        "language",
+        "facets",
+        "numeric_facets",
+        "total",
+        "observed_at"
+      ]
+    },
+    {
+      "name": "search_items",
+      "milliseconds": 2045,
+      "is_error": false,
+      "items": 50,
+      "coverage": {
+        "unique_items": 50,
+        "returned_items": 50,
+        "visually_assessed_items": 0,
+        "pages_read": 1,
+        "arms": [
+          {
+            "id": "catalog",
+            "route": "catalog",
+            "offset": 50,
+            "pages_read": 1,
+            "status": "ready",
+            "total": 4671999,
+            "window": 2400,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "continue_search",
+      "milliseconds": 446,
+      "is_error": false,
+      "items": 50,
+      "coverage": {
+        "unique_items": 100,
+        "returned_items": 100,
+        "visually_assessed_items": 0,
+        "pages_read": 2,
+        "arms": [
+          {
+            "id": "catalog",
+            "route": "catalog",
+            "offset": 100,
+            "pages_read": 2,
+            "status": "ready",
+            "total": 5029059,
+            "window": 2400,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "continue_search",
+      "milliseconds": 96,
+      "is_error": false,
+      "items": 50,
+      "coverage": {
+        "unique_items": 100,
+        "returned_items": 100,
+        "visually_assessed_items": 0,
+        "pages_read": 2,
+        "arms": [
+          {
+            "id": "catalog",
+            "route": "catalog",
+            "offset": 100,
+            "pages_read": 2,
+            "status": "ready",
+            "total": 5029059,
+            "window": 2400,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "immutable_continuation",
+      "first_page": 50,
+      "second_page": 50,
+      "exact_replay": true,
+      "duplicate_ids": 0
+    },
+    {
+      "name": "get_search_status",
+      "milliseconds": 44,
+      "is_error": false,
+      "coverage": {
+        "unique_items": 100,
+        "returned_items": 100,
+        "visually_assessed_items": 0,
+        "pages_read": 2,
+        "arms": [
+          {
+            "id": "catalog",
+            "route": "catalog",
+            "offset": 100,
+            "pages_read": 2,
+            "status": "ready",
+            "total": 5029059,
+            "window": 2400,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_search_items",
+      "milliseconds": 77,
+      "is_error": false,
+      "items": 3
+    },
+    {
+      "name": "get_item_images",
+      "milliseconds": 3181,
+      "is_error": false,
+      "total_images": 4,
+      "model_image_blocks": 0,
+      "hydrated_images": 1
+    },
+    {
+      "name": "record_visual_assessment",
+      "milliseconds": 45,
+      "is_error": true,
+      "error": {
+        "code": "visual_evidence_missing",
+        "message": "A visual assessment requires this item’s actual model-visible images.",
+        "retryable": false,
+        "next_action": "Use get_item_images and assess only the successfully returned image IDs."
+      }
+    },
+    {
+      "name": "get_item_images",
+      "milliseconds": 825,
+      "is_error": false,
+      "total_images": 4,
+      "next_index": 2,
+      "model_image_blocks": 2
+    },
+    {
+      "name": "image_evidence_separation",
+      "widget_pixels_do_not_authorize_assessment": true,
+      "actual_model_image_bytes": 90056
+    },
+    {
+      "name": "get_items",
+      "milliseconds": 1284,
+      "is_error": false,
+      "items": 1
+    },
+    {
+      "name": "get_items",
+      "milliseconds": 1609,
+      "is_error": false,
+      "items": 1
+    },
+    {
+      "name": "present_items",
+      "milliseconds": 251,
+      "is_error": false,
+      "cards": 1,
+      "hydrated_images": 1
+    },
+    {
+      "name": "present_items",
+      "milliseconds": 494,
+      "is_error": false
+    },
+    {
+      "name": "list_saved_searches",
+      "milliseconds": 395,
+      "is_error": false,
+      "items": 0
+    },
+    {
+      "name": "find_similar",
+      "milliseconds": 3991,
+      "is_error": false,
+      "items": 50,
+      "coverage": {
+        "unique_items": 98,
+        "returned_items": 50,
+        "visually_assessed_items": 0,
+        "pages_read": 2,
+        "arms": [
+          {
+            "id": "similar-0",
+            "route": "similar",
+            "offset": 100,
+            "pages_read": 2,
+            "status": "ready",
+            "total": null,
+            "window": null,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "search_by_image",
+      "milliseconds": 2843,
+      "is_error": false,
+      "items": 50,
+      "coverage": {
+        "unique_items": 50,
+        "returned_items": 50,
+        "visually_assessed_items": 0,
+        "pages_read": 1,
+        "arms": [
+          {
+            "id": "reference-image",
+            "route": "image",
+            "offset": 50,
+            "pages_read": 1,
+            "status": "ready",
+            "total": null,
+            "window": null,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "search_by_image",
+      "milliseconds": 3677,
+      "is_error": false,
+      "items": 50,
+      "coverage": {
+        "unique_items": 50,
+        "returned_items": 50,
+        "visually_assessed_items": 0,
+        "pages_read": 1,
+        "arms": [
+          {
+            "id": "reference-image",
+            "route": "upload",
+            "offset": 50,
+            "pages_read": 1,
+            "status": "ready",
+            "total": null,
+            "window": null,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "continue_search",
+      "milliseconds": 829,
+      "is_error": false,
+      "items": 50,
+      "coverage": {
+        "unique_items": 100,
+        "returned_items": 100,
+        "visually_assessed_items": 0,
+        "pages_read": 2,
+        "arms": [
+          {
+            "id": "reference-image",
+            "route": "upload",
+            "offset": 100,
+            "pages_read": 2,
+            "status": "ready",
+            "total": null,
+            "window": null,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "find_outfit",
+      "milliseconds": 4291,
+      "is_error": false,
+      "items": 50,
+      "coverage": {
+        "unique_items": 59,
+        "returned_items": 50,
+        "visually_assessed_items": 0,
+        "pages_read": 1,
+        "arms": [
+          {
+            "id": "outfit",
+            "route": "outfit",
+            "offset": 0,
+            "pages_read": 1,
+            "status": "window",
+            "total": null,
+            "window": 60,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "continue_search",
+      "milliseconds": 146,
+      "is_error": false,
+      "items": 9,
+      "coverage": {
+        "unique_items": 59,
+        "returned_items": 59,
+        "visually_assessed_items": 0,
+        "pages_read": 1,
+        "arms": [
+          {
+            "id": "outfit",
+            "route": "outfit",
+            "offset": 0,
+            "pages_read": 1,
+            "status": "window",
+            "total": null,
+            "window": 60,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "search_style",
+      "milliseconds": 5707,
+      "is_error": false,
+      "items": 12,
+      "coverage": {
+        "unique_items": 14,
+        "returned_items": 12,
+        "visually_assessed_items": 0,
+        "pages_read": 6,
+        "arms": [
+          {
+            "id": "catalog",
+            "route": "catalog",
+            "offset": 6,
+            "pages_read": 2,
+            "status": "ready",
+            "total": 2636,
+            "window": 2400,
+            "error": null
+          },
+          {
+            "id": "semantic-0",
+            "route": "semantic",
+            "offset": 3,
+            "pages_read": 1,
+            "status": "ready",
+            "total": null,
+            "window": null,
+            "error": null
+          },
+          {
+            "id": "semantic-1",
+            "route": "semantic",
+            "offset": 3,
+            "pages_read": 1,
+            "status": "ready",
+            "total": null,
+            "window": null,
+            "error": null
+          },
+          {
+            "id": "relaxed-semantic-0",
+            "route": "semantic",
+            "offset": 3,
+            "pages_read": 1,
+            "status": "ready",
+            "total": null,
+            "window": null,
+            "error": null
+          },
+          {
+            "id": "relaxed-catalog-0",
+            "route": "catalog",
+            "offset": 0,
+            "pages_read": 1,
+            "status": "exhausted",
+            "total": 0,
+            "window": 0,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_search_status",
+      "milliseconds": 116,
+      "is_error": false,
+      "coverage": {
+        "unique_items": 14,
+        "returned_items": 12,
+        "visually_assessed_items": 0,
+        "pages_read": 6,
+        "arms": [
+          {
+            "id": "catalog",
+            "route": "catalog",
+            "offset": 6,
+            "pages_read": 2,
+            "status": "ready",
+            "total": 2636,
+            "window": 2400,
+            "error": null
+          },
+          {
+            "id": "semantic-0",
+            "route": "semantic",
+            "offset": 3,
+            "pages_read": 1,
+            "status": "ready",
+            "total": null,
+            "window": null,
+            "error": null
+          },
+          {
+            "id": "semantic-1",
+            "route": "semantic",
+            "offset": 3,
+            "pages_read": 1,
+            "status": "ready",
+            "total": null,
+            "window": null,
+            "error": null
+          },
+          {
+            "id": "relaxed-semantic-0",
+            "route": "semantic",
+            "offset": 3,
+            "pages_read": 1,
+            "status": "ready",
+            "total": null,
+            "window": null,
+            "error": null
+          },
+          {
+            "id": "relaxed-catalog-0",
+            "route": "catalog",
+            "offset": 0,
+            "pages_read": 1,
+            "status": "exhausted",
+            "total": 0,
+            "window": 0,
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "legacy_sdk_handshake_and_shared_owner",
+      "sdk_version": "1.32.2",
+      "protocol": "2025-11-25",
+      "tools": 16,
+      "bearer_path": true,
+      "resumed_modern_search": true
+    }
+  ],
+  "outcome": "passed",
+  "finished_at": "2026-11-06T23:00:26.723Z"
+}

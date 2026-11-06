@@ -4,6 +4,8 @@ A remote MCP plugin for ordinary and visual Sellpy shopping research in ChatGPT.
 
 The implementation is independent of the in-flight Willhaben plugin. Default market is Austria, language German. Prices use the selected market's currency and integer minor units internally.
 
+**Release status:** deployed and verified against live Sellpy through official modern and legacy MCP clients. All 16 tools are registered; native catalog, semantic, item similarity, source-image, multipart reference-image and outfit routes work through the remote endpoint. The implementation has an independent PASS+NOTES review. Actual installation in the user's signed-in ChatGPT account is tracked separately in the verification record.
+
 ## User workflows
 
 | Request | Behavior |
@@ -54,6 +56,8 @@ npm run build
 npm run test:ui
 ```
 
+For an authenticated remote release check, keep a private, ignored `artifacts/private/connection.json` containing `endpoint` and `token`, then run `node scripts/verify-live.mjs`. `SELLPY_CONNECTION_FILE` can point to another private credential file. The harness deliberately exercises default-size native requests, both protocol generations, immutable continuation, canonical photo enrichment and model/widget evidence separation. Its public JSON report excludes credentials and image bytes.
+
 The UI test needs Playwright and an installed Chromium. Set `SELLPY_UI_CHROMIUM_PATH` to an existing binary if needed. Optional `SELLPY_UI_PHOTO_PATH` supplies a real photograph for local visual inspection; the default deterministic fixture is sufficient for interaction assertions. Private test artifacts are ignored.
 
 For deployment, create an independent Worker with the bindings and SQLite migration in `wrangler.jsonc`, set `PERSONAL_KEY_SHA256` as a secret, then deploy. Never reuse another plugin's token. Invocation URL logs and request traces are disabled for capability URL privacy. The application logs only compact event types, without input queries, file URLs or tokens.
@@ -65,6 +69,8 @@ For deployment, create an independent Worker with the bindings and SQLite migrat
 - [Observed Sellpy contracts and native live results](docs/provider-contracts.md)
 - [Verification record](docs/verification.md)
 - [Independent review](docs/independent-review.md)
+- [Remote MCP verification](docs/live-verification.json)
+- [Observed visual-assessment workflow](docs/live-visual-verification.json)
 - [Gallery integration](ui/README.md)
 - [Decision log](docs/decisions.tsv)
 
