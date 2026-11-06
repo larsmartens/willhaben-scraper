@@ -1,0 +1,6 @@
+ts	phase	decision	why	evidence	result
+2026-11-06T22:08:10.389004+00:00	frame	Implement a separate Sellpy plugin on an isolated branch	Preserve the in-flight Willhaben implementation and its independent owner	docs/implementation-plan.md	Scope defined
+2026-11-06T22:10:44.550769+00:00	design	Choose one durable SQLite search run per research task	Both designs require a growing exact ledger; one owner makes deduplication and retry receipts simpler	src/domain.ts; ../../sellpy_design_stateful.md; ../../sellpy_design_stateless.md	Two independent designs read; cross-family judging unavailable
+2026-11-06T22:37:58.711290+00:00	design	Persist design rationale in repository	Transient sketch locations are not durable source references	docs/architecture.md	Supersedes sketch-path references above
+2026-11-06T22:37:58.711308+00:00	implementation	Use official SDK v2 and MCP Apps with SQLite state	Modern/legacy protocol compatibility and deterministic research continuation	package-lock.json; src/mcp.ts; src/search-store.ts	45 unit contracts and real Workers tests pass
+2026-11-06T22:37:58.711310+00:00	verification	Require a non-author behavioral review	Author tests do not establish an independent verdict	docs/independent-review.md	Reviewer launched; pending exact candidate verdict

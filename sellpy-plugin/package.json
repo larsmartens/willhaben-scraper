@@ -1,0 +1,33 @@
+{
+  "name": "sellpy-chat-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Progressive Sellpy search and visual shopping research for ChatGPT",
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.ui.json",
+    "test": "node --import tsx --test test/*.test.ts",
+    "build": "node scripts/build.mjs",
+    "dev": "wrangler dev",
+    "test:runtime": "vitest run",
+    "test:ui": "node test/ui.browser.mjs",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/ext-apps": "2.0.4",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@modelcontextprotocol/server": "2.4.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.6.0",
+    "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
+    "playwright": "1.62.1",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "4.1.12",
+    "wrangler": "4.158.0"
+  }
+}

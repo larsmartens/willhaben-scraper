@@ -1,0 +1,55 @@
+{
+  "objectID": "va0uL6CUOK",
+  "metadata": {
+    "size": "WMN-INT-XL",
+    "season": [
+      "Frühling",
+      "Sommer"
+    ],
+    "color": [
+      "Weiß",
+      "Mehrfarbig"
+    ],
+    "material": [
+      "Bio-Baumwolle"
+    ],
+    "brand": "Cellbes",
+    "demography": "Damen",
+    "sleeveLength": "Kurzarm",
+    "pattern": "Blumen",
+    "neckline": "V-Ausschnitt",
+    "countryOfOrigin": "BD",
+    "type": "Maxikleid",
+    "condition": "Sehr gut",
+    "sizeEstimated": true,
+    "garmentLength": "Midi",
+    "productCode": "617099"
+  },
+  "price_AT": {
+    "amount": 2400,
+    "currency": "EUR"
+  },
+  "images": [
+    "https://prod.images.sellpy.net/photoRobot-standard-16-k-8/va0uL6CUOK-5f26-0.jpg",
+    "https://prod.images.sellpy.net/photoRobot-standard-16-k-8/va0uL6CUOK-5f26-180.jpg",
+    "https://prod.images.sellpy.net/phone-images/va0uL6CUOK-ad43.jpg",
+    "https://prod.images.sellpy.net/phone-images/va0uL6CUOK-b03e.jpg"
+  ],
+  "isReserved": false,
+  "p2p": false,
+  "saleStartedAt": 1794001462088,
+  "categories": {
+    "lvl0": [
+      "Damen"
+    ],
+    "lvl1": [
+      "Damen > Kleidung"
+    ],
+    "lvl2": [
+      "Damen > Kleidung > Kleider"
+    ],
+    "lvl3": [
+      "Damen > Kleidung > Kleider > Kleider"
+    ]
+  }
+}

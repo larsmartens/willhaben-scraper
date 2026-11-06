@@ -1,0 +1,97 @@
+{
+  "objectId": "va0uL6CUOK",
+  "createdAt": "2026-11-03T19:35:02.317Z",
+  "itemStatus": "utlagd",
+  "paidAt": null,
+  "metadata_en": {
+    "size": "WMN-INT-XL",
+    "season": [
+      "Spring",
+      "Summer"
+    ],
+    "color": [
+      "White",
+      "Multicolored"
+    ],
+    "material": [
+      "Organic cotton"
+    ],
+    "brand": "Cellbes",
+    "demography": "Women",
+    "sleeveLength": "Short sleeves",
+    "pattern": "Floral",
+    "neckline": "V-neck",
+    "countryOfOrigin": "BD",
+    "type": "Maxi dress",
+    "condition": "Very good",
+    "sizeEstimated": true,
+    "garmentLength": "Midi",
+    "productCode": "617099"
+  },
+  "localizedMetadata": {
+    "size": "WMN-INT-XL",
+    "season": [
+      "Frühling",
+      "Sommer"
+    ],
+    "color": [
+      "Weiß",
+      "Mehrfarbig"
+    ],
+    "material": [
+      "Bio-Baumwolle"
+    ],
+    "brand": "Cellbes",
+    "demography": "Damen",
+    "sleeveLength": "Kurzarm",
+    "pattern": "Blumen",
+    "neckline": "V-Ausschnitt",
+    "countryOfOrigin": "BD",
+    "type": "Maxikleid",
+    "condition": "Sehr gut",
+    "sizeEstimated": true,
+    "garmentLength": "Midi",
+    "productCode": "617099"
+  },
+  "images": [
+    {
+      "value": "https://sellpy-parse-prod-files.s3.amazonaws.com/photoRobot-standard-16-k-8/va0uL6CUOK-5f26-0.jpg"
+    },
+    {
+      "value": "https://sellpy-parse-prod-files.s3.amazonaws.com/photoRobot-standard-16-k-8/va0uL6CUOK-5f26-180.jpg"
+    },
+    {
+      "value": "https://sellpy-parse-prod-files.s3.eu-west-1.amazonaws.com/phone-images/va0uL6CUOK-ad43.jpg"
+    },
+    {
+      "value": "https://sellpy-parse-prod-files.s3.eu-west-1.amazonaws.com/phone-images/va0uL6CUOK-b03e.jpg"
+    }
+  ],
+  "photos": [
+    {
+      "url": "https://sellpy-parse-prod-files.s3.amazonaws.com/photoRobot-standard-16-k-8/va0uL6CUOK-5f26-0.jpg",
+      "type": "robot",
+      "photographedAt": "2026-11-06T06:26:01.534Z"
+    },
+    {
+      "url": "https://sellpy-parse-prod-files.s3.amazonaws.com/photoRobot-standard-16-k-8/va0uL6CUOK-5f26-180.jpg",
+      "type": "robot",
+      "photographedAt": "2026-11-06T06:26:01.534Z"
+    },
+    {
+      "url": "https://sellpy-parse-prod-files.s3.eu-west-1.amazonaws.com/phone-images/va0uL6CUOK-ad43.jpg",
+      "type": "brand",
+      "photographedAt": "2026-11-03T19:35:10.711Z"
+    },
+    {
+      "url": "https://sellpy-parse-prod-files.s3.eu-west-1.amazonaws.com/phone-images/va0uL6CUOK-b03e.jpg",
+      "type": "material",
+      "photographedAt": "2026-11-03T19:35:13.857Z"
+    },
+    {
+      "type": "type",
+      "url": "https://sellpy-parse-prod-files.s3.amazonaws.com/ml-assortment/va0uL6CUOK-a820-cropped.jpg",
+      "photographedAt": "2026-11-03T19:35:02.438Z"
+    }
+  ]
+}
