@@ -5,7 +5,7 @@ import { PRESENTATION_URI, PRESENTATION_HTML, PRESENTATION_RESOURCE_META } from 
 const CURRENT = "2026-07-28";
 const LEGACY = ["2025-11-25", "2025-06-18", "2025-03-26"];
 const VERSIONS = [CURRENT, ...LEGACY];
-const INFO = { name: "marktplatz-studie", title: "Marktplatz-Studie", version: "1.3.0" };
+const INFO = { name: "marktplatz-studie", title: "Marktplatz-Studie", version: "1.3.1" };
 const CAPABILITIES = { tools: {}, resources: {} };
 const MAX_BYTES = 2 * 1024 * 1024;
 const PREFIX = "io.modelcontextprotocol/";
@@ -136,9 +136,9 @@ async function rpc(request, env) {
     if (requested !== CURRENT)
       return error(id, -32022, "Unsupported protocol version", 400, { supported: VERSIONS, requested });
     const info = meta[PREFIX + "clientInfo"];
-    if (!isObject(info) || typeof info.name !== "string" || typeof info.version !== "string" ||
+    if ((info !== undefined && (!isObject(info) || typeof info.name !== "string" || typeof info.version !== "string")) ||
         !isObject(meta[PREFIX + "clientCapabilities"]))
-      return error(id, -32602, "Missing clientInfo or clientCapabilities in request metadata");
+      return error(id, -32602, "Expected clientCapabilities and valid optional clientInfo in request metadata");
   } else if (versionHeader !== null && !LEGACY.includes(versionHeader)) {
     return error(id, -32022, "Unsupported protocol version", 400, { supported: VERSIONS, requested });
   }
@@ -174,8 +174,9 @@ async function rpc(request, env) {
       if (params.cursor !== undefined) return error(id, -32602, "Unknown resource templates cursor");
       return result({ resourceTemplates: [] });
     case "resources/read":
-      if (params.uri !== PRESENTATION_URI) return error(id, -32002, "Unknown UI resource");
-      return result({ contents: [{ uri: PRESENTATION_URI, mimeType: "text/html;profile=mcp-app",
+      if (![PRESENTATION_URI, "ui://marktplatz/listings-v1.html"].includes(params.uri))
+        return error(id, -32002, "Unknown UI resource");
+      return result({ contents: [{ uri: params.uri, mimeType: "text/html;profile=mcp-app",
         text: PRESENTATION_HTML, _meta: PRESENTATION_RESOURCE_META }] });
     case "tools/call": {
       if (!toolDefinitions.some((tool) => tool.name === params.name)) return error(id, -32602, "Unknown tool");

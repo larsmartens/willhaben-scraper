@@ -1,4 +1,4 @@
-# Verifikationsübersicht für 1.3.0
+# Verifikationsübersicht für 1.3.1
 
 Die Node-Suite prüft die Tool- und Protokollverträge. Zwei zusätzliche Miniflare-Suiten prüfen denselben Traffic- und Cache-Code in workerd mit SQLite. Die unabhängigen Reviews verwenden eigene synthetische Repros.
 
@@ -28,6 +28,9 @@ Die Node-Suite prüft die Tool- und Protokollverträge. Zwei zusätzliche Minifl
 | Kleiner Modellkontext | Fotobytes ausschließlich an die Oberfläche liefern | Worker- und SDK-Prüfung von `content`, `structuredContent` und `_meta` |
 | Große oder fehlende Titelbilder | Native Miniatur verwenden oder konkreten Fehler mit Fortsetzung erhalten | Regressionen für 404, 429, Antwortbudget, Thumbnail-Fallback und ungültigen Fotoindex |
 | MCP-Apps-Ressource | Versionierte Oberfläche über `resources/list` und `resources/read` bereitstellen | Protokolltests einschließlich aktueller und älterer unterstützter MCP-Versionen |
+| Optionaler Clientname | Moderne Discovery- und Ressourcen-Anfragen ohne `clientInfo` annehmen | Worker-Regressionen für öffentlichen und persönlichen Zugang, ungültige vorhandene Metadaten werden geprüft |
+| Vorherige Ressourcen-URI | Bereits gespeicherte v1-Toolmetadaten können die korrigierte Oberfläche laden | Präsentations-Regression für v1 und v2 über beide MCP-Protokolle |
+| Oberfläche schließen | `ui/resource-teardown` mit derselben Anfrage-ID bestätigen | Browser-Regression und Lifecycle-Prüfung mit offiziellem MCP-Apps-AppBridge |
 | Mobiles Kartenkarussell | Fotoidentität, klare Angaben und Navigation bei 360 Pixel Breite | `test/presentation-ui.browser.mjs` mit Chromium und simuliertem MCP-Apps-Host |
 | Interaktive Folgeaktionen | Lokal sortieren, Original öffnen und Galerien fortsetzen | Browserprüfungen mit `nextIndex`, `remainingIndices`, Cooldown, Retry und abweichender Fotoidentität |
 | Darstellung realer Angebote | Die tatsächlich abgerufenen Tiffany-Fotos richtig darstellen | Unabhängiger Chromiumlauf bei 390 Pixeln, 360 Pixeln im dunklen Modus und 1024 Pixeln in der größeren Ansicht |

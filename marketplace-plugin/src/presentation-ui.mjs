@@ -1,4 +1,4 @@
-export const PRESENTATION_URI = "ui://marktplatz/listings-v1.html";
+export const PRESENTATION_URI = "ui://marktplatz/listings-v2.html";
 
 export const PRESENTATION_RESOURCE_META = {
   ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } },
@@ -517,6 +517,10 @@ function mountPresentation() {
   window.addEventListener("message", event => {
     const message = event.data;
     if (event.source !== window.parent || !object(message) || message.jsonrpc !== "2.0") return;
+    if (message.method === "ui/resource-teardown" && message.id !== undefined) {
+      post({ id: message.id, result: {} });
+      return;
+    }
     if (message.id !== undefined && !message.method && pending.has(message.id)) {
       const waiting = pending.get(message.id);
       pending.delete(message.id);
@@ -558,7 +562,7 @@ function mountPresentation() {
   updateLabels();
   if (window.openai) { applyHostContext(window.openai); legacyResult(); }
   request("ui/initialize", {
-    appInfo: { name: "marktplatz-listings", version: "1.3.0" },
+    appInfo: { name: "marktplatz-listings", version: "1.3.1" },
     appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] },
     protocolVersion: "2026-01-26",
   }, 10000).then(result => {
