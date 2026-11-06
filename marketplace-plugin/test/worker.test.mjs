@@ -71,6 +71,33 @@ test("legacy ChatGPT-style HTTP handshake, list, call and notification over a lo
   }
 });
 
+test("published criterion schemas accept canonical and German keys in flag-free clients", async () => {
+  const { result } = await (await post(message("tools/list"))).json();
+  for (const name of ["inspect_listings", "study_market", "save_study"]) {
+    const tool = result.tools.find((entry) => entry.name === name);
+    const keySchema = tool.inputSchema.properties.criteria.items.properties.key;
+    assert.equal(keySchema.type, "string");
+    assert.equal(keySchema.minLength, 1);
+    assert.equal(keySchema.maxLength, 64);
+    for (const key of ["diameterMm", "Öffnung"]) {
+      const accepted = !keySchema.pattern || new RegExp(keySchema.pattern).test(key);
+      assert.ok(accepted, `${name} must advertise a portable schema for ${key}`);
+    }
+  }
+
+  const args = { source: "provided", ids: ["123"],
+    listings: [{ id: "123", title: "Lampenglas", price: 20, attributes: { Öffnung: 24 } }],
+    criteria: [{ key: "Öffnung", value: 24 }] };
+  const valid = await post(message("tools/call", { name: "inspect_listings", arguments: args }));
+  assert.equal((await valid.json()).result.structuredContent.results[0].evaluation.status, "confirmed");
+  const invalid = await post(message("tools/call", { name: "inspect_listings", arguments: {
+    ...args, criteria: [{ key: "constructor", value: 24 }],
+  } }));
+  const failure = (await invalid.json()).result;
+  assert.equal(failure.isError, true);
+  assert.match(failure.content[0].text, /Invalid criterion key/);
+});
+
 test("modern discovery, cached shared tool definitions, private per-call data and routing headers", async () => {
   const discovery = await post(stateless("server/discover"), modernHeaders("server/discover"));
   const found = (await discovery.json()).result;
