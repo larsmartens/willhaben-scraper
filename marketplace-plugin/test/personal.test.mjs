@@ -29,6 +29,13 @@ test("private route forwards payload and strips secrets before RPC",async()=>{
   assert.equal(env.LIVE_ACCESS,undefined);
 });
 
+test("personal access without an expiry remains valid in the future", async (t) => {
+  t.mock.method(Date, "now", () => Date.UTC(2100, 0, 1));
+  const response = await handlePersonalMcp(new Request(endpoint), env, () =>
+    new Response(null, { status: 202 }));
+  assert.equal(response.status, 202);
+});
+
 test("invalid, absent, malformed, expired and query-string capabilities all receive the same 404",async()=>{
   for (const [url,bindings] of [
     [origin+"/mcp",env], [origin+"/p/"+token.slice(2)+"/mcp",env],

@@ -4,7 +4,7 @@ import { invokeTool, toolDefinitions } from "./tools.mjs";
 const CURRENT = "2026-07-28";
 const LEGACY = ["2025-11-25", "2025-06-18", "2025-03-26"];
 const VERSIONS = [CURRENT, ...LEGACY];
-const INFO = { name: "marktplatz-studie", title: "Marktplatz-Studie", version: "1.1.0" };
+const INFO = { name: "marktplatz-studie", title: "Marktplatz-Studie", version: "1.1.1" };
 const CAPABILITIES = { tools: {} };
 const MAX_BYTES = 2 * 1024 * 1024;
 const PREFIX = "io.modelcontextprotocol/";

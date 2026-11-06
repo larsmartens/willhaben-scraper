@@ -6,7 +6,7 @@ const integer = (minimum,maximum) => ({type:"integer",minimum,maximum});
 const array = (items,minItems,maxItems) => ({type:"array",items,minItems,maxItems});
 const object = (properties, required=[]) => ({type:"object",additionalProperties:false,properties,required});
 const queries = array(string(150),1,8);
-const criteria = array(object({key:{...string(64),pattern:"^[\\p{L}][\\p{L}\\d _.-]{0,63}$"},value:{anyOf:[
+const criteria = array(object({key:string(64),value:{anyOf:[
   string(100),{type:"number"},{type:"boolean"}, {...object({min:{type:"number"},max:{type:"number"}}),minProperties:1}
 ]}},["key","value"]),0,12);
 const source = {type:"string", enum:["live","provided","demo"],description:"Use demo only on explicit request to demonstrate synthetic records. Provided covers only submitted records."};
