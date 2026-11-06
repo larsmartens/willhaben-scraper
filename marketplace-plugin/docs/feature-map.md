@@ -1,4 +1,4 @@
-# Verifikationsübersicht für 1.3.1
+# Verifikationsübersicht für 1.3.2
 
 Die Node-Suite prüft die Tool- und Protokollverträge. Zwei zusätzliche Miniflare-Suiten prüfen denselben Traffic- und Cache-Code in workerd mit SQLite. Die unabhängigen Reviews verwenden eigene synthetische Repros.
 
@@ -28,6 +28,8 @@ Die Node-Suite prüft die Tool- und Protokollverträge. Zwei zusätzliche Minifl
 | Kleiner Modellkontext | Fotobytes ausschließlich an die Oberfläche liefern | Worker- und SDK-Prüfung von `content`, `structuredContent` und `_meta` |
 | Große oder fehlende Titelbilder | Native Miniatur verwenden oder konkreten Fehler mit Fortsetzung erhalten | Regressionen für 404, 429, Antwortbudget, Thumbnail-Fallback und ungültigen Fotoindex |
 | MCP-Apps-Ressource | Versionierte Oberfläche über `resources/list` und `resources/read` bereitstellen | Protokolltests einschließlich aktueller und älterer unterstützter MCP-Versionen |
+| MCP-2026-Ressourcenabruf | Pflichtfelder `ttlMs` und `cacheScope` in Ressourcen- und Template-Antworten liefern | Regression und unabhängiger Parent/Head-Vergleich gegen die offiziellen methodenspezifischen JSON-Schemas |
+| Tatsächlicher ChatGPT-Client | Vorher fehlschlagende Auswahl mit drei Originalfotos öffnen und Galerie bis Foto 7 fortsetzen | Im betroffenen persönlichen Chat mit Browserdarstellung, dekodierten Bildern und Galerie-Fortsetzung beobachtet |
 | Optionaler Clientname | Moderne Discovery- und Ressourcen-Anfragen ohne `clientInfo` annehmen | Worker-Regressionen für öffentlichen und persönlichen Zugang, ungültige vorhandene Metadaten werden geprüft |
 | Vorherige Ressourcen-URI | Bereits gespeicherte v1-Toolmetadaten können die korrigierte Oberfläche laden | Präsentations-Regression für v1 und v2 über beide MCP-Protokolle |
 | Oberfläche schließen | `ui/resource-teardown` mit derselben Anfrage-ID bestätigen | Browser-Regression und Lifecycle-Prüfung mit offiziellem MCP-Apps-AppBridge |

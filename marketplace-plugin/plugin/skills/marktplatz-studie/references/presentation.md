@@ -12,13 +12,15 @@ The component displays the selected photos, facts and assessments. Its photo but
 
 ## Write the accompanying answer
 
-Lead with the recommendation or the unresolved decision. Present the cards together, then explain only material trade-offs, evidence and search coverage. Each individually mentioned offer needs its own listing photo and original link. Use the same listing ID for the displayed photo, facts and reasoning. When a photo is unavailable, retain that status on the offer and leave appearance-dependent requirements open.
+Use the component's rendered cards as the visual presentation. Accompany them with a short recommendation or unresolved decision, material trade-offs and search coverage. Keep each offer's photo, facts, reasoning and original link together in its card. When a photo is unavailable, retain that status on the offer and leave appearance-dependent requirements open.
 
 State quantity and the price's unit explicitly when supported by the listing. Keep unknown quantity or shipping costs visible as open questions. Describe manufacturer, age and authenticity according to the available evidence. For market-price comparisons, name the comparable cohort and sample size.
 
-## Handle a text-only client
+## Recover when the host cannot display cards
 
-Use `cards` to write consistent compact offer blocks. For each ready or `not_enabled` photo, embed the exact `card.image.url` as a Markdown image beside its title, price, location, reasoning and original link. The URL identifies that listing's actual photo.
+When the host lacks a card renderer or reports a display failure, use `cards` for compact text with each offer's title, price, location, reasoning and original link. For live offers, retrieve only the photos needed for the decision with `inspect_listing_images`, using `id=card.id`, `indices=[card.image.index]` and `mode=images`. Present its returned MCP image blocks through the host's supported image renderer. Keep the photo and listing ID paired and expand the gallery only when another view is needed.
+
+Treat `image.status=ready` as confirmation that the server retrieved the photo bytes. Confirm visibility only after observing the client display or receiving the user's confirmation. If image rendering remains unavailable, state that limitation and keep the original links usable.
 
 ## Resolve incomplete photos in any client
 

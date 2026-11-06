@@ -1,6 +1,6 @@
 # Marktplatz-Studie
 
-Ein MCP-Plugin für die Recherche auf willhaben Marktplatz in ChatGPT. Version 1.3.1 unterstützt aktuelle Suchseiten, gezielte Detailprüfungen, echte Inseratfotos, vergleichbare Angebotspreise und interaktive Angebotskarten.
+Ein MCP-Plugin für die Recherche auf willhaben Marktplatz in ChatGPT. Version 1.3.2 unterstützt aktuelle Suchseiten, gezielte Detailprüfungen, echte Inseratfotos, vergleichbare Angebotspreise und interaktive Angebotskarten.
 
 ## Verbindung
 
@@ -55,7 +55,7 @@ Die MCP-Apps-Oberfläche zeigt unbeschnittene Produktfotos, bekannte Stückpreis
 
 Die Karten verwenden die neueste vorhandene vollständige Beobachtung je Inserat. Fehlende IDs erhalten eine konkrete Detailprüfung als nächsten Schritt. Nur die ausgewählten Titelbilder werden über das bestehende Bildbudget und CDN-Pacing geladen. Bilddaten stehen in privaten Tool-Result-Metadaten für die Oberfläche. Das Modell erhält kompakte Fakten, Bildstatus und exakte Bild-URLs. Für bereitgestellte oder synthetische Daten bleibt ein unbekannter ursprünglicher Beobachtungszeitpunkt ausdrücklich offen.
 
-In Clients ohne MCP-Apps-Darstellung verwendet ChatGPT Markdown-Bilder mit den exakten Inseratbild-URLs neben den jeweiligen Fakten. Der Bildstatus bestimmt, ob ein Foto eingebettet wird oder ein fehlgeschlagener beziehungsweise offener Abruf mit Fortsetzung erscheint. Eine öffentliche Verbindung stellt verifizierbare Bild-Links bereit, der persönliche fotoaktivierte Zugang liefert zusätzlich die Bilddaten für die Oberfläche.
+ChatGPT nutzt die Angebotskarten als visuelle Darstellung und ergänzt eine kurze Entscheidungshilfe. Meldet der Client einen Darstellungsfehler oder unterstützt er keine MCP Apps, erhält der Nutzer kompakte Fakten und Original-Links. Benötigte Fotos können gezielt als tatsächliche MCP-Bildinhalte über `inspect_listing_images` mit `mode=images` ausgegeben werden. Der Bildstatus beschreibt den Abruf. Eine sichtbare Darstellung lässt sich anhand der Client-Rückmeldung bestätigen. Die öffentliche Verbindung liefert verifizierbare Bild-Links, der persönliche fotoaktivierte Zugang zusätzlich die Bilddaten für die Oberfläche.
 
 ## Raten und Aktualität
 

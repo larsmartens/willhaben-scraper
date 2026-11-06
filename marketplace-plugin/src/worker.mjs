@@ -5,12 +5,12 @@ import { PRESENTATION_URI, PRESENTATION_HTML, PRESENTATION_RESOURCE_META } from 
 const CURRENT = "2026-07-28";
 const LEGACY = ["2025-11-25", "2025-06-18", "2025-03-26"];
 const VERSIONS = [CURRENT, ...LEGACY];
-const INFO = { name: "marktplatz-studie", title: "Marktplatz-Studie", version: "1.3.1" };
+const INFO = { name: "marktplatz-studie", title: "Marktplatz-Studie", version: "1.3.2" };
 const CAPABILITIES = { tools: {}, resources: {} };
 const MAX_BYTES = 2 * 1024 * 1024;
 const PREFIX = "io.modelcontextprotocol/";
 const INSTRUCTIONS = [
-  "Present every individually discussed or recommended listing with its own actual listing photo. After research, call present_listings with ranked IDs, reasons and open questions. Prefer three to six cards. In text-only clients, embed each ready or not_enabled card.image.url as a Markdown image beside that card's price, location, reasoning and original link. For missing, failed or pending photos, show the actual status and follow retryAt or the corrective nextAction. Match every photo to its listing ID.",
+  "Use present_listings as the visual presentation for individually discussed or recommended listings. Supply ranked IDs, reasons and open questions, usually three to six cards. Accompany the rendered cards with a short decision-focused summary. Image status ready confirms retrieved photo bytes. A visible-display claim requires host confirmation. If the host reports a display failure or lacks MCP Apps, give compact facts and original links. For live listings on a photo-enabled connection, use inspect_listing_images with mode=images for the needed photos. Forward the returned image content through the host's supported image output and match each photo to its listing ID. For missing, failed or pending photos, show the actual status and follow retryAt or the corrective nextAction.",
   "Use live for current offers. Provided covers submitted evidence, and demo serves explicit synthetic demonstrations. Use plan_search when search scope or connection availability needs clarification.",
   "For a known query, read one compact search_listings page and inspect promising IDs. Request relevant photos before making visual claims. Use photos for appearance and explicit evidence for measurements, manufacturer and authenticity. Explain asking prices using a verified comparable cohort and its sample size.",
   "Follow nextCursor with the same search and pageSize, or the same ID selection for details. Follow nextIndex or remainingIndices for photos. Respect retryAt. A successful empty page ends that search.",
@@ -172,12 +172,12 @@ async function rpc(request, env) {
         mimeType: "text/html;profile=mcp-app" }], ...(modern ? { ttlMs: 60000, cacheScope: "public" } : {}) });
     case "resources/templates/list":
       if (params.cursor !== undefined) return error(id, -32602, "Unknown resource templates cursor");
-      return result({ resourceTemplates: [] });
+      return result({ resourceTemplates: [], ...(modern ? { ttlMs: 60000, cacheScope: "public" } : {}) });
     case "resources/read":
       if (![PRESENTATION_URI, "ui://marktplatz/listings-v1.html"].includes(params.uri))
         return error(id, -32002, "Unknown UI resource");
       return result({ contents: [{ uri: params.uri, mimeType: "text/html;profile=mcp-app",
-        text: PRESENTATION_HTML, _meta: PRESENTATION_RESOURCE_META }] });
+        text: PRESENTATION_HTML, _meta: PRESENTATION_RESOURCE_META }], ...(modern ? { ttlMs: 60000, cacheScope: "public" } : {}) });
     case "tools/call": {
       if (!toolDefinitions.some((tool) => tool.name === params.name)) return error(id, -32602, "Unknown tool");
       if (params.arguments !== undefined && !isObject(params.arguments))

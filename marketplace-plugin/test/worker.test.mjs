@@ -129,6 +129,23 @@ test("modern discovery, cached shared tool definitions, private per-call data an
   assert.equal(unknown.status, 404);
 });
 
+test("modern resource responses include the cache fields required by MCP 2026-07-28", async () => {
+  for (const [method, params] of [
+    ["resources/read", { uri: "ui://marktplatz/listings-v1.html" }],
+    ["resources/templates/list", {}],
+  ]) {
+    const modern = await post(stateless(method, params), modernHeaders(method, params.uri));
+    const result = (await modern.json()).result;
+    assert.equal(modern.status, 200);
+    assert.equal(result.resultType, "complete");
+    assert.equal(result.ttlMs, 60000, method + " requires a nonnegative integer ttlMs");
+    assert.equal(result.cacheScope, "public", method + " requires an explicit cacheScope");
+    const legacy = (await (await post(message(method, params))).json()).result;
+    assert.equal(Object.hasOwn(legacy, "ttlMs"), false);
+    assert.equal(Object.hasOwn(legacy, "cacheScope"), false);
+  }
+});
+
 test("modern discovery and UI resources accept omitted optional clientInfo on public and personal endpoints", async (t) => {
   const token = "89".repeat(32);
   const digest = Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token))).toString("hex");

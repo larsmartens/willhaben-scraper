@@ -105,7 +105,7 @@ try {
   await page.waitForFunction(() => window.calls.some(call => call.method === "ui/notifications/initialized"));
   const initialization = await page.evaluate(() => window.calls.find(call => call.method === "ui/initialize"));
   assert.equal(initialization.params.protocolVersion, "2026-01-26");
-  assert.equal(initialization.params.appInfo.version, "1.3.1");
+  assert.equal(initialization.params.appInfo.version, "1.3.2");
   assert.equal(await frame.locator(".offer").count(), 3);
   pass("MCP Apps initializes before receiving the presentation");
 

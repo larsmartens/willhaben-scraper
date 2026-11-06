@@ -562,7 +562,7 @@ function mountPresentation() {
   updateLabels();
   if (window.openai) { applyHostContext(window.openai); legacyResult(); }
   request("ui/initialize", {
-    appInfo: { name: "marktplatz-listings", version: "1.3.1" },
+    appInfo: { name: "marktplatz-listings", version: "1.3.2" },
     appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] },
     protocolVersion: "2026-01-26",
   }, 10000).then(result => {

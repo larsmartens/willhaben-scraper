@@ -308,7 +308,9 @@ test("Worker keeps hydrated image bytes outside model text and structuredContent
   assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
   assert.equal(result.structuredContent.cards[0].image.url, photo(1));
   const init = (await rpc("initialize", { protocolVersion: "2025-11-25", clientInfo: { name: "test", version: "1" }, capabilities: {} })).result;
-  assert.equal(init.serverInfo.version, "1.3.1");
-  assert.match(init.instructions.slice(0, 512), /own actual listing photo/);
+  assert.equal(init.serverInfo.version, "1.3.2");
+  assert.match(init.instructions.slice(0, 512), /visual presentation/);
   assert.match(init.instructions.slice(0, 512), /present_listings/);
+  assert.match(init.instructions.slice(0, 512), /short decision-focused summary/);
+  assert.match(init.instructions, /inspect_listing_images with mode=images/);
 });

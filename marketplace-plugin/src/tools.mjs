@@ -82,7 +82,7 @@ export const toolDefinitions = [
     object({ id: photoId, index: photoIndex, fresh }, ["id", "index"]), online),
   {
     ...def("present_listings", "Angebote mit Bildern präsentieren",
-      "Present every individually discussed or recommended listing with its own photo, price, original link, reasoning and open questions. Call after search or inspection with a ranked selection of three to six IDs, at most eight. Facts come from cached observations without automatic detail reads. Supply concise reason/cautions as assistant assessments. Read missingIds before recommending. In text-only clients, embed the exact card.image.url for ready or not_enabled photos beside that card's facts. Show missing, failed and pending photo status honestly and follow retryAt or image.error.nextAction. Photo inspection tools provide visual evidence before visual claims.",
+      "Render selected listings as photo cards with facts, original links, reasons and open questions. Usually select three to six observed IDs, at most eight. Use the rendered cards for the visual presentation and add brief decision text. Facts come from cached observations. Inspect missingIds before recommending. Supply reason/cautions as assistant assessments. image.status=ready confirms server photo retrieval. If the host reports a display failure, give compact facts and original links. For needed live-listing photos, call inspect_listing_images with the selected id and precise indices, then render its MCP image blocks. Follow retryAt and image.error.nextAction. Inspect actual photos before visual claims.",
       object({ ...data, selections: array(presentationSelection, 1, 8), title: string(100), summary: string(400), criteria },
         ["source", "selections"]), online),
     _meta: {
