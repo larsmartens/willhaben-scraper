@@ -253,6 +253,12 @@ try {
     await frame.getByLabel("Sortieren", { exact: true }).waitFor();
     await page.screenshot({ path: resolve(directory, "presentation-mobile.png"), fullPage: true });
   }
+  await page.evaluate(() => window.sendToWidget({ id: "host-teardown", method: "ui/resource-teardown", params: {} }));
+  await page.waitForFunction(() => window.calls.some(call => call.id === "host-teardown" && call.result));
+  const teardown = await page.evaluate(() => window.calls.find(call => call.id === "host-teardown"));
+  assert.deepEqual(teardown, { jsonrpc: "2.0", id: "host-teardown", result: {} });
+  pass("the UI acknowledges a host teardown request before the host unmounts it");
+
   assert.deepEqual(pageErrors, []);
   assert.deepEqual(externalRequests, []);
   pass("the self-contained UI performs no direct external requests and raises no browser exceptions");

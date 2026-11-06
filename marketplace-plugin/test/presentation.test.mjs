@@ -269,6 +269,29 @@ test("only the presentation tool binds the UI resource and both MCP protocols di
   assert.equal(modern.result.contents[0].text, read.text);
 });
 
+test("current and previously advertised UI resource URIs remain readable", async () => {
+  const uris = ["ui://marktplatz/listings-v1.html", "ui://marktplatz/listings-v2.html"];
+  const current = (await rpc("resources/read", { uri: PRESENTATION_URI })).result.contents[0];
+  for (const uri of uris) {
+    for (const version of ["2025-11-25", "2026-07-28"]) {
+      const modern = version === "2026-07-28";
+      const params = { uri, ...(modern ? { _meta: {
+        "io.modelcontextprotocol/protocolVersion": version,
+        "io.modelcontextprotocol/clientCapabilities": {},
+      } } : {}) };
+      const response = await rpc("resources/read", params, {}, {
+        "mcp-protocol-version": version,
+        ...(modern ? { "mcp-method": "resources/read", "mcp-name": uri } : {}),
+      });
+      assert.ok(response.result, JSON.stringify(response.error));
+      const resource = response.result.contents[0];
+      assert.equal(resource.uri, uri);
+      assert.equal(resource.text, current.text);
+      assert.deepEqual(resource._meta, current._meta);
+    }
+  }
+});
+
 test("Worker keeps hydrated image bytes outside model text and structuredContent", async t => {
   t.mock.method(globalThis, "fetch", async () => new Response(Buffer.from(png, "base64"), { headers: { "content-type": "image/png" } }));
   const env = { LIVE_ACCESS: "authorized", IMAGE_ACCESS: "authorized", MCP_BEARER_TOKEN: "test-only-credential" };
