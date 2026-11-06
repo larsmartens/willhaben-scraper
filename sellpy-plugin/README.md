@@ -4,7 +4,7 @@ A remote MCP plugin for ordinary and visual Sellpy shopping research in ChatGPT.
 
 The implementation is independent of the in-flight Willhaben plugin. Default market is Austria, language German. Prices use the selected market's currency and integer minor units internally.
 
-**Release status:** deployed and verified against live Sellpy through official modern and legacy MCP clients. All 16 tools are registered; native catalog, semantic, item similarity, source-image, multipart reference-image and outfit routes work through the remote endpoint. The implementation has an independent PASS+NOTES review. Actual installation in the user's signed-in ChatGPT account is tracked separately in the verification record.
+**Release status:** deployed, installed in the owner's ChatGPT account, and verified in an actual Chat-mode conversation. All 16 tools are registered; native catalog, semantic, item similarity, source-image, multipart reference-image and outfit routes work through the remote endpoint. A real Cottagecore query produced three original-photo cards with prices, sizes and reasons; the hosted gallery and next-photo interaction were observed. The implementation has an independent PASS+NOTES review. See the verification record for separate source, protocol, browser and ChatGPT evidence.
 
 ## User workflows
 

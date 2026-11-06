@@ -63,14 +63,48 @@ complete. The exact cause, bounded correction and independent recheck are
 documented in provider-contracts.md and independent-review.md; the final remote
 run passed after redeployment.
 
-### ChatGPT installation boundary
+### Actual ChatGPT installation and Chat-mode verification
 
-The paired local-browser surface was unavailable in this session. The available
-cloud browser displayed a signed-out ChatGPT page and its sign-in dialog. No
-account login, plugin installation, real ChatGPT tool-selection run or
-ChatGPT-hosted gallery success is claimed by the direct-client and simulated-host
-tests. Connecting the ready private endpoint to the user's account remains the
-last account-specific step; the personal setup sheet supplies its exact URL.
+The paired local-browser surface was unavailable in this session. The user
+subsequently completed secure sign-in in the available cloud browser. The private
+endpoint was created as Sellpy Studio, connected to the account, and visibly
+listed as installed. Its page displayed version 1.0.0 and “Try in chat”. A new
+Chat-mode conversation selected the plugin and invoked it for a three-item
+Cottagecore search with original-photo inspection. Installation, actual ChatGPT
+tool selection and a ChatGPT-hosted gallery have now been visibly verified.
+Private account and conversation identifiers are kept out of this public record.
+
+The request asked for three Cottagecore-inspired dresses in the Austrian market
+up to EUR 80, with no size constraint for this test, relaxed style/category
+retrieval, original-photo inspection, and a gallery showing each item's own
+photo, price, size and reason. The completed response showed these observations:
+
+| Item | Observed market price | Size | Gallery photographs |
+|---|---|---|---|
+| Amy Jane London, `PZv57Y9Eot` | EUR 28 | XS | 5 |
+| Apricot, `zEeZQYpm0i` | EUR 7 | L | 4 |
+| H&M, `kwPIDKhoUS` | EUR 11 | XS | 5 |
+
+These are time-specific test observations, not enduring availability or price
+claims. The response gave concrete visual reasons such as floral patterns,
+puff sleeves, smocking and ruffles, with material uncertainty when appropriate.
+It explicitly did not claim to have confirmed an actual category error in these
+three items: all three were cataloged as dresses. Style relevance was presented
+as a visual assessment. One selected candidate was reported through the relaxed
+retrieval route.
+
+The live MCP Apps panel rendered three distinct original-image cards, prices,
+sizes, condition and explanations. Sorting, item navigation, source links and
+refresh controls were present. The first card opened its five-photo viewer;
+clicking “Nächstes Foto” visibly displayed the next original photo and “2 von 5”.
+The installed-plugin page and rendered photo viewer were captured as private
+browser evidence. They are not committed to this public repository.
+
+ChatGPT's separate external-image Markdown fallback displayed its own
+“Unverified image / Load image” control. The interactive gallery's original
+images rendered successfully. This host behavior is distinct from a gallery
+image failure. The complete model response displayed 2m58s elapsed; this is one
+end-to-end observation, not a latency benchmark.
 
 Candidate counts and timings are single live observations, not performance or
 recall benchmarks. Incorrect-label recovery is verified by controlled

@@ -22,7 +22,7 @@ Build a complete personal Sellpy plugin for ordinary ChatGPT chats. Search, styl
 - [x] Phase B: Design the workflow.
 - [x] Phase C: Run the loop.
 - [x] Phase D: Keep the audit trail.
-- [ ] Phase E: Verify and hand back.
+- [x] Phase E: Verify and hand back.
 
 The run uses figure-it-out plus autonomous-run discipline. The requested unit is one new plugin, not a standing multi-day orchestration program. Two independent architecture sketches compare stateful search runs with signed stateless cursors. Available agents are independent GPT agents; the prescribed Claude/Grok families are not exposed, so no cross-family verdict is claimed.
 
@@ -42,7 +42,7 @@ The initial estimate is approximately 12 to 16 focused tools, one provider, one 
 
 Willhaben PR 1 at e377ee85aa911a689148ba220bc33f2d3203ff9d provides progressive search, image retrieval, coordinated pacing and a versioned MCP Apps gallery. Its request path authenticates a personal connection, invokes a typed tool contract, gathers provider observations, returns compact model-visible evidence and places presentation hydration in widget-only metadata. This informs user experience and operating behavior. Sellpy remains a separate package on a branch from main, so this work does not modify the in-flight Willhaben implementation.
 
-Current release observations: the isolated `sellpy-studio` Worker is deployed at `https://sellpy-studio.lars-e82.workers.dev`. Official SDK v2 negotiates MCP 2026-07-28; SDK v1 negotiates 2025-11-25. Both authenticate and resume the same private search owner. The complete remote workflow passes; see the verification record. The available ChatGPT browser is signed out, so actual account installation and ChatGPT-hosted gallery rendering remain a distinct final handoff.
+Current release observations: the isolated `sellpy-studio` Worker is deployed at `https://sellpy-studio.lars-e82.workers.dev`. Official SDK v2 negotiates MCP 2026-07-28; SDK v1 negotiates 2025-11-25. Both authenticate and resume the same private search owner. The complete remote workflow passes; see the verification record. The user completed secure sign-in in the available browser. Sellpy Studio was created and connected successfully, and its installed page offers “Try in chat”. An actual Chat-mode Cottagecore search invoked the plugin, inspected original photos, and rendered three illustrated cards with prices, sizes and explanations. Opening the first card's five-photo gallery and advancing to photo 2 were visibly verified. All five pstack delivery phases are complete.
 
 ## Explicit boundaries
 
