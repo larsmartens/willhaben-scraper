@@ -184,3 +184,19 @@ test("tool deadlines prevent queue waits and abort active network work with time
   await assert.rejects(fetchPublic(url, { REQUEST_DEADLINE: Date.now() + 50 }), { code: "time_budget" });
   assert.equal(requests, 1);
 });
+
+test("an early timeout signal keeps task and per-request deadlines distinguishable", async t => {
+  const now = 1800000000000;
+  let controller;
+  t.mock.method(Date, "now", () => now);
+  t.mock.method(AbortSignal, "timeout", () => {
+    controller = new AbortController();
+    return controller.signal;
+  });
+  t.mock.method(globalThis, "fetch", async () => {
+    controller.abort(new DOMException("Time elapsed", "TimeoutError"));
+    throw controller.signal.reason;
+  });
+  await assert.rejects(fetchPublic(url, { REQUEST_DEADLINE: now + 50 }), { code: "time_budget", recoverable: true });
+  await assert.rejects(fetchPublic(url, { REQUEST_DEADLINE: now + 500 }, { timeoutMs: 100 }), { code: "upstream_timeout" });
+});

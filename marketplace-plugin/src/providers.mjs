@@ -155,7 +155,7 @@ export function parseSearchUrl(value) {
     unsupportedParameters, fullyRepresented: unsupportedParameters.length === 0, url: url.href };
 }
 
-function safeWebUrl(value, type) {
+export function safeWebUrl(value, type) {
   if (typeof value!=="string" || value.length>1200) return null;
   let u;
   try {u=new URL(value);} catch {return null;}
@@ -462,16 +462,19 @@ function liveProvider(env) {
   async function cacheCall(method, args, deadline) {
     const taskDeadline = Math.min(Number.isFinite(deadline) ? deadline : Infinity,
       Number.isFinite(env.REQUEST_DEADLINE) ? env.REQUEST_DEADLINE : Infinity);
-    const timeout = Math.min(2000,taskDeadline-Date.now());
+    const remaining = taskDeadline-Date.now();
+    const timeout = Math.min(2000,remaining);
     if (timeout <= 0) fail("time_budget","Continue in another call to read this observation",{recoverable:true});
+    const timeoutError = new Error("Cache coordinator timed out");
     let timer;
     try {
       return await Promise.race([
         Promise.resolve().then(() => cache[method](...args)),
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Cache coordinator timed out")),timeout); })
+        new Promise((_, reject) => { timer = setTimeout(() => reject(timeoutError),timeout); })
       ]);
-    } catch {
-      if (Date.now() >= taskDeadline) fail("time_budget","Continue in another call to read this observation",{recoverable:true});
+    } catch (cause) {
+      if (Date.now() >= taskDeadline || cause === timeoutError && remaining <= 2000)
+        fail("time_budget","Continue in another call to read this observation",{recoverable:true});
       fail("traffic_unavailable","The shared observation cache is unavailable. Retry this call.",{recoverable:true});
     } finally { clearTimeout(timer); }
   }
@@ -542,9 +545,13 @@ function liveProvider(env) {
       if (!entry.value.facets) schemaError("Filter metadata missing");
       return observation(entry.value.facets,entry.observedAt,entry.cacheHit);
     },
-    async summary(id) {
+    async summary(id,{deadline}={}) {
       listingId(id);
-      const entry = await readCache("summary:"+id) ?? await readCache("detail:"+id);
+      const [summary, detail] = await Promise.all([
+        readCache("summary:"+id,deadline), readCache("detail:"+id,deadline),
+      ]);
+      const newerDetail = detail && (!summary || Date.parse(detail.observedAt) >= Date.parse(summary.observedAt));
+      const entry = newerDetail ? detail : summary;
       return entry?.value && !entry.value.gone ? observation(entry.value,entry.observedAt,true) : null;
     },
     async detail(id,{fresh=false,deadline}={}) {

@@ -1,6 +1,6 @@
 ---
 name: marktplatz-studie
-description: Recherchiere willhaben-Marktplatz-Angebote, prüfe Inseratfotos und vergleiche Angebotspreise. Use for willhaben product searches, pasted marketplace search URLs, listing verification, visual comparisons or saved market studies in German or English.
+description: Recherchiere willhaben-Angebote, prüfe Inseratfotos und präsentiere Empfehlungen mit Bildern. Use for willhaben product searches, pasted marketplace search URLs, listing verification, visual comparisons or saved market studies in German or English.
 ---
 
 # Marktplatz research
@@ -19,9 +19,10 @@ Answer in the user's language. Use the installed Marktplatz connection and its c
 
 1. Read one compact result page. Use `discover_filters` to resolve category, area or attribute IDs when narrowing needs them. Select only fields that affect the next decision.
 2. Inspect promising IDs with the user's explicit criteria. Use `attributeKeys` for focused specification checks. Increase `descriptionLimit` when a truncated description could contain the missing evidence.
-3. For appearance comparisons, request covers with `images=thumbnails` and selected `imageIds`. Request gallery photos for shortlisted listings. Read [photo retrieval](references/photos.md) when selecting individual photos or continuing a gallery.
+3. For appearance comparisons, request covers with `images=thumbnails` and selected `imageIds`. Inspect returned image content before making visual claims. Request gallery photos for shortlisted listings. Read [photo retrieval](references/photos.md) when selecting individual photos or continuing a gallery.
 4. Continue the same search with `nextCursor` while the user's requirement remains unresolved and relevant results remain. Keep query, filters and page size fixed for that cursor. Broaden the wording when the current scope is exhausted. Read [continuation and recovery](references/continuation.md) for partial results, cooldowns or detail batches.
-5. Finish when the requested comparison or candidate check has supporting evidence, or when the searched scope is exhausted or blocked. State the observed scope and any remaining requirement. Cite listing links and original observation times.
+5. Present every individually recommended or discussed listing with its own actual photo, price, location, original link and concise reasoning. Show the returned image status when that photo is unavailable. Call `present_listings` with the ordered observed IDs and explicit open questions. Usually select three to six offers. Read [presenting offers](references/presentation.md) before preparing the final selection or handling a display problem.
+6. Finish when the requested comparison or candidate check has supporting evidence, or when the searched scope is exhausted or blocked. State the observed scope and any remaining requirement. Cite original observation times. Keep the surrounding answer focused on the decision and evidence the cards need explained.
 
 ## Evaluate evidence
 

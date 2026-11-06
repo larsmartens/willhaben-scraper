@@ -327,3 +327,12 @@ test('cache reads and writes respect explicit and request deadlines',async t=>{
   await assert.rejects(getProvider('live',storage.env).search({query:'Kugel',deadline:Date.now()+150}),code('time_budget'));
   assert.equal(fetcher.mock.callCount(),1);
 });
+test('an early cache timer preserves task-budget errors and distinguishes coordinator timeouts',async t=>{
+  const storage=cacheEnv(),now=1800000000000;
+  storage.gate.getCached=()=>new Promise(()=>{});
+  t.mock.method(Date,'now',()=>now);
+  t.mock.method(globalThis,'setTimeout',callback=>{queueMicrotask(callback);return 0;});
+  t.mock.method(globalThis,'fetch',()=>assert.fail('Cache timeout must not fetch upstream'));
+  await assert.rejects(getProvider('live',storage.env).summary('7',{deadline:now+20}),code('time_budget'));
+  await assert.rejects(getProvider('live',storage.env).summary('7',{deadline:now+5000}),code('traffic_unavailable'));
+});

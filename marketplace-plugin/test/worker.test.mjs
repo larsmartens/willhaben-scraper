@@ -50,7 +50,7 @@ test("legacy ChatGPT-style HTTP handshake, list, call and notification over a lo
     });
     const init = await (await rpc(message("initialize", { protocolVersion: "2025-11-25",
       clientInfo: { name: "integration-test", version: "1" }, capabilities: {} }))).json();
-    assert.deepEqual(init.result.capabilities, { tools: {} });
+    assert.deepEqual(init.result.capabilities, { tools: {}, resources: {} });
     assert.equal(init.result.protocolVersion, "2025-11-25");
     assert.equal(init.result.serverInfo.name, "marktplatz-studie");
     const notification = await rpc({ jsonrpc: "2.0", method: "notifications/initialized" });

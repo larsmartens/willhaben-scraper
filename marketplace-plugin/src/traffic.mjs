@@ -150,7 +150,8 @@ export async function fetchPublic(value, env = {}, { accept = "text/html", timeo
       response = await fetch(url, { method: "GET", redirect: "manual", signal,
         headers: { Accept: accept, "User-Agent": CLIENT_AGENT } });
     } catch {
-      if (Date.now() >= taskDeadline) throw error("time_budget", Date.now());
+      // The signal owns its selected deadline even if the wall clock is one tick behind.
+      if (Date.now() >= taskDeadline || signal.aborted && deadline === taskDeadline) throw error("time_budget", taskDeadline);
       const report = { status: 0, attempt };
       const cooldown = gate ? await gateCall(gate, "report", taskDeadline, url.origin, report) : responseCooldown(report, Date.now());
       if (signal.aborted || Date.now() >= deadline) throw error("upstream_timeout", cooldown.until);

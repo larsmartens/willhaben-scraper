@@ -130,15 +130,25 @@ export async function imageBatch(requests, env, { mode = "images", deadline = Da
   for (const request of requests) {
     try {
       if (Date.now() >= deadline) throw failure("time_budget", "Continue with the remaining photo indices.", true);
-      const url = imageUrl(request.url).href;
-      const metadata = { id: request.id, index: request.index, url, size: request.size };
+      let url = imageUrl(request.url).href;
+      let size = request.size;
       if (mode === "links") {
-        results.push(metadata);
+        results.push({ id: request.id, index: request.index, url, size });
       } else {
-        const fetched = await readImage(url, env, deadline, MAX_ENCODED_BYTES - encodedBytes);
+        let fetched;
+        try {
+          fetched = await readImage(url, env, deadline, MAX_ENCODED_BYTES - encodedBytes);
+        } catch (cause) {
+          if (!["image_too_large", "response_budget"].includes(cause?.code) ||
+              !request.thumbnailUrl || request.thumbnailUrl === url) throw cause;
+          url = imageUrl(request.thumbnailUrl).href;
+          size = "thumbnail";
+          fetched = await readImage(url, env, deadline, MAX_ENCODED_BYTES - encodedBytes);
+        }
         encodedBytes += fetched.image.data.length;
         images.push(fetched.image);
-        results.push({ ...metadata, mimeType: fetched.image.mimeType, bytes: fetched.bytes, imageContentIndex: images.length });
+        results.push({ id: request.id, index: request.index, url, size,
+          mimeType: fetched.image.mimeType, bytes: fetched.bytes, imageContentIndex: images.length });
       }
       processed++;
     } catch (cause) {

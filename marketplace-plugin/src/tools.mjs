@@ -5,6 +5,8 @@ import {
 import { runStudy, evaluateListing, validateCriteria } from "./engine.mjs";
 import { createCursor, readCursor } from "./cursors.mjs";
 import { galleryOf, imageBatch, pausesBatch, readGallery, toolFailure } from "./images.mjs";
+import { presentListings } from "./presentation.mjs";
+import { PRESENTATION_URI } from "./presentation-ui.mjs";
 
 const string = maxLength => ({ type: "string", minLength: 1, maxLength });
 const integer = (minimum, maximum) => ({ type: "integer", minimum, maximum });
@@ -31,6 +33,8 @@ const spec = { ...data, queries, filters: FILTER_SCHEMA, criteria, pageSize, fre
 const handle = { type: "string", pattern: "^ms_[a-f0-9]{32}$" };
 const photoId = { ...string(20), pattern: "^[0-9]{1,20}$" };
 const photoIndex = integer(0, Number.MAX_SAFE_INTEGER);
+const presentationSelection = object({ id: string(96), reason: string(280),
+  cautions: array(string(180), 0, 3), photoIndex }, ["id"]);
 const summaryFields = ["title", "url", "price", "priceType", "location", "condition", "status", "model",
   "category", "categoryId", "areaId", "sellerType", "paylivery", "shipping", "imageCount", "hasPhotos",
   "thumbnailUrl", "galleryComplete", "publishedAt"];
@@ -76,6 +80,19 @@ export const toolDefinitions = [
   def("inspect_listing_image", "Ein Inseratfoto ansehen",
     "Retrieve one zero-based photo index for compatibility. Prefer inspect_listing_images for gallery browsing and batched visual comparisons.",
     object({ id: photoId, index: photoIndex, fresh }, ["id", "index"]), online),
+  {
+    ...def("present_listings", "Angebote mit Bildern präsentieren",
+      "Present every individually discussed or recommended listing with its own photo, price, original link, reasoning and open questions. Call after search or inspection with a ranked selection of three to six IDs, at most eight. Facts come from cached observations without automatic detail reads. Supply concise reason/cautions as assistant assessments. Read missingIds before recommending. In text-only clients, embed the exact card.image.url for ready or not_enabled photos beside that card's facts. Show missing, failed and pending photo status honestly and follow retryAt or image.error.nextAction. Photo inspection tools provide visual evidence before visual claims.",
+      object({ ...data, selections: array(presentationSelection, 1, 8), title: string(100), summary: string(400), criteria },
+        ["source", "selections"]), online),
+    _meta: {
+      ui: { resourceUri: PRESENTATION_URI, visibility: ["model", "app"] },
+      "openai/outputTemplate": PRESENTATION_URI,
+      "openai/widgetAccessible": true,
+      "openai/toolInvocation/invoking": "Angebote werden dargestellt",
+      "openai/toolInvocation/invoked": "Angebote mit Bildern bereit",
+    },
+  },
   def("study_market", "Marktstudie rechnen",
     "Deduplicate search variants, evaluate explicit criteria and compare observed asking-price cohorts. Live defaults to one search page in total and zero details. Request-scoped coverage and continuation describe any unfinished search. Each call permits up to 32 search pages in total and 100 details within its time budget.",
     object(spec, ["source", "queries"]), online),
@@ -89,6 +106,12 @@ export const toolDefinitions = [
     "Compare saved observations, coverage, cohort sizes and asking-price changes. Report changed search definitions and incomplete membership.",
     object({ before: handle, after: handle }, ["before", "after"])),
 ];
+
+for (const name of ["inspect_listings", "inspect_listing_images"]) {
+  toolDefinitions.find(tool => tool.name === name)._meta = {
+    ui: { visibility: ["model", "app"] }, "openai/widgetAccessible": true,
+  };
+}
 
 function invalid(message) {
   throw Object.assign(new TypeError(message), { code: "invalid_input", recoverable: false });
@@ -137,6 +160,11 @@ function checkArgs(name, args) {
   if (args.source !== undefined && (args.source === "provided") !== (args.listings !== undefined)) invalid("Pass listings exactly when source is provided");
   if (args.criteria !== undefined) validateCriteria(args.criteria);
   if (args.ids?.some(id => !/^[A-Za-z0-9_-]{1,96}$/.test(id) || (args.source === "live" && !/^\d{1,20}$/.test(id)))) invalid("Invalid listing ID");
+  if (args.selections) {
+    const selectedIds = args.selections.map(selection => selection.id);
+    if (new Set(selectedIds).size !== selectedIds.length) invalid("Each presentation selection must use a different listing ID");
+    if (selectedIds.some(id => !/^[A-Za-z0-9_-]{1,96}$/.test(id) || args.source === "live" && !/^\d{1,20}$/.test(id))) invalid("Invalid listing ID");
+  }
   if (args.indices && (args.start !== undefined || args.count !== undefined)) invalid("Use indices or start/count in one photo request");
   if (args.dimension !== undefined && args.filter !== undefined) invalid("Select dimension or filter in one discovery request");
   if (args.imageLimit !== undefined && args.images !== "thumbnails") invalid("imageLimit requires images=thumbnails");
@@ -420,6 +448,7 @@ export async function invokeTool(name, args, env = {}) {
     return { ...result, index: args.index, url: result.results[0]?.url ?? null };
   }
   const provider = getProvider(args.source, env, args.listings);
+  if (name === "present_listings") return presentListings(args, env, provider);
   if (name === "discover_filters") return discover(args, env, provider);
   if (name === "search_listings") return searchListings(args, env, provider);
   if (name === "inspect_listings") return inspectListings(args, env, provider);

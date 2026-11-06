@@ -1,5 +1,7 @@
 # Photo retrieval
 
+Use image content from the search or gallery tools when assessing visible features. `present_listings` sends its selected photos directly to the presentation component. Read [presenting offers](presentation.md) when assembling the final recommendation.
+
 ## Compare search covers
 
 Use the existing search arguments and `images=thumbnails`. Select observed IDs through `imageIds` to inspect specific candidates from that page. Use `imageLimit` for the first available covers. These selectors are alternatives.

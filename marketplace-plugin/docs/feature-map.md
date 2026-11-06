@@ -1,4 +1,4 @@
-# Verifikationsübersicht für 1.2.0
+# Verifikationsübersicht für 1.3.0
 
 Die Node-Suite prüft die Tool- und Protokollverträge. Zwei zusätzliche Miniflare-Suiten prüfen denselben Traffic- und Cache-Code in workerd mit SQLite. Die unabhängigen Reviews verwenden eigene synthetische Repros.
 
@@ -23,6 +23,15 @@ Die Node-Suite prüft die Tool- und Protokollverträge. Zwei zusätzliche Minifl
 | Provider und echter Cache | Suche, kanonische Details, Facetten und 404-Tombstones funktionieren gemeinsam | `test/provider.runtime.mjs` mit synthetischem Outbound-Service |
 | Private Verbindung | Zugang bis zur Deaktivierung, korrekter Scope und stabile Ratenzählung | Personal- und Worker-Tests |
 | ChatGPT-Transport | Initialize, tools/list, tools/call, Bilder und strukturierte Fehler | Worker-Tests, offizieller MCP-SDK-Probe und JSON-Schema-Validatoren |
+| Auswahl mit Fotos | Ein eigenes Inseratfoto und kanonische Fakten pro ausgewählter Karte | `test/presentation.test.mjs` prüft Reihenfolge, ID-/Index-Zuordnung und fehlende Beobachtungen |
+| Zeitlich stimmige Karten | Neueste vollständige Beobachtung samt ursprünglichem Zeitpunkt verwenden | Regression für jüngere Suche, jüngere Details, Gleichstand und Löschmarkierung |
+| Kleiner Modellkontext | Fotobytes ausschließlich an die Oberfläche liefern | Worker- und SDK-Prüfung von `content`, `structuredContent` und `_meta` |
+| Große oder fehlende Titelbilder | Native Miniatur verwenden oder konkreten Fehler mit Fortsetzung erhalten | Regressionen für 404, 429, Antwortbudget, Thumbnail-Fallback und ungültigen Fotoindex |
+| MCP-Apps-Ressource | Versionierte Oberfläche über `resources/list` und `resources/read` bereitstellen | Protokolltests einschließlich aktueller und älterer unterstützter MCP-Versionen |
+| Mobiles Kartenkarussell | Fotoidentität, klare Angaben und Navigation bei 360 Pixel Breite | `test/presentation-ui.browser.mjs` mit Chromium und simuliertem MCP-Apps-Host |
+| Interaktive Folgeaktionen | Lokal sortieren, Original öffnen und Galerien fortsetzen | Browserprüfungen mit `nextIndex`, `remainingIndices`, Cooldown, Retry und abweichender Fotoidentität |
+| Darstellung realer Angebote | Die tatsächlich abgerufenen Tiffany-Fotos richtig darstellen | Unabhängiger Chromiumlauf bei 390 Pixeln, 360 Pixeln im dunklen Modus und 1024 Pixeln in der größeren Ansicht |
+| Fehlerhafte Aktualisierung | Vorhandene Karten und Fotos erhalten, Fehler sichtbar machen | Browserprüfungen mit fehlgeschlagener Aktualisierung, ungültigen Antworten und nicht vertrauenswürdigem Text |
 
 ## Ausführung
 
@@ -35,3 +44,5 @@ npm run test:runtime
 ```
 
 Die veröffentlichte HTTPS-Verbindung wird zusätzlich mit einer aktuellen Suche, gezieltem Detailabruf und echtem Foto geprüft. Der zugehörige Release-Nachweis wird im Pull Request festgehalten. Der portable Skill wird anhand eines bereitgestellten Katalogs in einem frischen Agentenlauf geprüft.
+
+Der zusätzliche Browserlauf benötigt eine vorhandene Playwright-Installation und einen kompatiblen Chromium-Browser. Die Umgebung kann über `PLAYWRIGHT_CHROMIUM_EXECUTABLE` oder `PLAYWRIGHT_BROWSER_CONFIG` eine Startkonfiguration bereitstellen. Die Browserprüfungen führen die tatsächliche HTML-Ressource mit einem simulierten Host aus. Der Release-Nachweis benennt eine zusätzliche Prüfung im persönlichen ChatGPT-Client, sobald sie dort beobachtet wurde.
