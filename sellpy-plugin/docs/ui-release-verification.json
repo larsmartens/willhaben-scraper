@@ -1,0 +1,28 @@
+{
+  "checked_at": "2026-11-07T17:07:52.525Z",
+  "version": "1.2.1",
+  "outcome": "passed",
+  "protocol": "2026-07-28",
+  "tools": 27,
+  "model_tools": 26,
+  "app_only_tools": 1,
+  "private_auth_preserved": true,
+  "resources": [
+    {
+      "uri": "ui://sellpy/gallery-v4.html",
+      "bytes": 751147,
+      "sha256": "c223254bb2feca3f4d05a4be80b34b037f76d987ac7d4e9ecb4383fe5acc628d"
+    },
+    {
+      "uri": "ui://sellpy/gallery-v3.html",
+      "bytes": 751147,
+      "sha256": "c223254bb2feca3f4d05a4be80b34b037f76d987ac7d4e9ecb4383fe5acc628d"
+    },
+    {
+      "uri": "ui://sellpy/gallery-v2.html",
+      "bytes": 751147,
+      "sha256": "c223254bb2feca3f4d05a4be80b34b037f76d987ac7d4e9ecb4383fe5acc628d"
+    }
+  ],
+  "completed_at": "2026-11-07T17:08:16.197Z"
+}

@@ -4,7 +4,7 @@ A remote MCP plugin for ordinary and visual Sellpy shopping research in ChatGPT.
 
 The deployment and private research state are independent of Willhaben. The 1.2 implementation adapts useful patterns from its last completed 1.4.2 release. Default market is Austria, language German. Prices use the selected market's currency and integer minor units internally.
 
-**Release status:** the **1.2.0 implementation is in release verification**; the previously deployed server is 1.1.1. Version 1.2 adds 12/24-card durable collections, app-only navigation, compact structured facts, coordinated public observations, native similar brands and additional image/search-link inputs. Deployment, installed-package and actual ChatGPT outcomes are separate gates. Historical evidence remains in the [1.1.1 release record](docs/followthrough-verification.md) and [1.1.0 release record](docs/upgrade-verification.md).
+**Release status:** server **1.2.1 is deployed** and the existing installed ChatGPT package reports **1.2.1**. Its 27 tools comprise 26 model tools and one app-only collection navigator. The release passed 163 Node tests, 35 actual Workers tests, a 10,137-item/423-page Chromium traversal and nine live verification gates for the 1.2.0 core. The final 1.2.1 UI correction passed fresh full suites plus focused German/English coverage checks and exact deployed-resource verification. See the [1.2 release record](docs/scale-verification.md) for exact artifacts, performance scope, installation and actual-host evidence. Historical evidence remains in the [1.1.1 record](docs/followthrough-verification.md).
 
 ## User workflows
 
@@ -112,6 +112,8 @@ For deployment, create an independent Worker with the bindings and SQLite migrat
 - [Independent upgrade state review](docs/review-upgrade-state.md)
 - [Version 1.1 deployment and ChatGPT verification](docs/upgrade-verification.md)
 - [Version 1.1 live research workflows](docs/upgrade-live-verification.json)
+- [Version 1.2 release verification](docs/scale-verification.md)
+- [Version 1.2 independent review](docs/scale-review.md)
 - [Version 1.2 scale plan and architecture comparison](docs/scale-plan.md)
 - [Current Willhaben transfer research](docs/willhaben-transfer-research.md)
 - [Native Sellpy and similar-project research](docs/sellpy-native-ecosystem-20261107.md)

@@ -6,7 +6,7 @@ The owner explicitly authorized routine updates of this existing plugin, includi
 
 Preserve the existing app identity, private connection and durable research namespaces. Report server deployment and installed package version separately, and verify both. Never publish the private connection file or endpoint. New versions must not silently change search/evidence semantics or discard existing research.
 
-After changing MCP tool names, schemas, descriptions or UI metadata, refresh the tools of the existing connected app in ChatGPT. Uploading the plugin package alone does not refresh that catalogue. Verify the new model-visible tools and one app-only gallery action in the actual ChatGPT host; reload an already open chat if its catalogue binding is stale. Do not declare the release complete from a direct MCP test or package-version label alone.
+After changing MCP tool names, schemas, descriptions or UI metadata, refresh the tools of the existing connected app in ChatGPT. Do this before the final package metadata upload: in the observed host, refreshing tools also replaced the custom interface description/prompts with app defaults. Uploading the plugin package alone does not refresh that catalogue. Verify the new model-visible tools and one app-only gallery action in the actual ChatGPT host; reload an already open chat if its catalogue binding is stale. Do not declare the release complete from a direct MCP test or package-version label alone.
 
 ## Product acceptance
 

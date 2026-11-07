@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "source_bundle": true,
+  "check": "coverage",
+  "locales": [
+    "de",
+    "en"
+  ],
+  "viewport_widths": [
+    360,
+    1120
+  ],
+  "exact_filter_values": true,
+  "zero_and_unknown_distinct": true,
+  "duplicate_prose_removed": true,
+  "browser_errors": []
+}

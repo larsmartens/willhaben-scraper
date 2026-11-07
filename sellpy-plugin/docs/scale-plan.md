@@ -6,7 +6,7 @@ Transfer the useful current Willhaben improvements into the existing Sellpy plug
 
 The user explicitly authorizes deployment and uploading this new plugin version without another confirmation. This is new authorization for the previously blocked package-update retry; it does not authorize unrelated account or permission changes.
 
-Baseline: local `62b195886a142e9362fcd306678ba8d5d7cfef62`, remote PR #2 `93f6a50a014321f642d991d6f5219b99158c4555`, identical tree `31815fe11654478c4d048dfd3b65a6eefc8eb595`. Server 1.1.1 is live. The installed package still reports 1.0.0.
+Starting baseline: local `62b195886a142e9362fcd306678ba8d5d7cfef62`, remote PR #2 `93f6a50a014321f642d991d6f5219b99158c4555`, identical tree `31815fe11654478c4d048dfd3b65a6eefc8eb595`. At planning time server 1.1.1 was live and the installed package reported 1.0.0. The completed release is server and installed package **1.2.1**; see the [release verification](scale-verification.md).
 
 ## Workflow checklist
 
@@ -15,8 +15,8 @@ Baseline: local `62b195886a142e9362fcd306678ba8d5d7cfef62`, remote PR #2 `93f6a5
 - [x] Agree: score alternatives and synthesize the implementation contract; no human checkpoint requested.
 - [x] Implement: named owners with disjoint file scopes after the shared contract is fixed.
 - [x] Scrap decision: revisit the design if repeated implementation workarounds contradict its invariants.
-- [ ] Verify: large collections, real SQLite and host interactions, native contracts, matched performance evidence and independent non-author review.
-- [ ] Release: ordered commits, exact artifact review/deployment/readback, installed-package update and setup guide.
+- [x] Verify: large collections, real SQLite and host interactions, native contracts, matched performance evidence and independent non-author review.
+- [x] Release: ordered commits, exact artifact review/deployment/readback, installed-package update and setup guide.
 
 Arena: Frame / Fan out / Cross-judge / Pick / Graft / Verify. Only GPT-family workers are available; independent candidates use the available inherited model. A cross-family judge is unavailable and will not be claimed.
 
@@ -105,7 +105,7 @@ The original Willhaben development conversation was also read directly. Its late
 - Native owner: provider/config, strict search-link parser and dedicated uncredentialed public-reference downloader, with contract tests.
 - Parent: synthesis, documentation, integration, independent review, exact release artifacts, deployment and package update. Generated artifacts are built serially after source integration.
 
-Further measured proof and release receipts will be appended before deployment. No benchmark, real-host interaction or migration is considered passed merely because it is included in this plan.
+Measured proof and release receipts are recorded separately in [scale-verification.md](scale-verification.md). No benchmark, real-host interaction or migration is considered passed merely because it is included in this plan.
 
 
-Implementation checkpoint: the chosen boundaries survived review. Derived filters now use scalar source projections, legacy offsets remain independent of import progress, and UI metadata follows the accepted observation version. These corrections deepen the existing design; no workaround requires replacing the architecture. Source checks passed 163 Node tests and 35 actual Workers tests. Final native, artifact and installed-host receipts remain separate release gates.
+Completed release: the chosen boundaries survived review. Derived filters now use scalar source projections, legacy offsets remain independent of import progress, and UI metadata follows the accepted observation version. These corrections deepen the existing design; no workaround required replacing the architecture. The final 1.2.1 source passed 163 Node tests and 35 actual Workers tests. Core scale/native measurements, exact deployed artifact reads, the installed 1.2.1 package and real ChatGPT gallery navigation passed their separate gates. The final UI correction uses labeled scope facts and structured footer values, with v4 as the canonical resource and v3/v2 retained as aliases. The release procedure now refreshes the connected app catalogue before the final package metadata upload and verifies an app-only action in the actual host.
