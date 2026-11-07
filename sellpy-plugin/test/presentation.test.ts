@@ -128,6 +128,50 @@ test('feedback stays tied to the exact item and cannot manufacture visual eviden
   assert.equal(parseFeedback({ ...feedback, updated_at: 'not a date' }, 'a'), null);
 });
 
+test('a mixed visual selection identifies unsaved assessments without promoting free-text reasons or feedback to evidence', () => {
+  const reviewed = candidate('reviewed'), pending = candidate('pending');
+  reviewed.assessment = assessment(reviewed.item);
+  const gallery = buildGallery({ run_id: 'run', language: 'en', title: 'Visual selection', candidates: [reviewed, pending],
+    selection: [{ item_id: 'pending', reason: 'The photo shows a dress with long sleeves.' }, { item_id: 'reviewed', reason: 'Recorded photo evidence' }],
+    feedback: { pending: { item_id: 'pending', decision: 'shortlist', updated_at: '2026-11-07T00:00:00Z' } } });
+  const result = galleryResult(gallery, { [pending.item.images[0]!.id]: PNG });
+  const handoff = result.structuredContent?.visual_review as { unassessed_item_ids: string[]; next_action: string } | undefined;
+  assert.ok(handoff, 'The visual selection needs an explicit handoff for unsaved assessments.');
+  assert.deepEqual(handoff.unassessed_item_ids, ['pending']);
+  assert.match(handoff.next_action, /record_visual_assessment/);
+  assert.match(handoff.next_action, /visual/i);
+  assert.match(handoff.next_action, /catalog|price/i);
+  const cards = (result.structuredContent as { cards: { item_id: string; visually_assessed: boolean; checked_image_ids: string[] }[] }).cards;
+  assert.deepEqual(cards.map(value => [value.item_id, value.visually_assessed]), [['pending', false], ['reviewed', true]]);
+  assert.deepEqual(cards[0]!.checked_image_ids, []);
+  assert.equal(galleryFromResult(result)!.cards[0]!.assessment, null);
+});
+
+test('a catalog-only selection remains usable without a visual assessment', () => {
+  const value = candidate('catalog');
+  const gallery = buildGallery({ run_id: 'run', language: 'de', title: 'Günstige Kleider', candidates: [value],
+    selection: [{ item_id: value.item.id, reason: 'Lowest observed price among these candidates' }] });
+  const result = galleryResult(gallery);
+  assert.notEqual(result.isError, true);
+  assert.equal(galleryFromResult(result)!.cards[0]!.reason, 'Lowest observed price among these candidates');
+  assert.equal(galleryFromResult(result)!.cards[0]!.assessment, null);
+  const handoff = result.structuredContent?.visual_review as { unassessed_item_ids: string[]; next_action: string } | undefined;
+  assert.ok(handoff);
+  assert.deepEqual(handoff.unassessed_item_ids, ['catalog']);
+  assert.match(handoff.next_action, /catalog|price/i);
+  assert.deepEqual(gallery.warnings, [], 'An ordinary catalog selection is not an error or failed visual check.');
+});
+
+test('a fully assessed selection has no outstanding recording handoff', () => {
+  const value = candidate('reviewed');
+  value.assessment = assessment(value.item);
+  const gallery = buildGallery({ run_id: 'run', language: 'en', title: 'Reviewed', candidates: [value],
+    selection: [{ item_id: value.item.id, reason: 'Recorded original-photo observations' }] });
+  const result = galleryResult(gallery);
+  assert.deepEqual(result.structuredContent?.visual_review, { unassessed_item_ids: [], next_action: null });
+  assert.equal((result.structuredContent as { cards: { visually_assessed: boolean }[] }).cards[0]!.visually_assessed, true);
+});
+
 test('feedback acknowledgments must match run, item and a successful response', () => {
   const feedback = { item_id: 'a', decision: 'reject', updated_at: '2026-11-07T00:00:00Z' };
   const result = { structuredContent: { run_id: 'run', item_id: 'a', feedback } };
