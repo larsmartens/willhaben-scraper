@@ -2,7 +2,9 @@
 
 ## Assemble the selection
 
-After research, call `present_listings` for the listings you will individually recommend or discuss. Use the observed IDs in recommendation order, a short title and a concise summary when it adds context. An overview normally starts with twelve relevant offers when available. A single-listing question needs one card. For all observed offers, pass `researchId` and omit `selections`. Use `queryIds` to select search scopes, or explicit `selections` for a ranked set. The app pages through the saved collection with twelve or twenty-four cards per page.
+For an overview or display request, present the available search summaries as soon as the first useful page returns. For verified recommendations, assemble the shortlist after the checks needed for the requested advice. Keep unverified requirements marked unknown and show the current server coverage.
+
+Use the observed IDs in recommendation order, a short title and a concise summary when it adds context. An overview normally starts with twelve relevant offers when available. A single-listing question needs one card. For all observed offers, pass `researchId` and omit `selections`. Use `queryIds` to select search scopes, or explicit `selections` for a ranked set. The app pages through the saved collection with twelve or twenty-four cards per page.
 
 Write each `reason` around the user's actual requirements. Put material unanswered questions in `cautions`. Include the user's explicit `criteria` for evidence-based requirement checks. Use `photoIndex` when an already inspected gallery photo shows the relevant feature better than the cover.
 

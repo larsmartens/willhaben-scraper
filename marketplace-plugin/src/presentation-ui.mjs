@@ -1,4 +1,5 @@
 import { PRESENTATION_BRIDGE_SOURCE } from "./generated/presentation-bridge.mjs";
+import { ICON_BASE64 } from "./branding.mjs";
 
 export const PRESENTATION_URI = "ui://marktplatz/listings-v2.html";
 
@@ -88,7 +89,7 @@ function mountPresentation() {
   let queryCursor;
   let queryVersion;
   const coverQueue = new Set();
-  const app = new window.WillhabenMcpApps.App({ name: "willhaben", version: "1.4.0" }, {}, { autoResize: false });
+  const app = new window.WillhabenMcpApps.App({ name: "willhaben", version: "1.4.1" }, {}, { autoResize: false });
 
   const t = key => words[language][key];
   const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -870,6 +871,8 @@ export const PRESENTATION_HTML = `<!doctype html>
   p,h2,h3,h4,ol,ul { margin: 0; }
   h2 { font-size: 20px; line-height: 1.3; font-weight: 650; overflow-wrap: anywhere; }
   header { display: grid; gap: 6px; margin-bottom: 14px; }
+  .brand-title { display: flex; align-items: center; gap: 10px; }
+  .brand-title img { width: 32px; height: 32px; flex-shrink: 0; object-fit: contain; }
   #summary { color: var(--muted); max-width: 70ch; overflow-wrap: anywhere; }
   #source { color: var(--muted); font-size: 12px; }
   #notice { padding: 10px 12px; background: var(--soft); border-radius: 8px; margin: 0 0 12px; }
@@ -937,7 +940,7 @@ export const PRESENTATION_HTML = `<!doctype html>
 </head>
 <body>
 <main aria-label="willhaben Angebote">
-  <header><h2 id="title">Angebote werden geladen</h2><p id="summary" hidden></p><p id="source"></p></header>
+  <header><div class="brand-title"><img src="data:image/png;base64,${ICON_BASE64}" width="32" height="32" alt="willhaben"><h2 id="title">Angebote werden geladen</h2></div><p id="summary" hidden></p><p id="source"></p></header>
   <details id="coverage" hidden><summary id="coverage-label">Rechercheumfang</summary><p id="coverage-counts"></p><div id="coverage-queries"></div><button id="queries-more" class="button" type="button" hidden>Weitere Suchanfragen</button><button id="audit" class="button" type="button">Einzelnachweise</button><div id="audit-records"></div><button id="audit-more" class="button" type="button" hidden>Weitere Nachweise</button></details>
   <p id="notice" role="status" hidden></p>
   <div id="toolbar" hidden><label class="sort-control"><span id="sort-label">Sortieren</span><select id="sort" aria-labelledby="sort-label"><option value="rank">Empfehlung</option><option value="price_asc">Preis aufsteigend</option><option value="price_desc">Preis absteigend</option></select></label><button id="fullscreen" class="button" type="button" hidden>Größere Ansicht</button></div>

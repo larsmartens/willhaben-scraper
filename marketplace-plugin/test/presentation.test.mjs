@@ -208,7 +208,24 @@ test("presentation preserves photo cooldown and remaining cards without extra im
   assert.equal(result._meta.listingImages.length, 1);
 });
 
-test("overview covers prefer native thumbnails without downloading full photos", async t => {
+test("app covers use observed main photos from search summaries and detail galleries", async t => {
+  const storage = observations(), seen = [];
+  storage.set("summary:1", listing(1, { gallery: [{ index: 0, url: photo(1), thumbnailUrl: photo(1, "thumb") }] }));
+  storage.set("detail:2", listing(2, { gallery: [{ index: 0, url: photo(2), thumbnailUrl: photo(2, "thumb") }] }));
+  t.mock.method(globalThis, "fetch", async target => {
+    seen.push(String(target));
+    return new Response(Buffer.from(png, "base64"), { headers: { "content-type": "image/png" } });
+  });
+  const result = await invokeTool("present_listings", { source: "live", selections: [{ id: "1" }, { id: "2" }] }, storage.env);
+  assert.deepEqual(seen, [photo(1), photo(2)]);
+  assert.deepEqual(result.cards.map(card => card.image.size), ["full", "full"]);
+  assert.equal(result._meta.listingImages.length, 2);
+  const { _meta, ...modelData } = result;
+  assert.equal(result._images, undefined);
+  assert.equal(JSON.stringify(modelData).includes(png), false);
+});
+
+test("app covers fall back to observed thumbnails when main photos exceed the byte bound", async t => {
   const storage = observations(), seen = [];
   const thumb = photo(1, "thumb");
   storage.set("summary:1", listing(1, { gallery: [{ index: 0, url: photo(1), thumbnailUrl: thumb }] }));
@@ -219,10 +236,50 @@ test("overview covers prefer native thumbnails without downloading full photos",
       : new Response(Buffer.from(png, "base64"), { headers: { "content-type": "image/png" } });
   });
   const result = await invokeTool("present_listings", { source: "live", selections: [{ id: "1" }] }, storage.env);
-  assert.deepEqual(seen, [thumb]);
+  assert.deepEqual(seen, [photo(1), thumb]);
   assert.deepEqual(result.cards[0].image, { index: 0, url: thumb, status: "ready", size: "thumbnail" });
   assert.equal(result._meta.listingImages[0].data, png);
-  assert.equal(storage.slots.length, 1);
+  assert.equal(storage.slots.length, 2);
+});
+
+test("app covers fall back to an observed thumbnail when the main photo returns 404", async t => {
+  const storage = observations(), seen = [];
+  const thumb = photo(1, "thumb");
+  storage.set("summary:1", listing(1, { gallery: [{ index: 0, url: photo(1), thumbnailUrl: thumb }] }));
+  t.mock.method(globalThis, "fetch", async target => {
+    seen.push(String(target));
+    return String(target) === photo(1) ? new Response("gone", { status: 404 })
+      : new Response(Buffer.from(png, "base64"), { headers: { "content-type": "image/png" } });
+  });
+  const result = await invokeTool("present_listings", { source: "live", selections: [{ id: "1" }] }, storage.env);
+  assert.deepEqual(seen, [photo(1), thumb]);
+  assert.deepEqual(result.cards[0].image, { index: 0, url: thumb, status: "ready", size: "thumbnail" });
+  assert.deepEqual(result.errors, []);
+  assert.equal(result._meta.listingImages.length, 1);
+  assert.equal(result._meta.listingImages[0].data, png);
+  assert.equal(result._images, undefined);
+});
+
+test("app thumbnail fallbacks respect forbidden and rate-limited photo responses", async t => {
+  for (const [status, code] of [[403, "upstream_forbidden"], [429, "upstream_rate_limited"]]) {
+    await t.test(String(status), async subtest => {
+      const storage = observations(), seen = [];
+      for (const id of [1, 2]) storage.set("summary:" + id, listing(id, {
+        gallery: [{ index: 0, url: photo(id), thumbnailUrl: photo(id, "thumb") }],
+      }));
+      subtest.mock.method(globalThis, "fetch", async target => {
+        seen.push(String(target));
+        return String(target) === photo(1) ? new Response("wait", { status, headers: { "retry-after": "1800" } })
+          : new Response(Buffer.from(png, "base64"), { headers: { "content-type": "image/png" } });
+      });
+      const result = await invokeTool("present_listings", { source: "live", selections: [{ id: "1" }, { id: "2" }] }, storage.env);
+      assert.deepEqual(seen, [photo(1)]);
+      assert.deepEqual(result.cards.map(card => card.image.status), ["pending", "pending"]);
+      assert.equal(result.errors[0].code, code);
+      assert.ok(result.retryAt);
+      assert.equal(result._meta.listingImages.length, 0);
+    });
+  }
 });
 
 test("private image hydration stays below the shared response budget and retains pending cards", async t => {
@@ -333,9 +390,11 @@ test("Worker keeps hydrated image bytes outside model text and structuredContent
   assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
   assert.equal(result.structuredContent.cards[0].image.url, photo(1));
   const init = (await rpc("initialize", { protocolVersion: "2025-11-25", clientInfo: { name: "test", version: "1" }, capabilities: {} })).result;
-  assert.equal(init.serverInfo.version, "1.4.0");
+  assert.equal(init.serverInfo.version, "1.4.1");
   assert.match(init.instructions, /present_listings/);
   assert.match(init.instructions, /twelve relevant offers/);
+  assert.match(init.instructions, /immediately after the first useful search page/);
+  assert.match(init.instructions, /For verification, purchase advice or a study, inspect a focused shortlist/);
   assert.match(init.instructions, /one plain-text sentence/);
   assert.match(init.instructions, /researchId/);
   assert.match(init.instructions, /actual photos before making visual claims/);

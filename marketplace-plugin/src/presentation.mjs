@@ -61,7 +61,7 @@ export async function presentListings(args, env, provider) {
       cards.push(card);
       if (card.image.error) errors.push({ ...card.image.error, stage: "image" });
       if (card.image.url) requests.push({ id: card.id, index: card.image.index,
-        url: thumbnailUrl ?? card.image.url, size: thumbnailUrl ? "thumbnail" : "full", thumbnailUrl });
+        url: card.image.url, size: "full", thumbnailUrl });
     } catch (cause) {
       const error = { id: selection.id, stage: "observation", ...toolFailure(cause) };
       errors.push(error);

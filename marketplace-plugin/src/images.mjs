@@ -140,7 +140,7 @@ export async function imageBatch(requests, env, { mode = "images", deadline = Da
         try {
           fetched = await readImage(url, env, deadline, encodedBudget - encodedBytes);
         } catch (cause) {
-          if (!["image_too_large", "response_budget"].includes(cause?.code) ||
+          if (!["image_unavailable", "image_too_large", "response_budget"].includes(cause?.code) ||
               !request.thumbnailUrl || request.thumbnailUrl === url) throw cause;
           url = imageUrl(request.thumbnailUrl).href;
           size = "thumbnail";

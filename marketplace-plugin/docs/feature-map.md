@@ -1,8 +1,8 @@
-# Verifikationsübersicht für 1.4.0
+# Verifikationsübersicht für 1.4.1
 
-Die Node-Suite prüft die Tool- und Protokollverträge. Zwei zusätzliche Miniflare-Suiten prüfen denselben Traffic- und Cache-Code in workerd mit SQLite. Die unabhängigen Reviews verwenden eigene synthetische Repros.
+Die Node-Suite prüft die Tool- und Protokollverträge. Fünf Miniflare-Suiten prüfen OriginGate, Provider, MCP-Transport, ResearchSession und die toolübergreifende Integration in workerd. Die unabhängigen Reviews verwenden eigene synthetische Repros.
 
-## Neue Prüfpfade in 1.4.0
+## Neue Prüfpfade in der 1.4-Serie
 
 | Nutzerpfad | Prüffall |
 | --- | --- |
@@ -16,8 +16,10 @@ Die Node-Suite prüft die Tool- und Protokollverträge. Zwei zusätzliche Minifl
 | Vollständige Rechercheanzeige | Browserprüfung über 17 Queries und 24 Inseratnachweise mit weiterer Pagination |
 | Seitenwechsel während Abruf | Browserregressionen für verspätete Angebots-, Query-, Nachweis- und Fotoantworten |
 | Größere Ansicht | 320/360-Pixel-Karussell, 700-Pixel-Raster und viewportabhängige Vollbild-Bildabrufe |
+| Scharfe Angebotsbilder | Beobachtete Hauptbilder für zwei sofortige und vier nachgeladene Cover, Thumbnail-Fallback bei überschrittenem Bytebudget |
+| Frühe Übersicht | Server- und Skill-Anweisungen führen Übersichtsfragen nach der ersten brauchbaren Suchseite zur Kartenansicht |
 
-Die Chromium-Suiten verwenden einen simulierten Host mit der tatsächlichen offiziellen App-Bridge. Ein zusätzlicher Produktionsnachweis dokumentiert den Lauf im echten ChatGPT-Webclient. Frühere clientbezogene Beobachtungen in der folgenden Tabelle gehören zur Abnahme von 1.3.3.
+Die Chromium-Suiten verwenden einen simulierten Host mit der tatsächlichen offiziellen App-Bridge. Der Produktionsnachweis vom 7. November 2026 dokumentiert die veröffentlichte MCP-Verbindung und reale willhaben-Abfragen. Die zusätzliche Abnahme im ChatGPT-Webclient umfasst zwölf gerenderte Karten, aufklappbare Recherche- und Einzelnachweise, einen tatsächlichen Bildanhang und alle sieben Fotos des Referenzinserats über zwei Galerieabrufe. Der konkrete Verlauf und die daraus folgenden 1.4.1-Korrekturen stehen in `upgrade-1.4.md`. Frühere clientbezogene Beobachtungen in der folgenden Tabelle gehören zur Abnahme von 1.3.3.
 
 ## Fortgeführte Prüfpfade
 
@@ -37,14 +39,14 @@ Die Chromium-Suiten verwenden einen simulierten Host mit der tatsächlichen offi
 | Preisvergleich | Geeignete Kohorten und bekannte Stückbasis verwenden | Engine-Tests für Median, Ausschlüsse und `priceContext` |
 | Gespeicherte Vergleiche | Abrufpolicy `fresh` lässt die semantische Suchdefinition vergleichbar | Tool-Regressionsfall und unabhängiger +10-EUR-Median-Repro |
 | Parallele Requests | Eine gemeinsame Origin-Freigabe für gleichzeitige Bewerber | `test/origin-gate.runtime.mjs` mit 16 gleichzeitigen Anforderungen |
-| Lange Wartezeit | 1.800 Sekunden Cooldown vollständig erhalten | Traffic-Tests und beide Workers-Runtime-Suiten |
+| Lange Wartezeit | 1.800 Sekunden Cooldown vollständig erhalten | Traffic-Tests, `origin-gate.runtime.mjs` und `provider.runtime.mjs` |
 | SQLite-Neustart | Cooldown und originale Cache-Beobachtungen bleiben vorhanden | OriginGate-Runtime-Neustarttest |
 | Provider und echter Cache | Suche, kanonische Details, Facetten und 404-Tombstones funktionieren gemeinsam | `test/provider.runtime.mjs` mit synthetischem Outbound-Service |
 | Private Verbindung | Zugang bis zur Deaktivierung, korrekter Scope und stabile Ratenzählung | Personal- und Worker-Tests |
 | ChatGPT-Transport | Initialize, tools/list, tools/call, Bilder und strukturierte Fehler | Worker-Tests, offizieller MCP-SDK-Probe und JSON-Schema-Validatoren |
 | Auswahl mit Fotos | Ein eigenes Inseratfoto und kanonische Fakten pro ausgewählter Karte | `test/presentation.test.mjs` prüft Reihenfolge, ID-/Index-Zuordnung und fehlende Beobachtungen |
 | Zeitlich stimmige Karten | Neueste vollständige Beobachtung samt ursprünglichem Zeitpunkt verwenden | Regression für jüngere Suche, jüngere Details, Gleichstand und Löschmarkierung |
-| Kleiner Modellkontext | Fotobytes ausschließlich an die Oberfläche liefern | Worker- und SDK-Prüfung von `content`, `structuredContent` und `_meta` |
+| Kleiner Modellkontext | Fotobytes für Angebotskarten und App-Galerien über `_meta` liefern. Gezielte Modell-Fotoabrufe liefern MCP-Bildblöcke. | Worker- und SDK-Prüfung von `content`, `structuredContent` und `_meta` |
 | Begleitantwort zur Kartenansicht | Erfolgreicher Tool-Aufruf führt zu einer kurzen Einordnung und auf Wunsch ausführlicher Analyse | Regression für Erfolgs-`nextAction`, Ressourcenbeschreibung und Vorrang gezielter Fehlerbehandlung |
 | Große oder fehlende Titelbilder | Native Miniatur verwenden oder konkreten Fehler mit Fortsetzung erhalten | Regressionen für 404, 429, Antwortbudget, Thumbnail-Fallback und ungültigen Fotoindex |
 | MCP-Apps-Ressource | Versionierte Oberfläche über `resources/list` und `resources/read` bereitstellen | Protokolltests einschließlich aktueller und älterer unterstützter MCP-Versionen |

@@ -23,11 +23,11 @@ Baseline is `97c90e0a4654b19a7f5f8920ad4b20c2b5547e12`, deployed as 1.3.3. The r
 
 | Question | Considered approaches | Selected approach and reason |
 | --- | --- | --- |
-| ChatGPT integration | MCP Apps, GPT Actions/OpenAPI, dedicated web application with Responses API | MCP Apps supplies this installed plugin's tool discovery, attachments and embedded cards. A standalone app would add a separate application and chat session. |
+| ChatGPT integration | MCP Apps, GPT Actions/OpenAPI, dedicated web application with Responses API | MCP supplies tool discovery, ChatGPT's `openai/fileParams` supplies attachment descriptors, and MCP Apps supplies embedded cards. A standalone app would add a separate application and chat session. |
 | MCP implementation | Official SDK 2.4.0, Cloudflare Agents 0.33.0, Vercel mcp-handler 2.3.1, mcp-lite 0.10.0 | Official Fetch handler removes handwritten protocol validation and serialization. The existing Worker already owns routing and authorization. |
 | Research state | Per-call counts, round-tripped full ledger, per-task SQLite Durable Object | A task-scoped object provides atomic deduplication and paged records without enlarging every model call. Explicit research IDs prevent different chats on the same connection from mixing. |
 | Large overview | Eager images, infinite retained DOM with virtualization, bounded pages with lazy images | Twelve cards initially and at most 24 DOM cards per page. Photo bytes load for visible cards and requested galleries. |
-| Image normalization | Client-only canvas, bundled image codecs, Cloudflare Images binding | The binding processes attachment and URL bytes directly. Native willhaben uses JPEG at a maximum of 300 pixels and quality 90. |
+| Image normalization | Client-only canvas, bundled image codecs, Cloudflare Images binding | The binding processes attachment and URL bytes directly. The observed willhaben frontend preprocesses reference images as JPEG with a maximum dimension of 300 pixels and quality 0.9. |
 
 ## Evidence
 
@@ -63,6 +63,24 @@ The native icon assets come from willhaben's public frontend. The 192-pixel asse
 
 ## Automated verification
 
-On 2026-11-07, 141 Node unit tests passed. The complete OriginGate, provider, four-revision MCP and research workerd suites passed. The tool integration covers native image-search continuation, source-detail auditing through a later failure, criteria across overview pages, metadata-only app photos and executable continuation arguments. Both Chromium suites passed all 24 groups using the official bridge with a controlled host.
+On 2026-11-07, 147 Node unit tests passed for 1.4.1. The complete OriginGate, provider, four-revision MCP and research workerd suites passed. The tool integration covers native image-search continuation, source-detail auditing through a later failure, criteria across overview pages, metadata-only app photos and executable continuation arguments. Both Chromium suites passed all 24 groups using the official bridge with a controlled host.
 
-An independent reviewer repeated the ledger, visual-provider, coalescing and continuation regressions. The review found no remaining confirmed P1/P2 issue in that scope. The controlled coalescing test establishes four concurrent cold calls sharing one upstream request. It does not measure live willhaben latency.
+An independent reviewer repeated the ledger, visual-provider, coalescing and continuation regressions. The review found no remaining confirmed P1/P2 issue in that scope. The controlled coalescing test establishes four concurrent cold calls sharing one upstream request under an identical synthetic upstream workload.
+
+## Production verification
+
+The 1.4.0 API verification completed on 2026-11-07 at 14:17 UTC against Worker version `db8485b5-826a-4d0e-8a97-17fb0c0b3a9f`, published from commit `94461c6e37cc4ecb6840a87f6ca55e5579898b24`. Cloudflare confirmed that version serving 100 percent of traffic during verification.
+
+The deployment exposed 16 tools across four MCP revisions. Text search returned 50 of 90 matches. Three original lamp listings were inspected. The overview returned two 12-card pages, two eager covers and four lazy covers. Native listing-photo search returned 50 of 198 matches. Public-image URL search and the attachment-descriptor pipeline each returned 30 of 196 matches. This API descriptor test used a public listing image and a synthetic file ID.
+
+The combined audit counted four search calls, 160 returned rows, 128 unique listings, three descriptions delivered to the model, two model photo blocks and six app photos. The URL and attachment variants retain separate query identities even when willhaben assigns their shared image bytes the same native picture key.
+
+## ChatGPT client acceptance and 1.4.1 follow-up
+
+A fresh ChatGPT web conversation rendered twelve lamp cards with original photos and expandable research coverage. Its six search scopes covered 158 unique retrieved listings. The displayed audit reported 16 descriptions, 19 model-delivered photos and 13 recorded reviews. Individual records exposed description lengths, field lists, precise photo indices and recorded findings.
+
+A second conversation uploaded an actual public listing photo through ChatGPT's file picker. Native image search returned 196 matches, a category-filtered search found the original lamp, and an alternative original photo returned 195 similarity matches. The app displayed twelve selected offers and separate uploaded-image and listing-photo query records. Its seven-photo reference gallery loaded in two batches, with every original image decoded at 300 by 400 pixels.
+
+The client run exposed two follow-ups included in 1.4.1. Detail-gallery thumbnails were only 56 pixels wide, so app covers now prefer each observed main-image URL with the existing byte-budget thumbnail fallback and a fallback for an unavailable main image. The two eager covers, four-cover lazy batches and app-only image delivery remain covered by regression tests. The willhaben logo also appears inside the result header.
+
+The agent workflow now completes an overview from the first useful search page and leaves detailed inspection to verification, purchase advice and studies. The initial audit displays the actual counts, including zero detailed inspections. The installed plugin package includes the revised skill. Its manifest and server metadata contain the willhaben icon. The ChatGPT plugin directory still displayed its generic fallback icon during the observed 1.4.1 package check.

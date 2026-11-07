@@ -11,7 +11,10 @@ const state = await mkdtemp(join(tmpdir(), "willhaben-tool-research-"));
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
 const outbound = [];
 let rejectVisual = false;
+let oversizedPhotoId = null;
+let unavailablePhotoId = null;
 const photo = (id, index) => `https://cache.willhaben.at/mmo/fixture-${id}-${index}.png`;
+const thumbnail = (id, index) => `https://cache.willhaben.at/mmo/fixture-${id}-${index}_thumb.png`;
 function listing(id, detailed = false) {
   return { id: String(id), verticalId: 5, description: "Fixture Lamp " + id,
     advertStatus: { id: "active" }, attributes: { attribute: [
@@ -19,7 +22,7 @@ function listing(id, detailed = false) {
       { name: "SEO_URL", values: ["kaufen-und-verkaufen/d/fixture-lamp-" + id] },
       ...(detailed ? [{ name: "DESCRIPTION", values: ["Fixture description with an explicit lamp measurement."] }] : []),
     ] }, advertImageList: { advertImage: [0, 1].map(index => ({ id: index + 1,
-      mainImageUrl: photo(id, index), thumbnailImageUrl: photo(id, index),
+      mainImageUrl: photo(id, index), thumbnailImageUrl: thumbnail(id, index),
       similarImageSearchUrl: "https://ad-search.willhaben.at/restapi/v2/imagesearch/atz?adId=" + id + "&imageId=" + (index + 1) + "&imageUrl=" + encodeURIComponent(photo(id, index)) + "&rows=30",
     })) } };
 }
@@ -43,7 +46,13 @@ const mf = new Miniflare({ modules: true, script: bundle.outputFiles[0].text, co
   outboundService: request => {
     const url = new URL(request.url);
     outbound.push(url.href);
-    if (url.origin === "https://cache.willhaben.at") return new Response(Buffer.from(png, "base64"), { headers: { "content-type": "image/png" } });
+    if (url.origin === "https://cache.willhaben.at") {
+      if (url.href === photo(unavailablePhotoId, 0)) return new Response("gone", { status: 404 });
+      if (url.href === photo(oversizedPhotoId, 0)) return new Response("oversize", {
+        headers: { "content-type": "image/png", "content-length": String(5 * 1024 * 1024) },
+      });
+      return new Response(Buffer.from(png, "base64"), { headers: { "content-type": "image/png" } });
+    }
     assert.equal(url.origin, "https://www.willhaben.at");
     if (rejectVisual && url.pathname.includes("aehnlichkeitssuche")) return new Response("Forbidden", { status: 403 });
     if (url.pathname.includes("marktplatz") || url.pathname.includes("aehnlichkeitssuche")) {
@@ -78,7 +87,9 @@ try {
   assert.equal(search.continuation.arguments.pageSize, 100);
   console.log("PASS search starts an isolated audit with 100 compact results");
 
+  const beforeOverview = outbound.length;
   const overview = await call("present_listings", { source: "live", researchId, criteria: [{ key: "condition", value: "used" }] });
+  const eagerCoverUrls = outbound.slice(beforeOverview);
   assert.equal(overview.cards.length, 12);
   assert.equal(overview.continuation, undefined);
   assert.equal(overview.total, 100);
@@ -93,17 +104,29 @@ try {
   assert.equal(next.total, 100);
   assert.deepEqual(next.criteria, overview.criteria);
   assert.deepEqual(next.cards[0].assessment.evaluation, overview.cards[0].assessment.evaluation);
-  console.log("PASS 12-card pages retain the full selection with two eager thumbnails");
+  console.log("PASS 12-card pages retain the full selection with two eager covers");
 
+  oversizedPhotoId = "1005";
+  unavailablePhotoId = "1004";
+  const beforeCovers = outbound.length;
   const covers = await call("browse_collection", { researchId, collectionId, action: "covers", ids: ["1003", "1004", "1005", "1006"] });
+  oversizedPhotoId = null;
+  unavailablePhotoId = null;
   assert.equal(covers._meta.listingImages.length, 4);
+  assert.deepEqual(outbound.slice(beforeCovers), [photo(1003, 0), photo(1004, 0), thumbnail(1004, 0), photo(1005, 0), thumbnail(1005, 0), photo(1006, 0)]);
+  assert.deepEqual(covers.results.map(result => [result.url, result.size]), [
+    [photo(1003, 0), "full"], [thumbnail(1004, 0), "thumbnail"], [thumbnail(1005, 0), "thumbnail"], [photo(1006, 0), "full"],
+  ]);
+  assert.deepEqual(covers.errors, []);
+  assert.deepEqual(eagerCoverUrls, [photo(1001, 0), photo(1002, 0)]);
+  assert.deepEqual(overview.cards.slice(0, 2).map(card => card.image.size), ["full", "full"]);
   assert.equal(covers._images, undefined);
   assert.equal(covers.research.counts.uiPhotosLoaded, 6);
   assert.equal(covers.research.counts.uniqueModelPhotoIndices, 0);
   const beforeForeign = outbound.length;
   await assert.rejects(call("browse_collection", { researchId, collectionId, action: "covers", ids: ["99999"] }), { code: "collection_selection_mismatch" });
   assert.equal(outbound.length, beforeForeign);
-  console.log("PASS lazy covers stay app-only and membership rejects foreign IDs before fetch");
+  console.log("PASS two eager and four lazy covers use observed main photos with 404 and byte-bound thumbnail fallback and app-only delivery");
 
   const detail = await call("inspect_listings", { source: "live", researchId, ids: ["1001"], fields: ["description"], descriptionLimit: 8 });
   assert.equal(detail.research.counts.descriptionsDeliveredToModel, 1);

@@ -1,6 +1,6 @@
 # willhaben
 
-Ein MCP-Plugin für die Recherche auf willhaben Marktplatz in ChatGPT. Version 1.4.0 unterstützt Text- und Bildsuche, gezielte Detailprüfungen, echte Inseratfotos, vergleichbare Angebotspreise, blätterbare Angebotskarten und einen nachvollziehbaren Rechercheumfang.
+Ein MCP-Plugin für die Recherche auf willhaben Marktplatz in ChatGPT. Version 1.4.1 unterstützt Text- und Bildsuche, gezielte Detailprüfungen, echte Inseratfotos, vergleichbare Angebotspreise, blätterbare Angebotskarten und einen nachvollziehbaren Rechercheumfang.
 
 ## Verbindung
 

@@ -89,7 +89,7 @@ export const toolDefinitions = [
     object({ id: photoId, index: photoIndex, fresh }, ["id", "index"]), online),
   {
     ...def("present_listings", "Angebote mit Bildern präsentieren",
-      "Show 12 offers initially, optionally 24 per page, with original photos, facts, links and research coverage. Pass researchId for all observed results or queryIds for selected searches. Use selections for a ranked selection with reasons or open questions. The user can page through the collection and open galleries. Inspect missingIds before recommending them. Keep offer facts and photos in the app cards. Finish a display request with one plain sentence pointing to them. For requested advice, add decision analysis. Inspect actual image blocks before visual claims.",
+      "Show 12 offers initially, optionally 24 per page, with original photos, facts, links and research coverage. Pass researchId for all observed results or queryIds for selected searches. Use selections for a ranked selection with reasons or open questions. The user can page through the collection and open galleries. Inspect missingIds before recommending them. Keep offer facts and photos in the app cards. Finish a display request with one plain sentence pointing to them. For requested advice, add decision analysis. Inspect actual image blocks before visual claims. Search summaries provide the initial overview, and the app loads its cover photos.",
       object({ ...data, researchId, selections: array(presentationSelection, 1, 1000),
         queryIds: array(string(100), 1, 32), pageSize: overviewPageSize,
         title: string(100), summary: string(400), criteria }, ["source"]), online),
@@ -591,8 +591,9 @@ async function browseCollection(args, env) {
       const row = await provider.summary(selection.id, { deadline: requestDeadline(env) });
       const index = selection.photoIndex ?? 0;
       const photo = galleryOf(row)[index];
-      const url = photo?.thumbnailUrl ?? photo?.url;
-      if (url) requests.push({ id: selection.id, index, url, size: photo.thumbnailUrl ? "thumbnail" : "full" });
+      const url = photo?.url ?? photo?.thumbnailUrl;
+      if (url) requests.push({ id: selection.id, index, url,
+        size: photo.url ? "full" : "thumbnail", thumbnailUrl: photo.thumbnailUrl });
       else missingIds.push(selection.id);
     }
     const batch = await imageBatch(requests, env, { deadline: requestDeadline(env) });
