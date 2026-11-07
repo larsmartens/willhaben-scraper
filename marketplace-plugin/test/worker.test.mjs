@@ -1,0 +1,347 @@
+import { createServer } from "node:http";
+import { once } from "node:events";
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import worker from "../src/worker.mjs";
+import { readMcpResponse } from "./mcp-response.mjs";
+
+const protocol = "2026-07-28";
+const endpoint = "https://market.example/mcp";
+const headers = { "content-type": "application/json", accept: "application/json, text/event-stream" };
+
+const message = (method, params = {}) => ({ jsonrpc: "2.0", id: 7, method, params });
+function post(body, overrides = {}, env = {}) {
+  return worker.fetch(new Request(endpoint, {
+    method: "POST", headers: { ...headers, ...overrides }, body: JSON.stringify(body),
+  }), env);
+}
+function stateless(method, params = {}) {
+  const meta = { "io.modelcontextprotocol/protocolVersion": protocol,
+    "io.modelcontextprotocol/clientInfo": { name: "protocol-test", version: "1" },
+    "io.modelcontextprotocol/clientCapabilities": {} };
+  return message(method, { ...params, _meta: meta });
+}
+const modernHeaders = (method, name) => ({ "MCP-Protocol-Version": protocol, "Mcp-Method": method,
+  ...(name ? { "Mcp-Name": name } : {}) });
+
+test("health, human setup and route boundaries", async () => {
+  for (const [path, status] of [["/", 200], ["/health", 200], ["/mcp", 405], ["/other", 404]]) {
+    const res = await worker.fetch(new Request(new URL(path, endpoint)));
+    assert.equal(res.status, status);
+    if (path === "/") assert.match(await res.text(), /https:\/\/market\.example\/mcp/);
+    if (path === "/health") assert.equal((await res.json()).liveEnabled, false);
+    if (path === "/mcp") assert.equal(res.headers.get("allow"), "POST");
+  }
+});
+
+test("legacy ChatGPT-style HTTP handshake, list, call and notification over a loopback socket", async () => {
+  const server = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const result = await worker.fetch(new Request(new URL(req.url, endpoint), {
+      method: req.method, headers: req.headers, body: Buffer.concat(chunks),
+    }));
+    res.writeHead(result.status, Object.fromEntries(result.headers));
+    res.end(Buffer.from(await result.arrayBuffer()));
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    const rpc = (msg) => fetch("http://127.0.0.1:" + server.address().port + "/mcp", {
+      method: "POST", headers, body: JSON.stringify(msg),
+    });
+    const init = await readMcpResponse(await rpc(message("initialize", { protocolVersion: "2025-11-25",
+      clientInfo: { name: "integration-test", version: "1" }, capabilities: {} })));
+    assert.deepEqual(init.result.capabilities, { tools: {}, resources: {} });
+    assert.equal(init.result.protocolVersion, "2025-11-25");
+    assert.equal(init.result.serverInfo.name, "willhaben");
+    const notification = await rpc({ jsonrpc: "2.0", method: "notifications/initialized" });
+    assert.equal(notification.status, 202);
+    assert.equal(await notification.text(), "");
+    const list = await readMcpResponse(await rpc(message("tools/list")));
+    const defs = list.result.tools;
+    for (const tool of ["discover_filters", "search_listings", "inspect_listings", "study_market"])
+      assert.ok(defs.some((def) => def.name === tool && def.inputSchema.type === "object"), tool);
+    const detail = await readMcpResponse(await rpc(message("tools/call", { name: "discover_filters",
+      arguments: { source: "demo", query: "BANKAMP" } })));
+    assert.ok(!detail.result.isError, JSON.stringify(detail));
+    assert.deepEqual(JSON.parse(detail.result.content[0].text), detail.result.structuredContent);
+    assert.equal((await readMcpResponse(await rpc(message("ping")))).id, 7);
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});
+
+test("published criterion schemas accept canonical and German keys in flag-free clients", async () => {
+  const { result } = await readMcpResponse(await post(message("tools/list")));
+  for (const name of ["inspect_listings", "study_market", "save_study"]) {
+    const tool = result.tools.find((entry) => entry.name === name);
+    const keySchema = tool.inputSchema.properties.criteria.items.properties.key;
+    assert.equal(keySchema.type, "string");
+    assert.equal(keySchema.minLength, 1);
+    assert.equal(keySchema.maxLength, 64);
+    for (const key of ["diameterMm", "Öffnung"]) {
+      const accepted = !keySchema.pattern || new RegExp(keySchema.pattern).test(key);
+      assert.ok(accepted, `${name} must advertise a portable schema for ${key}`);
+    }
+  }
+
+  const args = { source: "provided", ids: ["123"],
+    listings: [{ id: "123", title: "Lampenglas", price: 20, attributes: { Öffnung: 24 } }],
+    criteria: [{ key: "Öffnung", value: 24 }] };
+  const valid = await post(message("tools/call", { name: "inspect_listings", arguments: args }));
+  assert.equal((await readMcpResponse(valid)).result.structuredContent.results[0].evaluation.status, "confirmed");
+  const invalid = await post(message("tools/call", { name: "inspect_listings", arguments: {
+    ...args, criteria: [{ key: "constructor", value: 24 }],
+  } }));
+  const failure = (await readMcpResponse(invalid)).result;
+  assert.equal(failure.isError, true);
+  assert.match(failure.content[0].text, /Invalid criterion key/);
+});
+
+test("modern discovery, cached shared tool definitions, private per-call data and routing headers", async () => {
+  const discovery = await post(stateless("server/discover"), modernHeaders("server/discover"));
+  const found = (await readMcpResponse(discovery)).result;
+  assert.equal(found.resultType, "complete");
+  assert.deepEqual(found.supportedVersions, [protocol]);
+  assert.equal(found._meta["io.modelcontextprotocol/serverInfo"].name, "willhaben");
+  const list = await post(stateless("tools/list"), modernHeaders("tools/list"));
+  assert.equal((await readMcpResponse(list)).result.cacheScope, "public");
+  const call = stateless("tools/call", { name: "discover_filters", arguments: { source: "demo", query: "BANKAMP" } });
+  const valid = await post(call, modernHeaders("tools/call", "discover_filters"));
+  assert.equal(valid.headers.get("cache-control"), "no-store");
+  const result = (await readMcpResponse(valid)).result;
+  assert.equal(result.resultType, "complete");
+  assert.ok(!result.isError);
+  const encoded = await post(call, modernHeaders("tools/call", "=?base64?" + btoa("discover_filters") + "?="));
+  assert.equal(encoded.status, 200);
+  for (const badHeaders of [modernHeaders("tools/call"), modernHeaders("ping", "discover_filters"),
+    modernHeaders("tools/call", "wrong_tool"), { "Mcp-Method": "tools/call", "Mcp-Name": "discover_filters" }]) {
+    const mismatch = await post(call, badHeaders);
+    assert.equal(mismatch.status, 400);
+    assert.equal((await readMcpResponse(mismatch)).error.code, -32020);
+  }
+  const missingCapabilities = stateless("tools/list");
+  delete missingCapabilities.params._meta["io.modelcontextprotocol/clientCapabilities"];
+  assert.equal((await readMcpResponse(await post(missingCapabilities, modernHeaders("tools/list")))).error.code, -32602);
+  const badVersion = await post(message("ping"), { "MCP-Protocol-Version": "1900-01-01" });
+  assert.equal((await readMcpResponse(badVersion)).error.code, -32000);
+  const unknown = await post(stateless("unregistered/method"), modernHeaders("unregistered/method"));
+  assert.equal(unknown.status, 404);
+});
+
+test("modern resource responses include the cache fields required by MCP 2026-07-28", async () => {
+  for (const [method, params] of [
+    ["resources/read", { uri: "ui://marktplatz/listings-v1.html" }],
+    ["resources/templates/list", {}],
+  ]) {
+    const modern = await post(stateless(method, params), modernHeaders(method, params.uri));
+    const result = (await readMcpResponse(modern)).result;
+    assert.equal(modern.status, 200);
+    assert.equal(result.resultType, "complete");
+    assert.equal(result.ttlMs, 60000, method + " requires a nonnegative integer ttlMs");
+    assert.equal(result.cacheScope, "public", method + " requires an explicit cacheScope");
+    const legacy = (await readMcpResponse(await post(message(method, params)))).result;
+    assert.equal(Object.hasOwn(legacy, "ttlMs"), false);
+    assert.equal(Object.hasOwn(legacy, "cacheScope"), false);
+  }
+});
+
+test("modern discovery and UI resources accept omitted optional clientInfo on public and personal endpoints", async (t) => {
+  const token = "89".repeat(32);
+  const digest = Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token))).toString("hex");
+  const env = { PERSONAL_TEST_TOKEN_SHA256: digest };
+  const uri = "ui://marktplatz/listings-v1.html";
+  for (const [scope, path] of [["public", "/mcp"], ["personal", "/p/" + token + "/mcp"]]) {
+    for (const [method, params] of [["server/discover", {}], ["resources/read", { uri }]]) {
+      await t.test(scope + " " + method, async () => {
+        const body = stateless(method, params);
+        delete body.params._meta["io.modelcontextprotocol/clientInfo"];
+        const response = await worker.fetch(new Request(new URL(path, endpoint), {
+          method: "POST", headers: { ...headers, ...modernHeaders(method, params.uri) },
+          body: JSON.stringify(body),
+        }), env);
+        const payload = await readMcpResponse(response);
+        assert.equal(response.status, 200, JSON.stringify(payload));
+        assert.equal(payload.result.resultType, "complete");
+        if (method === "server/discover") {
+          assert.ok(payload.result.supportedVersions.includes(protocol));
+        } else {
+          assert.equal(payload.result.contents[0].uri, uri);
+          assert.equal(payload.result.contents[0].mimeType, "text/html;profile=mcp-app");
+          assert.match(payload.result.contents[0].text, /<!doctype html>/i);
+        }
+      });
+    }
+  }
+});
+
+test("modern requests reject malformed clientInfo when provided", async () => {
+  for (const info of [null, [], "client", {}, { name: "test" }, { version: "1" },
+    { name: 1, version: "1" }, { name: "test", version: 1 }]) {
+    const body = stateless("server/discover");
+    body.params._meta["io.modelcontextprotocol/clientInfo"] = info;
+    const response = await post(body, modernHeaders("server/discover"));
+    assert.equal(response.status, 400, JSON.stringify(info));
+    assert.equal((await readMcpResponse(response)).error.code, -32602);
+  }
+});
+
+test("MCP access stays closed for hostile origins and unprotected live configuration", async () => {
+  const ping = message("ping");
+  assert.equal((await post(ping, { origin: "https://chatgpt.com.evil.test" })).status, 403);
+  assert.equal((await post(ping, { origin: "null" })).status, 403);
+  assert.equal((await post(ping, { origin: "https://chatgpt.com" })).status, 200);
+  assert.equal((await post(ping, {}, { LIVE_ACCESS: "authorized" })).status, 503);
+  const env = { LIVE_ACCESS: "authorized", MCP_BEARER_TOKEN: "unit-test-secret" };
+  assert.equal((await post(ping, {}, env)).status, 401);
+  assert.equal((await post(ping, { authorization: "Bearer unrelated" }, env)).status, 401);
+  assert.equal((await post(ping, { authorization: "Bearer unit-test-secret" }, env)).status, 200);
+  assert.equal((await post(ping, {}, { MCP_BEARER_TOKEN: "unit-test-secret" })).status, 401);
+});
+
+test("malformed, oversized, batch and invalid tool requests have explicit errors", async () => {
+  assert.equal((await post(message("ping"), { "content-type": "text/plain" })).status, 415);
+  assert.equal((await post(message("ping"), { accept: "text/event-stream" })).status, 406);
+  const badJson = await worker.fetch(new Request(endpoint, { method: "POST", headers, body: "{" }));
+  assert.equal((await readMcpResponse(badJson)).error.code, -32700);
+  const huge = message("ping", { data: "a".repeat(2 * 1024 * 1024) });
+  assert.equal((await post(huge)).status, 413);
+  assert.equal((await readMcpResponse(await post([stateless("tools/list")], modernHeaders("tools/list")))).error.code, -32600);
+  assert.equal((await readMcpResponse(await post(message("tools/call", { name: "missing" })))).error.code, -32602);
+  assert.equal((await readMcpResponse(await post(message("tools/call", { name: "search_listings", arguments: [] })))).error.code, -32602);
+});
+
+test("rate-limit binding returns a retry time and scopes requests to the Cloudflare client IP", async () => {
+  const seen = [];
+  const REQUEST_LIMITER = { async limit({ key }) { seen.push(key); return { success: seen.length === 1 }; } };
+  const client = { "cf-connecting-ip": "192.0.2.1" };
+  assert.equal((await post(message("ping"), client, { REQUEST_LIMITER })).status, 200);
+  const deny = await post(message("ping"), client, { REQUEST_LIMITER });
+  assert.equal(deny.status, 429);
+  assert.equal(deny.headers.get("Retry-After"), "60");
+  assert.deepEqual(seen, ["192.0.2.1", "192.0.2.1"]);
+});
+
+test("personal request accounting uses the private connection across changing client IPs", async () => {
+  const token = "67".repeat(32);
+  const digest = Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token))).toString("hex");
+  const keys = [];
+  const env = {PERSONAL_TEST_TOKEN_SHA256:digest,PERSONAL_LIMITER:{async limit({key}) {
+    keys.push(key);
+    return {success:true};
+  }}};
+  for (const ip of ["192.0.2.1","192.0.2.2"]) {
+    const response = await worker.fetch(new Request("https://market.example/p/" + token + "/mcp", {
+      method:"POST",headers:{...headers,"cf-connecting-ip":ip},body:JSON.stringify(message("ping")),
+    }),env);
+    assert.equal(response.status,200);
+  }
+  assert.deepEqual(keys,["personal-access","personal-access"]);
+});
+
+test("real MCP study walks all pages per variant and never prices unknown or contradicted specifications", async () => {
+  const listings = Array.from({length:120}, (_, i) => ({
+    id: String(i+1), title: "BANKAMP Lampenglas " + i, model: "Kugel 60", category: "Glas", condition: "used",
+    quantity: 1, price: 30 + i, attributes: i < 118 ? { diameterMm:60 } : i === 118 ? {} : { diameterMm:50 },
+  }));
+  const response = await post(message("tools/call", { name: "study_market", arguments: {
+    source: "provided", queries: ["BANKAMP", "Lampenglas"], criteria: [{key:"diameterMm",value:60}],
+    listings, maxPages: 12, maxDetails: 1,
+  } }));
+  const rpc = await readMcpResponse(response);
+  assert.ok(!rpc.result.isError, JSON.stringify(rpc.result.content));
+  const report = rpc.result.structuredContent;
+  assert.equal(report.source, "provided");
+  assert.equal(report.coverage.searchExhausted, true);
+  assert.equal(report.coverage.detailsComplete, false);
+  assert.deepEqual(report.coverage.queries.map(q=>q.pages), [3,3]);
+  assert.equal(report.counts.raw, 240);
+  assert.equal(report.counts.unique, 120);
+  assert.equal(report.counts.confirmed, 118);
+  assert.equal(report.counts.unknown, 1);
+  assert.equal(report.counts.contradicted, 1);
+  assert.equal(report.cohorts[0].askingEUR.n, 118);
+  assert.equal(report.cohorts[0].askingEUR.median, 88.5);
+});
+
+test("snapshot differences reflect observed cohort prices and missing capabilities fail closed", async () => {
+  const kv = new Map();
+  const STUDIES = {
+    async put(key, value, cfg) { assert.equal(cfg.expirationTtl, 86400); kv.set(key, value); },
+    async get(key, mode) { assert.equal(mode, "json"); return kv.has(key) ? JSON.parse(kv.get(key)) : null; },
+  };
+  async function call(name, args) {
+    return (await readMcpResponse(await post(message("tools/call", { name, arguments: args }), {}, {STUDIES}))).result;
+  }
+  function catalog(delta) {
+    return Array.from({length:6}, (_,i)=>({ id:String(301+i), title:"Lens cap",model:"EF",
+      category:"Lid",condition:"used",quantity:1,price:10+i+delta }));
+  }
+  const read = await call("study_market", {source:"provided", queries:["lens"], listings:catalog(0)});
+  assert.equal(read.structuredContent.cohorts[0].askingEUR.median, 12.5);
+  assert.equal(kv.size, 0);
+  const a = (await call("save_study",{source:"provided", queries:["lens"], listings:catalog(0)})).structuredContent;
+  const b = (await call("save_study",{source:"provided", queries:["lens"], listings:catalog(5)})).structuredContent;
+  assert.notEqual(a.study_id, b.study_id);
+  assert.equal(kv.size, 2);
+  const changed = (await call("compare_studies", {before:a.study_id,after:b.study_id})).structuredContent;
+  assert.equal(changed.sameDefinition, true);
+  assert.equal(changed.cohorts[0].medianChangeEUR, 5);
+  assert.equal((await call("get_study", {study_id:"ms_"+"0".repeat(32)})).isError, true);
+});
+
+test("photo tools return real MCP image blocks only for the configured live image scope", async (t) => {
+  const calls = [];
+  const photo = "https://cache.willhaben.at/mmo/fixtures/photo.png";
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    calls.push(String(url));
+    assert.equal(options.redirect,"manual","Cloudflare supports follow/manual; photo redirects must not be followed");
+    if (String(url) === photo) return new Response(Buffer.from(png, "base64"), {headers:{ "content-type":"image/png" }});
+    assert.equal(String(url), "https://www.willhaben.at/iad/object?adId=12345");
+    const advertDetails = {id:"12345",verticalId:5,description:"Ersatzglas",attributes:{attribute:[]},
+      advertImageList:{advertImage:[{mainImageUrl:photo}]}};
+    return new Response('<script id="__NEXT_DATA__">' + JSON.stringify({props:{pageProps:{advertDetails}}}) + '</script>');
+  });
+  const request = message("tools/call",{name:"inspect_listing_image",arguments:{id:"12345",index:0}});
+  const auth = {authorization:"Bearer test-token"};
+  const env = { LIVE_ACCESS:"authorized", MCP_BEARER_TOKEN:"test-token" };
+  let result = (await readMcpResponse(await post(request,auth,env))).result;
+  assert.equal(result.isError, true);
+  assert.deepEqual(calls, []);
+  result = (await readMcpResponse(await post(request,auth,{...env, IMAGE_ACCESS:"authorized"}))).result;
+  assert.ok(!result.isError, JSON.stringify(result.content[0]));
+  assert.equal(result.content[1].type, "image");
+  assert.equal(result.content[1].mimeType, "image/png");
+  assert.equal(result.content[1].data, png);
+  assert.equal(result.structuredContent.id, "12345");
+  assert.ok(!result.content[0].text.includes(png));
+  assert.ok(!JSON.stringify(result.structuredContent).includes(png));
+});
+
+test("a personal capability enables live search and photos only on its own connection", async () => {
+  const token="45".repeat(32);
+  const digest=Buffer.from(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(token))).toString("hex");
+  const env={PERSONAL_TEST_TOKEN_SHA256:digest,PERSONAL_TEST_EXPIRES_AT:"2099-01-01T00:00:00Z"};
+  const body=JSON.stringify(message("tools/call",{name:"plan_search",arguments:{queries:["BANKAMP"]}}));
+  const ask=(path)=>worker.fetch(new Request("https://market.example"+path,{method:"POST",headers,body}),env);
+  const open=(await readMcpResponse(await ask("/mcp"))).result.structuredContent;
+  assert.deepEqual([open.liveAvailable,open.imageAvailable],[false,false]);
+  const hit=await ask("/p/"+token+"/mcp");
+  const scoped=(await readMcpResponse(hit)).result.structuredContent;
+  assert.equal(scoped.mode,"personal_test");
+  assert.deepEqual([scoped.liveAvailable,scoped.imageAvailable],[true,true]);
+  assert.equal(hit.headers.get("referrer-policy"),"no-referrer");
+  assert.equal((await ask("/p/"+digest+"/mcp")).status,404);
+});
+
+test("unexpected storage errors keep secrets out of tool results", async () => {
+  const response = await post(message("tools/call", { name: "get_study", arguments: { study_id: "ms_" + "0".repeat(32) } }), {}, {
+    STUDIES: { async get() { throw new Error("Internal failure containing a private-storage-secret"); } },
+  });
+  const result = (await readMcpResponse(response)).result;
+  assert.equal(result.isError, true);
+  assert.equal(result.structuredContent.error.code, "tool_error");
+  assert.ok(!JSON.stringify(result).includes("private-storage-secret"));
+});

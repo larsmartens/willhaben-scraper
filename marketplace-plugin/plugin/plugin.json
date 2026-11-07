@@ -1,0 +1,25 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "willhaben",
+  "version": "1.5.1",
+  "description": "Durchsuche willhaben mit Text oder Referenzfotos. Prüfe Originalbilder, verfeinere gefundene Angebote nach belegten Anforderungen, merke Favoriten und vergleiche sie in blätterbaren Karten. Sieh Suchanfragen, Trefferzahlen und geprüfte Inhalte.",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "willhaben",
+        "shortDescription": "willhaben durchsuchen, prüfen und vergleichen",
+        "longDescription": "Durchsuche willhaben mit Text oder Referenzfotos. Prüfe Originalbilder, verfeinere gefundene Angebote nach belegten Anforderungen, merke Favoriten und vergleiche sie in blätterbaren Karten. Sieh Suchanfragen, Trefferzahlen und geprüfte Inhalte.",
+        "developerName": "Lars Martens",
+        "category": "Other",
+        "capabilities": [],
+        "logo": "./assets/willhaben.png",
+        "composerIcon": "./assets/willhaben.png",
+        "defaultPrompt": [
+          "Finde Bankerlampen bis 100 Euro und zeige mir einen breiten Überblick mit Fotos.",
+          "Finde ähnliche Angebote zu diesem Referenzbild.",
+          "Verfeinere meine Auswahl nach belegten Bildmerkmalen und zeige mir passende Angebote im Vergleich."
+        ]
+      }
+    }
+  }
+}

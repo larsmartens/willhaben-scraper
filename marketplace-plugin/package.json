@@ -1,0 +1,26 @@
+{
+  "name": "willhaben",
+  "version": "1.5.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "pretest": "node scripts/build.mjs --bridge-only",
+    "test": "node --test test/*.test.mjs",
+    "test:runtime": "npm run build && node test/origin-gate.runtime.mjs && node test/provider.runtime.mjs && node test/worker.runtime.mjs && node test/research.runtime.mjs && node test/research-tools.runtime.mjs && node test/refinement.runtime.mjs",
+    "test:browser": "npm run build && node test/presentation-ui.browser.mjs && node test/presentation-scale.browser.mjs && node test/presentation-research.browser.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "miniflare": "4.20260730.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/core": "2.4.0",
+    "@modelcontextprotocol/ext-apps": "2.0.4",
+    "@modelcontextprotocol/server": "2.4.0"
+  }
+}

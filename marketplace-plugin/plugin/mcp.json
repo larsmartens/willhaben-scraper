@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "willhaben": {
+      "type": "streamable-http",
+      "url": "https://marktplatz-studie.lars-e82.workers.dev/mcp"
+    }
+  }
+}
