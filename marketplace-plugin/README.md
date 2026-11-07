@@ -1,6 +1,6 @@
 # Marktplatz-Studie
 
-Ein MCP-Plugin für die Recherche auf willhaben Marktplatz in ChatGPT. Version 1.3.2 unterstützt aktuelle Suchseiten, gezielte Detailprüfungen, echte Inseratfotos, vergleichbare Angebotspreise und interaktive Angebotskarten.
+Ein MCP-Plugin für die Recherche auf willhaben Marktplatz in ChatGPT. Version 1.3.3 unterstützt aktuelle Suchseiten, gezielte Detailprüfungen, echte Inseratfotos, vergleichbare Angebotspreise und interaktive Angebotskarten.
 
 ## Verbindung
 

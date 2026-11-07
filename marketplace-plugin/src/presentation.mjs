@@ -104,7 +104,7 @@ export async function presentListings(args, env, provider) {
   }
 
   const retry = errors.find(error => error.retryAt);
-  let nextAction;
+  let nextAction = "For a request to show offers, finish with one plain-text sentence pointing to the app cards. For requested advice or a study, add the requested decision analysis. Keep each offer's photos, facts and original links in the app cards.";
   if (missingIds.length) {
     nextAction = "Inspect missingIds with inspect_listings, then repeat this presentation selection.";
   } else if (errors.some(error => error.code === "photo_index_unavailable")) {
@@ -116,7 +116,7 @@ export async function presentListings(args, env, provider) {
     source: provider.kind, title: args.title ?? "Ausgewählte Angebote",
     ...(args.summary ? { summary: args.summary } : {}),
     requestedCount: args.selections.length, shownCount: cards.length, cards, missingIds, errors,
-    ...(nextAction ? { nextAction } : {}),
+    nextAction,
     ...(retry ? { retryAt: retry.retryAt, retryAfterSeconds: retry.retryAfterSeconds } : {}),
     _meta: { listingImages },
   };

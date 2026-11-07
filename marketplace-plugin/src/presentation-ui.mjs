@@ -2,7 +2,7 @@ export const PRESENTATION_URI = "ui://marktplatz/listings-v2.html";
 
 export const PRESENTATION_RESOURCE_META = {
   ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } },
-  "openai/widgetDescription": "Ausgewählte willhaben-Angebote mit Inseratfoto, Preis, Einordnung, offenen Anforderungen und Galerie.",
+  "openai/widgetDescription": "Selected willhaben offers in app cards with photos, facts and original links, plus galleries on demand. For a request to show offers, finish with one plain-text sentence pointing to the app cards. For advice or a study, add the requested decision analysis.",
   "openai/widgetPrefersBorder": true,
   "openai/widgetCSP": { connect_domains: [], resource_domains: [], redirect_domains: ["https://www.willhaben.at", "https://willhaben.at"] },
   "openai/ui": { availableDisplayModes: ["inline", "fullscreen"] },
@@ -562,7 +562,7 @@ function mountPresentation() {
   updateLabels();
   if (window.openai) { applyHostContext(window.openai); legacyResult(); }
   request("ui/initialize", {
-    appInfo: { name: "marktplatz-listings", version: "1.3.2" },
+    appInfo: { name: "marktplatz-listings", version: "1.3.3" },
     appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] },
     protocolVersion: "2026-01-26",
   }, 10000).then(result => {

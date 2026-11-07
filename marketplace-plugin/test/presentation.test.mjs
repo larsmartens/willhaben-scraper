@@ -135,6 +135,21 @@ test("selected photos are hydrated privately with exact listing and photo identi
   assert.deepEqual(storage.slots, ["https://cache.willhaben.at", "https://cache.willhaben.at"]);
 });
 
+test("successful presentation separates a one-sentence display response from requested analysis", async t => {
+  const storage = observations();
+  storage.set("summary:1", listing(1));
+  t.mock.method(globalThis, "fetch", async () => new Response(Buffer.from(png, "base64"), {
+    headers: { "content-type": "image/png" },
+  }));
+  const result = await invokeTool("present_listings", { source: "live", selections: [{ id: "1" }] }, storage.env);
+  assert.equal(result.cards[0].image.status, "ready");
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.missingIds, []);
+  assert.match(result.nextAction, /For a request to show offers, finish with one plain-text sentence pointing to the app cards/);
+  assert.match(result.nextAction, /For requested advice or a study, add the requested decision analysis/);
+  assert.match(result.nextAction, /Keep each offer's photos, facts and original links in the app cards/);
+});
+
 test("missing observations, unavailable indices and unsafe cached URLs retain explicit states", async t => {
   const storage = observations();
   const fetcher = t.mock.method(globalThis, "fetch", () => assert.fail("No speculative fetch"));
@@ -145,6 +160,7 @@ test("missing observations, unavailable indices and unsafe cached URLs retain ex
     { id: "1" }, { id: "2", photoIndex: 9 }, { id: "3" }, { id: "4" },
   ] }, storage.env);
   assert.deepEqual(result.missingIds, ["3", "4"]);
+  assert.match(result.nextAction, /Inspect missingIds with inspect_listings/);
   assert.equal(result.cards[0].url, null);
   assert.equal(result.cards[0].image.url, null);
   assert.equal(result.cards[1].image.status, "failed");
@@ -154,6 +170,8 @@ test("missing observations, unavailable indices and unsafe cached URLs retain ex
   assert.match(result.cards[1].image.error.nextAction, /photoIndex/);
   assert.ok(result.errors.some(error => error.code === "observation_mismatch"));
   assert.equal(fetcher.mock.callCount(), 0);
+  const invalidPhoto = await invokeTool("present_listings", { source: "live", selections: [{ id: "2", photoIndex: 9 }] }, storage.env);
+  assert.match(invalidPhoto.nextAction, /Correct photoIndex using image.error.availableIndices/);
 });
 
 test("one unavailable photo keeps the other selected cards and their image associations", async t => {
@@ -167,6 +185,7 @@ test("one unavailable photo keeps the other selected cards and their image assoc
   assert.deepEqual(result._meta.listingImages.map(image => image.id), ["1", "3"]);
   assert.equal(result.cards[1].image.error.code, "image_unavailable");
   assert.equal(result.errors[0].stage, "image");
+  assert.match(result.nextAction, /retry the affected photos with inspect_listing_images/);
 });
 
 test("presentation preserves photo cooldown and remaining cards without extra image requests", async t => {
@@ -184,6 +203,7 @@ test("presentation preserves photo cooldown and remaining cards without extra im
   assert.equal(result.cards[2].image.error.id, "3");
   assert.equal(result.cards[2].image.error.retryAt, result.retryAt);
   assert.ok(result.retryAfterSeconds >= 1799);
+  assert.match(result.nextAction, /Respect retryAt/);
   assert.equal(result._meta.listingImages.length, 1);
 });
 
@@ -256,6 +276,10 @@ test("only the presentation tool binds the UI resource and both MCP protocols di
   assert.match(read.text, /<!doctype html>/i);
   assert.equal(read.mimeType, listed[0].mimeType);
   assert.deepEqual(read._meta.ui.csp.connectDomains, []);
+  assert.match(read._meta["openai/widgetDescription"], /app cards/);
+  assert.match(read._meta["openai/widgetDescription"], /photos, facts and original links/);
+  assert.match(read._meta["openai/widgetDescription"], /For a request to show offers, finish with one plain-text sentence pointing to the app cards/);
+  assert.match(read._meta["openai/widgetDescription"], /For advice or a study, add the requested decision analysis/);
   assert.deepEqual((await rpc("resources/templates/list")).result.resourceTemplates, []);
   assert.equal((await rpc("resources/read", { uri: "https://evil.test" })).error.code, -32002);
   assert.equal((await rpc("resources/list", { cursor: "next" })).error.code, -32602);
@@ -308,7 +332,7 @@ test("Worker keeps hydrated image bytes outside model text and structuredContent
   assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
   assert.equal(result.structuredContent.cards[0].image.url, photo(1));
   const init = (await rpc("initialize", { protocolVersion: "2025-11-25", clientInfo: { name: "test", version: "1" }, capabilities: {} })).result;
-  assert.equal(init.serverInfo.version, "1.3.2");
+  assert.equal(init.serverInfo.version, "1.3.3");
   assert.match(init.instructions.slice(0, 512), /visual presentation/);
   assert.match(init.instructions.slice(0, 512), /present_listings/);
   assert.match(init.instructions.slice(0, 512), /short decision-focused summary/);

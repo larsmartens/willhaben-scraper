@@ -5,7 +5,7 @@ import { PRESENTATION_URI, PRESENTATION_HTML, PRESENTATION_RESOURCE_META } from 
 const CURRENT = "2026-07-28";
 const LEGACY = ["2025-11-25", "2025-06-18", "2025-03-26"];
 const VERSIONS = [CURRENT, ...LEGACY];
-const INFO = { name: "marktplatz-studie", title: "Marktplatz-Studie", version: "1.3.2" };
+const INFO = { name: "marktplatz-studie", title: "Marktplatz-Studie", version: "1.3.3" };
 const CAPABILITIES = { tools: {}, resources: {} };
 const MAX_BYTES = 2 * 1024 * 1024;
 const PREFIX = "io.modelcontextprotocol/";
