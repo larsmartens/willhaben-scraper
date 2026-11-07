@@ -9,7 +9,8 @@ import { StreamableHTTPClientTransport as LegacyTransport } from '@modelcontextp
 // original photographs and the matched baseline remain in ignored private files.
 const connection = JSON.parse(await readFile(process.env.SELLPY_CONNECTION_FILE ?? 'artifacts/private/connection.json', 'utf8'));
 const origin = new URL(connection.endpoint).origin;
-const report = { checked_at: new Date().toISOString(), version: '1.2.0', checks: [], outcome: 'running' };
+const { version } = JSON.parse(await readFile('package.json', 'utf8'));
+const report = { checked_at: new Date().toISOString(), version, checks: [], outcome: 'running' };
 const disposable = new Set();
 const clean = value => String(value).replaceAll(connection.endpoint, `${origin}/personal/[REDACTED]/mcp`).replaceAll(connection.token, '[REDACTED]');
 const note = (name, details = {}) => { const row = { name, ...details }; report.checks.push(row); console.log(JSON.stringify(row)); };
@@ -40,18 +41,18 @@ function page(value) {
 try {
   const health = await fetch(`${origin}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.2.0');
+  assert.equal((await health.json()).version, version);
   assert.equal((await fetch(`${origin}/mcp`)).status, 401);
-  modern = new Client({ name: 'sellpy-scale-release-verification', version: '1.2.0' }, { versionNegotiation: { mode: 'auto' } });
+  modern = new Client({ name: 'sellpy-scale-release-verification', version }, { versionNegotiation: { mode: 'auto' } });
   await modern.connect(new StreamableHTTPClientTransport(new URL(connection.endpoint)));
   assert.equal(modern.getNegotiatedProtocolVersion(), '2026-07-28');
-  assert.equal(modern.getServerVersion()?.version, '1.2.0');
+  assert.equal(modern.getServerVersion()?.version, version);
   const tools = (await modern.listTools()).tools;
   assert.equal(tools.length, 27);
   assert.deepEqual(tools.find(tool => tool.name === 'browse_collection')?._meta?.ui?.visibility, ['app']);
   assert.deepEqual(tools.find(tool => tool.name === 'search_by_image')?._meta?.['openai/fileParams'], ['reference']);
   const uri = tools.find(tool => tool.name === 'present_items')?._meta?.ui?.resourceUri;
-  assert.equal(uri, 'ui://sellpy/gallery-v3.html');
+  assert.equal(uri, 'ui://sellpy/gallery-v4.html');
   const resource = await modern.readResource({ uri });
   assert.equal(resource.contents[0].mimeType, 'text/html;profile=mcp-app');
   note('current_protocol_and_tools', { protocol: modern.getNegotiatedProtocolVersion(), tools: tools.length,
@@ -147,11 +148,11 @@ try {
   const beforeMs = before.samples.map(sample => sample.milliseconds ?? sample.ms);
   assert(beforeMs.every(Number.isFinite));
   note('matched_initial_page_measurement', { matched_item_ids: 12, canonical_details_warmed: true,
-    before_version: before.version.version ?? before.version, before_samples: before.samples, after_version: '1.2.0', after_samples: after,
+    before_version: before.version.version ?? before.version, before_samples: before.samples, after_version: version, after_samples: after,
     before_median_ms: median(beforeMs), after_median_ms: median(after.map(sample => sample.milliseconds)),
     scope: 'Initial useful 12-card response. Baseline eagerly hydrated all 12 covers; this version embeds at most two and the app loads visible remaining photos. This is not a full-photo-completion latency comparison.' });
 
-  legacy = new LegacyClient({ name: 'sellpy-scale-legacy-verification', version: '1.2.0' });
+  legacy = new LegacyClient({ name: 'sellpy-scale-legacy-verification', version });
   await legacy.connect(new LegacyTransport(new URL(connection.endpoint)));
   assert.equal((await legacy.listTools()).tools.length, 27);
   const legacyStatus = await legacy.callTool({ name: 'get_search_status', arguments: { run_id } });

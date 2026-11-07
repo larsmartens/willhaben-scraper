@@ -104,7 +104,7 @@ test('unsafe destinations and active image data are rejected without sanitizing 
 });
 
 test('resource is self-contained, declares only exact photo CDNs and uses the MCP Apps MIME', () => {
-  assert.equal(PRESENTATION_URI, 'ui://sellpy/gallery-v3.html');
+  assert.equal(PRESENTATION_URI, 'ui://sellpy/gallery-v4.html');
   assert.equal(PRESENTATION_MIME, 'text/html;profile=mcp-app');
   assert.deepEqual(PRESENTATION_RESOURCE_META.ui.csp.connectDomains, []);
   assert.deepEqual(PRESENTATION_RESOURCE_META.ui.csp.resourceDomains, ['https://prod.images.sellpy.net', 'https://images.sellpy.net',

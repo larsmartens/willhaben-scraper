@@ -5,7 +5,8 @@ import { projectCardFacts } from './card-facts.js';
 import { formatMoney, parseFeedback, safeImageData, safeImageUrl, safeItemUrl } from '../ui/data.js';
 
 export { PRESENTATION_HTML } from '../ui/generated/gallery.js';
-export const PRESENTATION_URI = 'ui://sellpy/gallery-v3.html';
+export const PRESENTATION_URI = 'ui://sellpy/gallery-v4.html';
+export const PREVIOUS_PRESENTATION_URI = 'ui://sellpy/gallery-v3.html';
 export const LEGACY_PRESENTATION_URI = 'ui://sellpy/gallery-v2.html';
 export const PRESENTATION_MIME = 'text/html;profile=mcp-app';
 export const PRESENTATION_RESOURCE_META = {

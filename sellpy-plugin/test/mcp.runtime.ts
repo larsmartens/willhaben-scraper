@@ -26,7 +26,7 @@ describe('real Workers MCP boundary',()=>{
     const browse=list.result.tools.find((tool:{name:string})=>tool.name==='browse_collection');
     expect(browse._meta.ui.visibility).toEqual(['app']);
     const present=list.result.tools.find((tool:{name:string})=>tool.name==='present_items');
-    expect(present._meta['openai/outputTemplate']).toBe('ui://sellpy/gallery-v3.html');
+    expect(present._meta['openai/outputTemplate']).toBe('ui://sellpy/gallery-v4.html');
     const upload=list.result.tools.find((tool:{name:string})=>tool.name==='search_by_image');
     expect(upload._meta['openai/fileParams']).toEqual(['reference']);
     expect(upload.inputSchema.properties.reference.properties).toHaveProperty('download_url');
@@ -38,8 +38,10 @@ describe('real Workers MCP boundary',()=>{
     expect(deletion.annotations).toMatchObject({readOnlyHint:false,destructiveHint:true,idempotentHint:true});
     const refinement=list.result.tools.find((tool:{name:string})=>tool.name==='refine_search');
     expect(refinement.annotations).toMatchObject({readOnlyHint:true,idempotentHint:false,openWorldHint:false});
-    const resources=await rpc('resources/read',{uri:'ui://sellpy/gallery-v3.html'});
+    const resources=await rpc('resources/read',{uri:'ui://sellpy/gallery-v4.html'});
+    const previous=await rpc('resources/read',{uri:'ui://sellpy/gallery-v3.html'});
     const legacy=await rpc('resources/read',{uri:'ui://sellpy/gallery-v2.html'});
+    expect(previous.result.contents[0].text).toBe(resources.result.contents[0].text);
     expect(legacy.result.contents[0].text).toBe(resources.result.contents[0].text);
     expect(resources.result.contents[0].mimeType).toBe('text/html;profile=mcp-app');
     expect(resources.result.contents[0].text).toContain('Sellpy');

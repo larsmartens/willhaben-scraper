@@ -197,9 +197,87 @@ async function bounds() {
   assert.ok(values.cards <= 24); assert.ok(values.pages <= 3); assert.ok(values.photos <= 48); assert.ok(values.photoBytes <= 12 * 1024 * 1024); assert.ok(values.requests <= 4); return values;
 }
 
+async function checkCoverage() {
+  const notes = [
+    'Counts describe this run, not all Sellpy inventory. Native totals can overlap across arms.',
+    'Details count distinct items with a stored detail observation; descriptions count current stored descriptions. Delivery counts distinct item/image identities, not reading or inspection.',
+    'Recorded assessments count current accepted assistant assessments. Widget photos never establish model visual evidence.',
+    'Historical detail, widget-photo and model text deliveries before this upgrade are unknown.',
+  ];
+  const coverage = { ...scope(100), candidates: 100, search_pages: 2, detail_observations: 0, stored_descriptions: 0,
+    model_delivered_fact_items: 100, model_delivered_photos: 0, widget_delivered_photos: 38, recorded_assessments: 0, notes,
+    arms: [
+      { arm_id: 'catalog', route: 'catalog', query: 'creme Kleid · Größe M',
+        filters: { facets: { 'metadata.color': ['creme', 'weiß'], 'categories.lvl2': ['Damen > Kleider', '<img src=x onerror=alert(9)>'],
+          'metadata.brand': ['Arket', '-Zara'], 'metadata.unknown': ['original-value'] },
+          price_min: 0, price_max: 75.5, measurements: { length: { min: 0, max: 112 }, width: { max: 48 } }, include_reserved: false },
+        category_relaxed: false, pages: 2, candidates: 100, native_total: 475, native_window: 1000, status: 'window', observed_at: at },
+      { arm_id: 'reference', route: 'image', query: null, filters: { include_reserved: true },
+        category_relaxed: true, pages: 0, candidates: null, native_total: null, native_window: null, status: 'paused', observed_at: null },
+      { arm_id: 'future', route: 'future-route', query: '', filters: {}, category_relaxed: false,
+        pages: 0, candidates: 0, native_total: null, native_window: null, status: 'future-status', observed_at: null },
+    ] };
+  const data = { ...gallery(), cards: Array.from({ length: 12 }, (_, n) => card(n + 24)), scope: coverage,
+    collection: { ...descriptor(), total: 100 }, title: 'Rechercheumfang prüfen' };
+  const original = JSON.stringify(data);
+  await send(data); await frame.locator('.scope > summary').click();
+  const panel = frame.locator('.scope'), first = panel.locator('.scope-arm').first();
+  const values = locator => locator.locator('dl').evaluateAll(lists => Object.fromEntries(lists.flatMap(list =>
+    [...list.querySelectorAll('dt')].map(label => [label.textContent, label.nextElementSibling?.textContent]))));
+  assert.equal(await panel.locator('summary').innerText(), 'Rechercheumfang · 100 Kandidaten beobachtet · 0 aktuelle Bewertungen gespeichert');
+  assert.equal(await panel.locator('.scope-body').getByText(/aktuelle Bewertungen gespeichert/).count(), 0, 'assessment count appears only in summary');
+  assert.equal(await panel.locator('.scope-boundary').count(), 1);
+  assert.equal(await panel.locator('p').count(), 0, 'coverage uses fact rows, not prose paragraphs');
+  for (const note of notes) assert.equal((await panel.innerText()).includes(note), false, 'canonical English notes are not echoed');
+  assert.equal((await panel.innerText()).includes('catalog · catalog'), false);
+  assert.equal(await first.locator('h4').innerText(), 'catalog');
+  const facts = await values(first);
+  assert.equal(facts.Suchtext, coverage.arms[0].query);
+  assert.equal(facts['Preis min.'], '0'); assert.equal(facts['Preis max.'], '75.5');
+  assert.equal(facts['Maß · length'], '≥ 0 · ≤ 112'); assert.equal(facts['Maß · width'], '≤ 48');
+  assert.equal(facts['Reservierte einbeziehen'], 'Nein'); assert.equal(facts['Kategorie erweitert'], 'Nein');
+  assert.equal(facts.Quellseiten, '2'); assert.equal(facts['Native Trefferzahl'], '475'); assert.equal(facts.Quellfenster, '1000');
+  assert.equal(facts.Quellstatus, 'Quellgrenze erreicht'); assert.equal(facts['Kandidaten beobachtet'], '100');
+  assert.match(facts['Shop-Stand'], /2026/);
+  assert.deepEqual(await first.locator('.scope-value').allTextContents(), ['creme', 'weiß', 'Damen > Kleider', '<img src=x onerror=alert(9)>', 'Arket', '-Zara', 'original-value']);
+  assert.equal(facts.Marke, 'Arket-Zara'); assert.equal(facts['Filter · unknown'], 'original-value');
+  assert.ok('Kategorie' in facts && 'Farbe' in facts); assert.equal((await first.innerText()).includes('metadata.'), false);
+  assert.equal(await first.locator('img').count(), 0);
+  const unknown = await values(panel.locator('.scope-arm').nth(1));
+  assert.equal(unknown.Suchtext, 'Nicht erfasst'); assert.equal(unknown['Native Trefferzahl'], 'Nicht erfasst');
+  assert.equal(unknown['Kandidaten beobachtet'], 'Nicht erfasst'); assert.equal(unknown['Shop-Stand'], 'Nicht erfasst');
+  assert.equal(unknown.Quellseiten, '0'); assert.equal(unknown['Reservierte einbeziehen'], 'Ja'); assert.equal(unknown.Quellstatus, 'Pausiert');
+  const future = await values(panel.locator('.scope-arm').nth(2));
+  assert.equal(future.Route, 'future-route'); assert.equal(future.Quellstatus, 'future-status'); assert.equal(future.Filter, 'Keine');
+  const counters = await panel.locator('.scope-counters').evaluate(list => Object.fromEntries([...list.querySelectorAll('dt')].map(label => [label.textContent, label.nextElementSibling.textContent])));
+  assert.equal(counters['Artikel mit Detailbeobachtung'], '0'); assert.equal(counters['Artikelfakten an Modell geliefert'], '100');
+  assert.equal(counters['Fotos an Modell geliefert'], '0'); assert.equal(counters['Fotos an Galerie geliefert'], '38');
+  assert.match(await panel.locator('.scope-boundary').innerText(), /kein Lese-\/Prüfnachweis/);
+  assert.equal(await frame.locator('.footer-facts dt').count(), 2);
+  assert.equal(await frame.locator('.footer-facts dd').first().innerText(), 'Abrufzeitpunkt je Artikel');
+  for (const width of [360, 1120]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.equal(await frame.locator('html').evaluate(node => node.scrollWidth <= innerWidth), true, `${width}px expanded scope must not overflow`);
+    await page.screenshot({ path: path.join(outputDirectory, `coverage-${width}.png`), fullPage: true });
+  }
+  await send({ ...data, language: 'en', scope: { ...coverage, detail_observations: null, model_delivered_fact_items: null, widget_delivered_photos: null } });
+  assert.match(await panel.locator('.scope-boundary').innerText(), /Distinct item\/image IDs · no reading\/inspection evidence/);
+  assert.equal((await values(panel.locator('.scope-arm').first()))['Source status'], 'Source limit reached');
+  assert.match(await panel.locator('.scope-counters').innerText(), /Items with detail observations\s+Not recorded/);
+  assert.equal(await frame.locator('.footer-facts dd').last().innerText(), 'Saved assessments only');
+  assert.equal(JSON.stringify(data), original, 'canonical input remains unchanged');
+  assert.equal(errors.length, 0, errors.join('\n')); await bounds();
+  const report = { status: 'passed', source_bundle: true, check: 'coverage', locales: ['de', 'en'], viewport_widths: [360, 1120],
+    exact_filter_values: true, zero_and_unknown_distinct: true, duplicate_prose_removed: true, browser_errors: errors };
+  await writeFile(path.join(outputDirectory, 'coverage-browser-report.json'), `${JSON.stringify(report, null, 2)}\n`);
+  console.log(JSON.stringify(report));
+}
+
 try {
   await page.setContent(hostPage()); await page.locator('iframe').evaluate((node, source) => { node.srcdoc = source; }, html);
   await frame.locator('.card').nth(11).waitFor(); await frame.locator('.card').first().locator('img[src^="data:"]').waitFor();
+  if (process.env.SELLPY_UI_CHECK === 'coverage') await checkCoverage();
+  else {
   await frame.locator('.card').first().locator('img').evaluate(img => img.decode());
   assert.equal(await frame.locator('.card').count(), 12); assert.equal(await frame.locator('#page-range').innerText(), '1–12 / 10137 Artikel');
   assert.equal(await frame.locator('.card').first().locator('.price').innerText(), '24,00 €');
@@ -288,7 +366,7 @@ try {
   await frame.locator('#previous-page').click(); await pageFirst('item-0');
   await frame.locator('.scope > summary').click();
   assert.match(await frame.locator('.scope').innerText(), /Artikelfakten an Modell geliefert/);
-  assert.match(await frame.locator('.scope').innerText(), /Geliefert bedeutet nicht gelesen oder geprüft/);
+  assert.match(await frame.locator('.scope').innerText(), /kein Lese-\/Prüfnachweis/);
   await frame.locator('.scope-refresh').click();
   await settled(() => calls.some(call => call.name === 'browse_collection' && call.arguments.action === 'coverage'));
   await frame.locator('.scope > summary').click();
@@ -411,6 +489,7 @@ try {
     final_bounds: lastBounds, stale_response_cases: ['page', 'photo', 'details', 'refresh', 'feedback'], failed_assessment_refresh: 'unknown_then_recovered', browser_errors: errors, viewport_widths: [360, 390, 1120] };
   await writeFile(path.join(outputDirectory, 'collection-browser-report.json'), `${JSON.stringify(report, null, 2)}\n`);
   console.log(JSON.stringify(report));
+  }
 } catch (error) {
   await page.screenshot({ path: path.join(outputDirectory, 'collection-failure.png'), fullPage: true }).catch(() => {});
   console.error(JSON.stringify({ last_calls: calls.slice(-8), browser_errors: errors, state: await frame.locator('#app').evaluate(node => ({

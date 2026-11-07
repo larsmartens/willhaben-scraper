@@ -1,7 +1,7 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
 import { inputSchemas, toolDescriptions, type ToolName } from './schemas.js';
 import { invokeTool } from './tools.js';
-import { PRESENTATION_HTML, PRESENTATION_MIME, PRESENTATION_RESOURCE_META, PRESENTATION_URI, LEGACY_PRESENTATION_URI } from './presentation.js';
+import { PRESENTATION_HTML, PRESENTATION_MIME, PRESENTATION_RESOURCE_META, PRESENTATION_URI, PREVIOUS_PRESENTATION_URI, LEGACY_PRESENTATION_URI } from './presentation.js';
 
 export const INSTRUCTIONS = `Sellpy Studio supports ordinary and visual secondhand shopping research in chat.
 Default to Austria (AT), German, EUR unless the user chooses another market. Discover unfamiliar facets instead of inventing filter names.
@@ -41,7 +41,7 @@ export function createServer(env: Env, principal: string): McpServer {
       _meta: meta,
     }, (args: unknown) => invokeTool(name, args, { env, principal, deadline: Date.now() + 35000 }));
   }
-  for (const [name, resource] of [['sellpy-gallery', PRESENTATION_URI], ['sellpy-gallery-legacy', LEGACY_PRESENTATION_URI]] as const) {
+  for (const [name, resource] of [['sellpy-gallery', PRESENTATION_URI], ['sellpy-gallery-previous', PREVIOUS_PRESENTATION_URI], ['sellpy-gallery-legacy', LEGACY_PRESENTATION_URI]] as const) {
     server.registerResource(name, resource, {
       title: 'Sellpy item gallery', mimeType: PRESENTATION_MIME, _meta: PRESENTATION_RESOURCE_META,
     }, uri => ({ contents: [{ uri: uri.href, mimeType: PRESENTATION_MIME, text: PRESENTATION_HTML, _meta: PRESENTATION_RESOURCE_META }] }));

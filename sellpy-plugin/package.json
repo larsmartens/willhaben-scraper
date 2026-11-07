@@ -1,6 +1,6 @@
 {
   "name": "sellpy-chat-plugin",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "type": "module",
   "description": "Progressive Sellpy search and visual shopping research for ChatGPT",

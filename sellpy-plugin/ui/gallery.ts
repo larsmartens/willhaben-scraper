@@ -29,7 +29,7 @@ const language = {
     loading: 'Wird geladen …', noCards: 'Keine Artikel in dieser Sammlung.', notConnected: 'Interaktive Funktionen sind hier nicht verfügbar. Originalangebote bleiben verlinkt.',
     toolFailed: 'Der Aufruf konnte nicht abgeschlossen werden. Die bisherigen Ergebnisse bleiben sichtbar.',
     invalidResult: 'Die Antwort passt nicht zur aktuellen Ansicht.', linkFailed: 'Der Link konnte hier nicht geöffnet werden. Nutze den Angebotslink direkt.',
-    footer: 'Shop-Angaben behalten ihren Abrufzeitpunkt. Bildbefunde stammen nur aus gespeicherten Bewertungen.',
+    footerShop: 'Shop-Angaben', footerShopValue: 'Abrufzeitpunkt je Artikel', footerEvidence: 'Bildbefunde', footerEvidenceValue: 'Nur gespeicherte Bewertungen',
     unavailableLink: 'Angebotslink nicht verfügbar', warnings: 'Hinweise', shortlist: 'Merken', shortlisted: 'Gemerkt', reject: 'Passt nicht',
     feedbackSaved: 'Deine Auswahl wurde gespeichert.', feedbackFailed: 'Die Auswahl konnte nicht gespeichert werden. Der gespeicherte Stand bleibt erhalten.',
     compare: 'Vergleichen', comparing: 'Vergleich', selected: 'ausgewählt', clearSelection: 'Leeren', backToCards: 'Zur Sammlung',
@@ -37,10 +37,13 @@ const language = {
     compareLimit: 'Bis zu vier Artikel vergleichen. Entferne zuerst einen Artikel.', subtotal: 'Preissumme', missingPrices: 'Preisangaben fehlen', mixedCurrencies: 'Getrennte Währungen; keine Umrechnung.',
     discuss: 'Im Chat besprechen', discussDone: 'Die Auswahl wurde an diesen Chat übergeben.', discussFailed: 'Die Auswahl konnte nicht an den Chat übergeben werden.',
     discussPrompt: 'Vergleiche diese Sellpy-Artikel. Prüfe aktuelle Shop-Angaben und die Originalfotos anhand meiner Kriterien. Speichere tatsächlich geprüfte Bildbefunde mit den genauen Kriterien; halte offene Fragen offen.',
-    scope: 'Rechercheumfang', candidates: 'Kandidaten beobachtet', pages: 'Quellseiten', detailsCount: 'Detailbeobachtungen', descriptions: 'Beschreibungen gespeichert',
+    scope: 'Rechercheumfang', candidates: 'Kandidaten beobachtet', pages: 'Quellseiten', detailsCount: 'Artikel mit Detailbeobachtung', descriptions: 'Beschreibungen aktuell gespeichert',
     modelFacts: 'Artikelfakten an Modell geliefert', modelDescriptions: 'Beschreibungen an Modell geliefert', modelPhotos: 'Fotos an Modell geliefert',
-    widgetPhotos: 'Fotos an Galerie geliefert', assessments: 'Bewertungen gespeichert', scopeUnknown: 'Nicht erfasst', scopeRefresh: 'Rechercheumfang aktualisieren',
-    scopeHint: 'Geliefert bedeutet nicht gelesen oder geprüft. Native Trefferzahlen verschiedener Sucharme können sich überschneiden.',
+    widgetPhotos: 'Fotos an Galerie geliefert', assessments: 'aktuelle Bewertungen gespeichert', scopeUnknown: 'Nicht erfasst', scopeRefresh: 'Rechercheumfang aktualisieren',
+    scopeBoundary: 'Umfang', scopeBoundaryValue: 'Diese Suche · kein Gesamtkatalog', sourceTotals: 'Quelltreffer', sourceTotalsValue: 'Je Sucharm · Überschneidungen möglich',
+    delivery: 'Lieferung', deliveryValue: 'Eindeutige Artikel-/Bild-IDs · kein Lese-/Prüfnachweis', scopeAsOf: 'Recherche-Stand',
+    priceMin: 'Preis min.', priceMax: 'Preis max.', measurement: 'Maß', reservedFilter: 'Reservierte einbeziehen', yes: 'Ja', no: 'Nein', noFilters: 'Keine',
+    sourceStatus: 'Quellstatus', statusReady: 'Bereit', statusPaused: 'Pausiert', statusExhausted: 'Quelle ausgeschöpft', statusWindow: 'Quellgrenze erreicht', statusFailed: 'Fehlgeschlagen',
     query: 'Suchtext', filters: 'Filter', nativeTotal: 'Native Trefferzahl', nativeWindow: 'Quellfenster', route: 'Route', relaxed: 'Kategorie erweitert',
     preparing: 'Sammlung wird vorbereitet', pause: 'Pausieren', resume: 'Fortsetzen', prepared: 'ausgewertet',
     history: 'Beobachtete Änderungen', historyLoad: 'Beobachtungsverlauf laden', historyNext: 'Weitere Beobachtungen', historyFirst: 'Erste Beobachtungen',
@@ -67,7 +70,7 @@ const language = {
     loading: 'Loading …', noCards: 'No items in this collection.', notConnected: 'Interactive controls are unavailable here. Original listings remain linked.',
     toolFailed: 'The request could not be completed. Previous results remain visible.',
     invalidResult: 'The response does not match the current view.', linkFailed: 'The link could not be opened here. Use the listing link directly.',
-    footer: 'Shop facts retain their observation time. Photo findings come only from saved assessments.',
+    footerShop: 'Shop facts', footerShopValue: 'Observation time per item', footerEvidence: 'Photo findings', footerEvidenceValue: 'Saved assessments only',
     unavailableLink: 'Listing link unavailable', warnings: 'Notes', shortlist: 'Shortlist', shortlisted: 'Shortlisted', reject: 'Not for me',
     feedbackSaved: 'Your selection has been saved.', feedbackFailed: 'Your decision could not be saved. The stored decision is unchanged.',
     compare: 'Compare', comparing: 'Comparison', selected: 'selected', clearSelection: 'Clear', backToCards: 'Back to collection',
@@ -75,10 +78,13 @@ const language = {
     compareLimit: 'Compare up to four items. Remove an item first.', subtotal: 'Price subtotal', missingPrices: 'prices missing', mixedCurrencies: 'Separate currencies; no conversion.',
     discuss: 'Discuss in chat', discussDone: 'The selection was sent to this chat.', discussFailed: 'The selection could not be sent to this chat.',
     discussPrompt: 'Compare these Sellpy items. Check current shop facts and original photos against my criteria. Save findings only for images actually examined, using the exact criteria; keep unknowns explicit.',
-    scope: 'Research scope', candidates: 'Candidates observed', pages: 'Source pages', detailsCount: 'Detail observations', descriptions: 'Descriptions stored',
+    scope: 'Research scope', candidates: 'Candidates observed', pages: 'Source pages', detailsCount: 'Items with detail observations', descriptions: 'Descriptions currently stored',
     modelFacts: 'Item facts delivered to model', modelDescriptions: 'Descriptions delivered to model', modelPhotos: 'Photos delivered to model',
-    widgetPhotos: 'Photos delivered to gallery', assessments: 'Assessments saved', scopeUnknown: 'Not recorded', scopeRefresh: 'Refresh research scope',
-    scopeHint: 'Delivered does not mean read or assessed. Native totals from different search arms can overlap.',
+    widgetPhotos: 'Photos delivered to gallery', assessments: 'current assessments saved', scopeUnknown: 'Not recorded', scopeRefresh: 'Refresh research scope',
+    scopeBoundary: 'Scope', scopeBoundaryValue: 'This search · not the full catalogue', sourceTotals: 'Source totals', sourceTotalsValue: 'Per arm · overlap possible',
+    delivery: 'Delivery', deliveryValue: 'Distinct item/image IDs · no reading/inspection evidence', scopeAsOf: 'Research snapshot',
+    priceMin: 'Price min.', priceMax: 'Price max.', measurement: 'Measurement', reservedFilter: 'Include reserved', yes: 'Yes', no: 'No', noFilters: 'None',
+    sourceStatus: 'Source status', statusReady: 'Ready', statusPaused: 'Paused', statusExhausted: 'Source exhausted', statusWindow: 'Source limit reached', statusFailed: 'Failed',
     query: 'Query', filters: 'Filters', nativeTotal: 'Native total', nativeWindow: 'Source window', route: 'Route', relaxed: 'Category relaxed',
     preparing: 'Preparing collection', pause: 'Pause', resume: 'Continue', prepared: 'evaluated',
     history: 'Observed changes', historyLoad: 'Load observation history', historyNext: 'More observations', historyFirst: 'First observations',
@@ -109,7 +115,7 @@ const state = {
   viewerId: null as string | null, viewerPosition: 0, scopeOpen: false, scopeAttempted: false, autoPrepare: true,
   status: '', statusError: false,
 };
-const app = new App({ name: 'Sellpy Studio', version: '1.2.0' }, { availableDisplayModes: ['inline', 'fullscreen'] });
+const app = new App({ name: 'Sellpy Studio', version: '1.2.1' }, { availableDisplayModes: ['inline', 'fullscreen'] });
 const root = document.getElementById('app')!;
 const dialog = document.createElement('dialog');
 dialog.className = 'viewer'; dialog.setAttribute('aria-labelledby', 'viewer-title'); document.body.append(dialog);
@@ -469,23 +475,53 @@ function scopeView(scope: CollectionScope | undefined): HTMLElement {
   section.append(element('summary', '', scope ? `${t('scope')} · ${scope.candidates} ${t('candidates')} · ${scope.recorded_assessments} ${t('assessments')}` : t('scope')));
   const body = element('div', 'scope-body'); section.append(body);
   if (scope) {
+    const row = (list: HTMLElement, label: string, value: string | number | null): void => {
+      list.append(element('dt', '', label), element('dd', '', value === null ? t('scopeUnknown') : String(value)));
+    };
     const counters = element('dl', 'scope-counters');
     const entries: [Label, number | null][] = [['pages', scope.search_pages], ['detailsCount', scope.detail_observations], ['descriptions', scope.stored_descriptions],
       ['modelFacts', scope.model_delivered_fact_items], ['modelDescriptions', scope.model_delivered_description_items], ['modelPhotos', scope.model_delivered_photos],
-      ['widgetPhotos', scope.widget_delivered_photos], ['assessments', scope.recorded_assessments]];
-    for (const [label, value] of entries) counters.append(element('dt', '', t(label)), element('dd', '', value === null || value === undefined ? t('scopeUnknown') : String(value)));
-    body.append(counters, element('p', 'evidence', t('scopeHint')));
+      ['widgetPhotos', scope.widget_delivered_photos]];
+    for (const [label, value] of entries) row(counters, t(label), value);
+    const boundary = element('dl', 'scope-facts scope-boundary');
+    row(boundary, t('scopeBoundary'), t('scopeBoundaryValue'));
+    row(boundary, t('sourceTotals'), t('sourceTotalsValue'));
+    row(boundary, t('delivery'), t('deliveryValue'));
+    row(boundary, t('scopeAsOf'), dateText(scope.observed_at));
+    body.append(counters, boundary);
     for (const arm of scope.arms) {
-      const block = element('section', 'scope-arm'); block.append(element('h4', '', `${arm.arm_id} · ${arm.route}`));
-      if (arm.query !== null) block.append(labelValue(t('query'), arm.query));
-      block.append(labelValue(t('filters'), Object.keys(arm.filters).length ? JSON.stringify(arm.filters) : '—'),
-        element('p', 'evidence', `${t('pages')}: ${arm.pages} · ${t('nativeTotal')}: ${arm.native_total ?? t('scopeUnknown')} · ${t('nativeWindow')}: ${arm.native_window ?? t('scopeUnknown')} · ${arm.status}`));
-      if (arm.candidates !== null) block.append(element('p', 'evidence', `${t('candidates')}: ${arm.candidates}`));
-      if (arm.category_relaxed) block.append(element('p', 'evidence', t('relaxed')));
-      if (arm.observed_at) block.append(element('p', 'evidence', `${t('observed')}: ${dateText(arm.observed_at)}`)); body.append(block);
+      const block = element('section', 'scope-arm'), facts = element('dl', 'scope-facts');
+      block.append(element('h4', '', arm.arm_id), facts);
+      if (arm.route !== arm.arm_id) row(facts, t('route'), arm.route);
+      row(facts, t('query'), arm.query);
+      const filterStart = facts.childElementCount;
+      const facetLabels: Record<string, string> = de()
+        ? { category: 'Kategorie', brand: 'Marke', color: 'Farbe', size: 'Größe', material: 'Material', condition: 'Zustand', type: 'Artikeltyp' }
+        : { category: 'Category', brand: 'Brand', color: 'Color', size: 'Size', material: 'Material', condition: 'Condition', type: 'Item type' };
+      for (const [key, values] of Object.entries(arm.filters.facets ?? {})) {
+        const value = element('dd', 'scope-values');
+        for (const text of values) value.append(element('span', 'scope-value', text));
+        if (!values.length) value.textContent = '—';
+        const field = key.replace(/^metadata\./, ''), label = facetLabels[/^categories\.lvl\d+$/.test(field) ? 'category' : field];
+        facts.append(element('dt', '', label ?? `${t('filters')} · ${field}`), value);
+      }
+      if (arm.filters.price_min !== undefined) row(facts, t('priceMin'), arm.filters.price_min);
+      if (arm.filters.price_max !== undefined) row(facts, t('priceMax'), arm.filters.price_max);
+      for (const [key, range] of Object.entries(arm.filters.measurements ?? {})) {
+        row(facts, `${t('measurement')} · ${key}`, [range.min !== undefined ? `≥ ${range.min}` : '', range.max !== undefined ? `≤ ${range.max}` : ''].filter(Boolean).join(' · ') || '—');
+      }
+      if (arm.filters.include_reserved !== undefined) row(facts, t('reservedFilter'), t(arm.filters.include_reserved ? 'yes' : 'no'));
+      if (facts.childElementCount === filterStart) row(facts, t('filters'), t('noFilters'));
+      row(facts, t('relaxed'), t(arm.category_relaxed ? 'yes' : 'no'));
+      row(facts, t('pages'), arm.pages);
+      row(facts, t('nativeTotal'), arm.native_total);
+      row(facts, t('nativeWindow'), arm.native_window);
+      row(facts, t('candidates'), arm.candidates);
+      const statuses: Record<string, Label> = { ready: 'statusReady', paused: 'statusPaused', exhausted: 'statusExhausted', window: 'statusWindow', failed: 'statusFailed' };
+      const status = statuses[arm.status]; row(facts, t('sourceStatus'), status ? t(status) : arm.status);
+      row(facts, t('observed'), arm.observed_at === null ? null : dateText(arm.observed_at));
+      body.append(block);
     }
-    scope.notes.forEach(note => body.append(element('p', 'evidence', note)));
-    body.append(element('p', 'evidence', `${t('observed')}: ${dateText(scope.observed_at)}`));
   }
   const refresh = button(t('scopeRefresh'), 'scope-refresh'); refresh.disabled = !canCallTools() || state.operations.has('scope');
   refresh.onclick = () => { void loadScope(); }; body.append(refresh);
@@ -546,7 +582,11 @@ function render(): void {
   const previousCursor = data.page?.previous_cursor ?? state.legacyPrevious, nextCursor = data.page?.next_cursor ?? data.next_cursor;
   previous.disabled = state.busyPage || !canCallTools() || previousCursor === null; next.disabled = state.busyPage || !canCallTools() || !nextCursor;
   previous.onclick = () => { if (previousCursor !== null) void navigatePage(previousCursor); }; next.onclick = () => { if (nextCursor) void navigatePage(nextCursor); };
-  nav.append(previous, next); footer.append(nav, element('p', 'footnote', t('footer'))); shell.append(footer);
+  const provenance = element('dl', 'footnote footer-facts');
+  for (const [label, value] of [['footerShop', 'footerShopValue'], ['footerEvidence', 'footerEvidenceValue']] as const) {
+    const fact = element('div'); fact.append(element('dt', '', t(label)), element('dd', '', t(value))); provenance.append(fact);
+  }
+  nav.append(previous, next); footer.append(nav, provenance); shell.append(footer);
   root.replaceChildren(shell); root.setAttribute('aria-busy', String(state.busyPage));
   const cards = document.getElementById('cards'); if (cards) cards.scrollTop = scroll;
   renderSelectionBar(); setHostTheme(); installCoverObserver(); debugBounds();
