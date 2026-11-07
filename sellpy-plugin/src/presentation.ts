@@ -71,12 +71,17 @@ export function galleryResult(gallery: GalleryData, images: Record<string, strin
     checked_image_ids: assessment?.checked_image_ids ?? [],
     ...(feedback ? { feedback } : {}),
   }));
+  const unassessed_item_ids = cards.filter(card => !card.visually_assessed).map(card => card.item_id);
+  const visual_review = { unassessed_item_ids, next_action: unassessed_item_ids.length
+    ? 'Catalog and price selections are ready to use. Before finalizing a recommendation based on visual fit for these unassessed items, inspect their original photos using get_item_images(for_model:true) as needed, save actual findings with record_visual_assessment, then run a fresh refine_search or present_items.'
+    : null };
   const structuredContent = { run_id: gallery.run_id, title: gallery.title, cards,
-    next_cursor: gallery.next_cursor, warnings: gallery.warnings };
+    next_cursor: gallery.next_cursor, warnings: gallery.warnings, visual_review };
   return {
     content: [{ type: 'text', text: `${cards.length} selected Sellpy items are ready in the gallery. ` +
       'Each structured card contains its exact original photo and listing URL. If the gallery cannot be displayed, render every recommended card with its own image using ![item title](card.image.url), then its price, size, condition, reason and listing link. ' +
       'Never substitute another item’s photograph or claim image inspection from gallery display. ' +
+      (visual_review.next_action ? `${visual_review.next_action} ` : '') +
       (gallery.next_cursor ? 'More selected items are available with the presentation next_cursor.' : 'This presentation selection is complete.') }],
     structuredContent,
     _meta: { gallery, images: hydration },

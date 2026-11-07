@@ -59,10 +59,10 @@ describe('visual assessment handoff through actual Workers RPC', () => {
       images: [{ id: 'visual-back', status: 'ready' }, { id: 'visual-detail', status: 'failed' }] });
     expect(result.content.filter(value => value.type === 'image')).toHaveLength(1);
     expect(result._meta?.images).toEqual({});
-    expect(result.structuredContent?.assessment_context).toMatchObject({ run_id, item_id: item.id,
+    const handoff = (result.structuredContent as { assessment_context: AssessmentContext }).assessment_context;
+    expect(handoff).toMatchObject({ run_id, item_id: item.id,
       delivered_image_ids: ['visual-back'], requirements_scope: 'search_intent_only', requirements,
       next_tool: 'record_visual_assessment' });
-    const handoff = result.structuredContent!.assessment_context as AssessmentContext;
     expect(handoff).not.toHaveProperty('checked_image_ids');
     expect(handoff).not.toHaveProperty('requirement_results');
     expect(handoff.next_action).toMatch(/inspect/i);
@@ -95,7 +95,7 @@ describe('visual assessment handoff through actual Workers RPC', () => {
       assessment_context: { run_id, item_id: item.id, delivered_image_ids: [], requirements_scope: 'search_intent_only',
         requirements, next_tool: 'get_item_images' } });
     expect(result.content.filter(value => value.type === 'image')).toHaveLength(0);
-    expect((result.structuredContent!.assessment_context as AssessmentContext).next_action).toMatch(/retry|another|remaining/i);
+    expect((result.structuredContent as { assessment_context: AssessmentContext }).assessment_context.next_action).toMatch(/retry|another|remaining/i);
     expect((await stub.getCandidates([item.id]))[0]!.assessment).toBeNull();
   });
 
@@ -111,7 +111,7 @@ describe('visual assessment handoff through actual Workers RPC', () => {
     source.ready.add(item.images[0]!.url);
     const images = await invokeTool('get_item_images', { run_id, item_id: item.id, batch_size: 1 }, context);
     expect(images.structuredContent).toMatchObject({ assessment_context: { requirements_scope: 'search_intent_only', requirements } });
-    const action = (images.structuredContent!.assessment_context as AssessmentContext).next_action;
+    const action = (images.structuredContent as { assessment_context: AssessmentContext }).assessment_context.next_action;
     expect(action).toMatch(/refinement|profile/i);
   });
 });

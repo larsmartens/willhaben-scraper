@@ -1,6 +1,6 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "sellpy-studio",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Search Sellpy in chat, discover clothing by visual style or reference image, inspect original photos and compare illustrated selections."
 }

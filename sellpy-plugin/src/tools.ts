@@ -7,7 +7,7 @@ import { createProviderContext } from './traffic.js';
 import { sharedSellpyProvider } from './sellpy/client.js';
 import { loadImages, prepareReference } from './images.js';
 import { buildGallery, galleryResult } from './presentation.js';
-import type { RankingPreferences } from './refinement.js';
+import { searchIntentRequirements, type RankingPreferences, type RankingRequirement } from './refinement.js';
 import type { RefinementPage } from './research-store.js';
 import { itemSnapshot, observationChanges } from './observations.js';
 import { commonSourceFacets } from './facet-evidence.js';
@@ -18,6 +18,16 @@ export interface ToolContext {
   principal: string;
   deadline: number;
   signal?: AbortSignal;
+}
+
+interface AssessmentContext {
+  run_id: string;
+  item_id: string;
+  delivered_image_ids: string[];
+  requirements_scope: 'search_intent_only';
+  requirements: RankingRequirement[];
+  next_tool: 'record_visual_assessment' | 'get_item_images';
+  next_action: string;
 }
 
 function payload(data: unknown, summary: string): CallToolResult {
@@ -140,12 +150,7 @@ async function refine(args: unknown, context: ToolContext): Promise<CallToolResu
     input.use_profile ? library(context).getProfile(input.profile ?? 'default') : Promise.resolve(null)]);
   if (input.profile && input.use_profile && !profile) throw new ToolError('profile_not_found', 'This preference profile has not been saved.');
   const filters = plan.arms[0]?.filters;
-  const requirements = [
-    ...(plan.intent.desired_type ? [{ requirement: `Garment type: ${plan.intent.desired_type}`, priority: 'require' as const }] : []),
-    ...(plan.intent.style ? [{ requirement: `Style: ${plan.intent.style}`, priority: 'require' as const }] : []),
-    ...(plan.intent.include ?? []).map(requirement => ({ requirement, priority: 'require' as const })),
-    ...(plan.intent.exclude ?? []).map(requirement => ({ requirement, priority: 'avoid' as const })),
-  ];
+  const requirements = searchIntentRequirements(plan.intent);
   const preferences: RankingPreferences = {
     ...(filters?.price_min !== undefined ? { price_min: filters.price_min } : {}),
     ...(filters?.price_max !== undefined ? { price_max: filters.price_max } : {}),
@@ -301,9 +306,22 @@ export async function invokeTool(name:ToolName,args:unknown,context:ToolContext)
         const item=candidates[0]?.item;
         if (!item) throw new ToolError('item_not_found','This item could not be loaded.');
         const batch=await loadImages(item,input.start_index,input.batch_size,providerContext(context),{for_model:input.for_model});
-        if (input.for_model && batch.delivered_ids.length) await actor(context,input.run_id).markImagesDelivered(item.id,batch.delivered_ids);
         const {contents,hydration,delivered_ids,...result}=batch;
-        const response=payload({...result,warnings},input.for_model ? 'Actual image content follows in the same order as ready image records. Cite their IDs when recording visual evidence.' : 'Images delivered only to the gallery. This does not establish model visual inspection.');
+        let assessment_context: AssessmentContext | undefined;
+        if (input.for_model) {
+          const run=actor(context,input.run_id);
+          const {plan}=await run.status();
+          if (delivered_ids.length) await run.markImagesDelivered(item.id,delivered_ids);
+          assessment_context={run_id:input.run_id,item_id:item.id,delivered_image_ids:delivered_ids,
+            requirements_scope:'search_intent_only',requirements:searchIntentRequirements(plan.intent),
+            next_tool:delivered_ids.length?'record_visual_assessment':'get_item_images',
+            next_action:delivered_ids.length
+              ? 'Inspect the delivered original images, then call record_visual_assessment for this run_id and item_id using only images actually examined. Save matching features, mismatches, uncertainties and per-requirement findings before a final visual selection. Copy the exact applicable requirement labels. These labels cover search intent only; use an active refinement’s returned preferences.requirements when profile or explicit overrides change them. Run a fresh refine_search or present_items to use the saved findings.'
+              : 'No model image was delivered in this batch. Retry failed_indices or request remaining_indices with get_item_images(for_model:true), then inspect successful original images before recording findings. Keep unavailable visual evidence unknown. These requirements cover search intent only; a current refinement may use different profile or explicit requirements.'};
+        }
+        const response=payload({...result,warnings,...(assessment_context?{assessment_context}:{})},assessment_context
+          ? `${delivered_ids.length?'Actual image content follows in the same order as ready image records.':'No original image content could be delivered to the model.'} ${assessment_context.next_action}`
+          : 'Images delivered only to the gallery. This does not establish model visual inspection.');
         response.content.push(...contents);
         response._meta={images:hydration};
         return response;

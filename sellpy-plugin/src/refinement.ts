@@ -1,4 +1,4 @@
-import { ToolError, type Candidate, type ItemFeedback, type ItemObservation } from './domain.js';
+import { ToolError, type Candidate, type ItemFeedback, type ItemObservation, type SearchIntent } from './domain.js';
 import { normalizeEvidenceKey as key, resolveVisualRequirement } from './evidence.js';
 import { sourceFacetEvidence } from './facet-evidence.js';
 import { effectiveFilters } from './sellpy/normalize.js';
@@ -6,6 +6,15 @@ import { effectiveFilters } from './sellpy/normalize.js';
 export interface RankingRequirement {
   requirement: string;
   priority: 'require' | 'avoid' | 'prefer';
+}
+
+export function searchIntentRequirements(intent: SearchIntent): RankingRequirement[] {
+  return [
+    ...(intent.desired_type ? [{ requirement: `Garment type: ${intent.desired_type}`, priority: 'require' as const }] : []),
+    ...(intent.style ? [{ requirement: `Style: ${intent.style}`, priority: 'require' as const }] : []),
+    ...(intent.include ?? []).map(requirement => ({ requirement, priority: 'require' as const })),
+    ...(intent.exclude ?? []).map(requirement => ({ requirement, priority: 'avoid' as const })),
+  ];
 }
 
 export interface RankingPreferences {

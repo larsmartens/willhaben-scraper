@@ -135,7 +135,7 @@ test('a mixed visual selection identifies unsaved assessments without promoting 
     selection: [{ item_id: 'pending', reason: 'The photo shows a dress with long sleeves.' }, { item_id: 'reviewed', reason: 'Recorded photo evidence' }],
     feedback: { pending: { item_id: 'pending', decision: 'shortlist', updated_at: '2026-11-07T00:00:00Z' } } });
   const result = galleryResult(gallery, { [pending.item.images[0]!.id]: PNG });
-  const handoff = result.structuredContent?.visual_review as { unassessed_item_ids: string[]; next_action: string } | undefined;
+  const handoff = (result.structuredContent as { visual_review?: { unassessed_item_ids: string[]; next_action: string } }).visual_review;
   assert.ok(handoff, 'The visual selection needs an explicit handoff for unsaved assessments.');
   assert.deepEqual(handoff.unassessed_item_ids, ['pending']);
   assert.match(handoff.next_action, /record_visual_assessment/);
@@ -155,7 +155,7 @@ test('a catalog-only selection remains usable without a visual assessment', () =
   assert.notEqual(result.isError, true);
   assert.equal(galleryFromResult(result)!.cards[0]!.reason, 'Lowest observed price among these candidates');
   assert.equal(galleryFromResult(result)!.cards[0]!.assessment, null);
-  const handoff = result.structuredContent?.visual_review as { unassessed_item_ids: string[]; next_action: string } | undefined;
+  const handoff = (result.structuredContent as { visual_review?: { unassessed_item_ids: string[]; next_action: string } }).visual_review;
   assert.ok(handoff);
   assert.deepEqual(handoff.unassessed_item_ids, ['catalog']);
   assert.match(handoff.next_action, /catalog|price/i);
@@ -168,7 +168,7 @@ test('a fully assessed selection has no outstanding recording handoff', () => {
   const gallery = buildGallery({ run_id: 'run', language: 'en', title: 'Reviewed', candidates: [value],
     selection: [{ item_id: value.item.id, reason: 'Recorded original-photo observations' }] });
   const result = galleryResult(gallery);
-  assert.deepEqual(result.structuredContent?.visual_review, { unassessed_item_ids: [], next_action: null });
+  assert.deepEqual((result.structuredContent as { visual_review: unknown }).visual_review, { unassessed_item_ids: [], next_action: null });
   assert.equal((result.structuredContent as { cards: { visually_assessed: boolean }[] }).cards[0]!.visually_assessed, true);
 });
 
@@ -223,7 +223,7 @@ test('comparison preserves source labels and explicit unknowns without asserting
   assert.deepEqual(cells('Visuell erkannter Artikeltyp'), ['Kleid', 'Keine Angabe']);
   assert.deepEqual(cells('Maß laut Shop: Länge'), ['110 cm', 'Keine Angabe']);
   assert.equal(cells('Preis')[1], 'Preis offen');
-  assert.deepEqual(cells('Geprüfte Fotos'), ['1 / 14', 'Noch nicht visuell geprüft']);
+  assert.deepEqual(cells('Geprüfte Fotos'), ['1 / 14', 'Keine aktuelle Bildbewertung gespeichert']);
   assert.match(cells('Cottagecore')[0]!, /^Bestätigt: Rüschen/);
   assert.equal(cells('Cottagecore')[1], 'Offen');
 });

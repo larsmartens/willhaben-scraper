@@ -15,7 +15,7 @@ const language = {
     material: 'Material laut Shop', measurements: 'Maße laut Shop', defects: 'Hinweise zum Zustand',
     description: 'Beschreibung laut Shop', visual: 'Visuelle Einschätzung', actualType: 'Erkannter Artikeltyp',
     matching: 'Passende Merkmale', mismatches: 'Abweichungen', uncertain: 'Noch offen',
-    checked: 'Geprüfte Ansichten', unreviewed: 'Visuelle Passung noch nicht geprüft.', observed: 'Stand',
+    checked: 'Geprüfte Ansichten', unreviewed: 'Keine aktuelle Bildbewertung gespeichert.', observed: 'Stand',
     reasonMissing: 'Passung noch zu prüfen.', open: 'Bei Sellpy ansehen', refresh: 'Preis und Status aktualisieren',
     refreshed: 'Preis und Status aktualisiert.', refreshFailed: 'Aktualisierung fehlgeschlagen. Die bisherigen Angaben bleiben sichtbar.',
     photographs: 'Fotos', photograph: 'Foto', close: 'Fotogalerie schließen', previousPhoto: 'Vorheriges Foto', nextPhoto: 'Nächstes Foto',
@@ -36,9 +36,9 @@ const language = {
     compare: 'Vergleichen', comparing: 'Vergleich', selected: 'ausgewählt', clearSelection: 'Vergleichsauswahl leeren', backToCards: 'Zur Auswahl',
     comparisonHint: 'Shop-Angaben und geprüfte Bildmerkmale. Fehlende Angaben bleiben offen. Seitlich wischen für weitere Artikel.',
     compareRemove: 'Aus Vergleich entfernen', compareAttribute: 'Merkmal', noFiltered: 'Keine geladenen Artikel entsprechen diesem Filter.',
-    evidenceChecked: 'Fotos geprüft', evidenceUnchecked: 'Fotos ungeprüft', discuss: 'Im Chat besprechen',
+    evidenceChecked: 'Fotos geprüft', evidenceUnchecked: 'Bildbewertung offen', discuss: 'Im Chat besprechen',
     discussDone: 'Die Auswahl wurde an diesen Chat übergeben.', discussFailed: 'Die Auswahl konnte nicht an den Chat übergeben werden.',
-    discussPrompt: 'Vergleiche meine ausgewählten Sellpy-Artikel. Prüfe die aktuellen Angaben und die Originalfotos, berücksichtige meine bisherigen Kriterien und erkläre die wichtigsten Unterschiede und offenen Fragen.',
+    discussPrompt: 'Vergleiche meine ausgewählten Sellpy-Artikel. Prüfe die aktuellen Angaben und die Originalfotos, berücksichtige meine bisherigen Kriterien und erkläre die wichtigsten Unterschiede und offenen Fragen. Halte die geprüften Bildmerkmale und offenen Fragen auch in der Auswahl fest.',
   },
   en: {
     eyebrow: 'Sellpy selection', title: 'Pieces to compare', count: 'items in this selection',
@@ -49,7 +49,7 @@ const language = {
     material: 'Material stated by shop', measurements: 'Measurements stated by shop', defects: 'Condition notes',
     description: 'Shop description', visual: 'Visual assessment', actualType: 'Observed garment type',
     matching: 'Matching features', mismatches: 'Differences', uncertain: 'Still uncertain',
-    checked: 'Examined views', unreviewed: 'Visual suitability has not been assessed yet.', observed: 'Observed',
+    checked: 'Examined views', unreviewed: 'No current visual assessment is saved.', observed: 'Observed',
     reasonMissing: 'Suitability still needs checking.', open: 'View on Sellpy', refresh: 'Refresh price and status',
     refreshed: 'Price and status refreshed.', refreshFailed: 'Refresh failed. The previous observations remain visible.',
     photographs: 'photos', photograph: 'Photo', close: 'Close photo gallery', previousPhoto: 'Previous photo', nextPhoto: 'Next photo',
@@ -70,9 +70,9 @@ const language = {
     compare: 'Compare', comparing: 'Comparison', selected: 'selected', clearSelection: 'Clear comparison selection', backToCards: 'Back to selection',
     comparisonHint: 'Shop facts and examined visual features. Missing information stays unknown. Scroll sideways for more items.',
     compareRemove: 'Remove from comparison', compareAttribute: 'Attribute', noFiltered: 'No loaded items match this filter.',
-    evidenceChecked: 'Photos examined', evidenceUnchecked: 'Photos unexamined', discuss: 'Discuss in chat',
+    evidenceChecked: 'Photos examined', evidenceUnchecked: 'Assessment pending', discuss: 'Discuss in chat',
     discussDone: 'The selection was sent to this chat.', discussFailed: 'The selection could not be sent to this chat.',
-    discussPrompt: 'Compare my selected Sellpy items. Check current details and original photographs, consider my earlier criteria, and explain the main differences and remaining uncertainties.',
+    discussPrompt: 'Compare my selected Sellpy items. Check current details and original photographs, consider my earlier criteria, and explain the main differences and remaining uncertainties. Keep the examined visual features and remaining uncertainties in the selection as well.',
   },
 };
 type Label = keyof typeof language.de;
@@ -91,7 +91,7 @@ const state = {
   viewerId: null as string | null, viewerPosition: 0,
   status: '', statusError: false,
 };
-const app = new App({ name: 'Sellpy selection', version: '1.1.0' }, { availableDisplayModes: ['inline', 'fullscreen'] });
+const app = new App({ name: 'Sellpy selection', version: '1.1.1' }, { availableDisplayModes: ['inline', 'fullscreen'] });
 const root = document.getElementById('app')!;
 const dialog = document.createElement('dialog');
 dialog.className = 'viewer';
