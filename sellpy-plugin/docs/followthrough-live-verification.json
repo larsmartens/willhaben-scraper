@@ -1,0 +1,41 @@
+{
+  "checked_at": "2026-11-07T12:21:39.535Z",
+  "expected_version": "1.1.1",
+  "outcome": "passed",
+  "checks": [
+    {
+      "name": "version_and_gallery",
+      "version": "1.1.1",
+      "tools": 24,
+      "gallery_sha256": "ce19b2c74c33e6a8755ce51deb729988beb686d1947e2d351effc687587b3bdc"
+    },
+    {
+      "name": "widget_separation",
+      "assessment_context": false,
+      "model_image_blocks": 0
+    },
+    {
+      "name": "model_image_handoff",
+      "delivered_images": 1,
+      "exact_intent_requirements": 4,
+      "scope": "search_intent_only"
+    },
+    {
+      "name": "ordinary_presentation_without_invented_evidence",
+      "cards": 1,
+      "missing_assessments": 1,
+      "recorded_assessments": 0
+    },
+    {
+      "name": "explicit_requirement_override",
+      "unchanged_override_semantics": true,
+      "profile_used": false
+    }
+  ],
+  "cleanup": {
+    "owned_runs_deleted": 1,
+    "profiles_written": 0,
+    "visual_assessments_written": 0
+  },
+  "finished_at": "2026-11-07T12:21:57.281Z"
+}

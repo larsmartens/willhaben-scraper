@@ -1,0 +1,17 @@
+{
+  "version": "1.1.0",
+  "deployed_at": "2026-11-07T00:29:31.782644Z",
+  "worker": "sellpy-studio",
+  "public_health_url": "https://sellpy-studio.lars-e82.workers.dev/health",
+  "deployment_id": "2fe97e62cf36486d89d7797a0e08e154",
+  "reviewed_local_commit": "b28f0a6e4ee42ca5137d2a3268253630b2697962",
+  "reviewed_tree": "95c6e1e484de8ef8edaeade1966a565362b9a8cf",
+  "worker_sha256": "bd41185af3106312a9c6211e96a4bf5bcbfc1083a79f97f07751b8e960bb295a",
+  "worker_bytes": 1547956,
+  "gallery_sha256": "15c42277e38b1c2e20354a6dee2a4c253871d4863a2795d531c7ae49ca30b015",
+  "gallery_bytes": 720570,
+  "migration_tag": "v1",
+  "existing_namespaces_preserved": true,
+  "published_production_commit": "a4ba814f5245a1415fab5c499d9d7ef3013df292",
+  "published_production_tree_verified": true
+}

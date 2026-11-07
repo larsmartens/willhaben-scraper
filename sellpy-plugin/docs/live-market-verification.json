@@ -1,0 +1,11 @@
+{
+  "checked_at": "2026-11-06T23:01:39.464Z",
+  "outcome": "passed",
+  "market": "DE",
+  "language": "de",
+  "sort": "price_asc",
+  "items": 5,
+  "currency": "EUR",
+  "price_max": 60,
+  "correct_market_urls": true
+}

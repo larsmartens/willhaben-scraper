@@ -1,0 +1,884 @@
+{
+  "checked_at": "2026-11-06T23:58:50.984Z",
+  "baseline_ref": "92ac6218496d4057626ddcc58621687c8dc9dcc3",
+  "baseline_source_sha256": {
+    "src/domain.ts": "035eb27e3f0d09a26e19cc34f2038f4e1ea34959deefadebc7c08fa400e48761",
+    "src/sellpy/client.ts": "6d28318cc5ed62b25791798f8aeffcd7d851a9f05bb37e4c73e52cbd10b61a32",
+    "src/sellpy/config.ts": "7d1cd209e198bd594682be40c228ca1a1a59b2ccd3e4028854ea50e0cab7fbfd",
+    "src/sellpy/http.ts": "a1a5865a28f693132859857ffb1baeca94549939f96dc55b4a4d22611a0d54d3",
+    "src/sellpy/normalize.ts": "8b2861ab0b239dd00baf0b4e2310c80633eec0f2eab6d26abfc9d5451461203d"
+  },
+  "candidate_checkout_head": "92ac6218496d4057626ddcc58621687c8dc9dcc3",
+  "candidate_source_sha256": {
+    "src/domain.ts": "635cafb431bb9ca65860113fe241e3261692860df6fe11526e0c686f763d1e13",
+    "src/sellpy/client.ts": "21ffe5721383788ffad894dd3e538c6dc546d55d29db323b867f01e676005f44",
+    "src/sellpy/config.ts": "7d1cd209e198bd594682be40c228ca1a1a59b2ccd3e4028854ea50e0cab7fbfd",
+    "src/sellpy/http.ts": "a1a5865a28f693132859857ffb1baeca94549939f96dc55b4a4d22611a0d54d3",
+    "src/sellpy/normalize.ts": "8b2861ab0b239dd00baf0b4e2310c80633eec0f2eab6d26abfc9d5451461203d"
+  },
+  "baseline_bundle_sha256": "b4c6fdb9baa8765b4decc892490a7629f7552f16ee5d36ca98f30d86279d23ce",
+  "candidate_bundle_sha256": "01416068f5e6a45bfdcfb6aad000cf2e31bccd5e91b8fcdf187ab06262469d21",
+  "environment": {
+    "node": "v24.22.1",
+    "platform": "linux",
+    "uptime": "00:58:50 up  8:20,  0 user,  load average: 0.23, 0.28, 0.22",
+    "nproc": 9,
+    "transport": "Node public-source fetch. No production OriginGate pacing; not an end-to-end ChatGPT or deployed-edge latency result."
+  },
+  "workload": {
+    "operation": "fresh canonical details",
+    "ids": [
+      "PZv57Y9Eot",
+      "zEeZQYpm0i",
+      "kwPIDKhoUS"
+    ],
+    "market": "AT",
+    "language": "de",
+    "samples_per_variant": 5,
+    "design": "Alternating paired order. Each call makes fresh price and canonical detail requests. V1 provider factory per tool versus V2 shared plain configuration following a capabilities call. Only observed_at is excluded from normalized output equivalence."
+  },
+  "warmups": [
+    {
+      "label": "baseline",
+      "elapsed_ms": 5668,
+      "requests": [
+        {
+          "route": "search_html",
+          "start_ms": 0,
+          "duration_ms": 5643,
+          "bytes": 11585,
+          "status": 200
+        },
+        {
+          "route": "config",
+          "start_ms": 5648,
+          "duration_ms": 16,
+          "bytes": 9756,
+          "status": 200
+        }
+      ],
+      "max_inflight": 1,
+      "request_count": 2,
+      "transferred_bytes": 21341,
+      "source_version": "a3f361d92d68c0aac28e373573978596738012d9"
+    },
+    {
+      "label": "candidate",
+      "elapsed_ms": 79,
+      "requests": [
+        {
+          "route": "search_html",
+          "start_ms": 0,
+          "duration_ms": 24,
+          "bytes": 11585,
+          "status": 200
+        },
+        {
+          "route": "config",
+          "start_ms": 25,
+          "duration_ms": 52,
+          "bytes": 9756,
+          "status": 200
+        }
+      ],
+      "max_inflight": 1,
+      "request_count": 2,
+      "transferred_bytes": 21341,
+      "source_version": "a3f361d92d68c0aac28e373573978596738012d9"
+    }
+  ],
+  "observations": [
+    {
+      "pair": 1,
+      "label": "baseline",
+      "elapsed_ms": 14774,
+      "requests": [
+        {
+          "route": "search_html",
+          "start_ms": 0,
+          "duration_ms": 21,
+          "bytes": 11585,
+          "status": 200
+        },
+        {
+          "route": "config",
+          "start_ms": 22,
+          "duration_ms": 10,
+          "bytes": 9756,
+          "status": 200
+        },
+        {
+          "route": "objects",
+          "start_ms": 33,
+          "duration_ms": 5871,
+          "bytes": 8519,
+          "status": 200
+        },
+        {
+          "route": "graphql",
+          "start_ms": 5906,
+          "duration_ms": 8641,
+          "bytes": 6663,
+          "status": 200
+        }
+      ],
+      "max_inflight": 1,
+      "request_count": 4,
+      "transferred_bytes": 36523,
+      "item_ids": [
+        "PZv57Y9Eot",
+        "zEeZQYpm0i",
+        "kwPIDKhoUS"
+      ],
+      "error_count": 0,
+      "failures": [],
+      "remaining_ids": [],
+      "normalized_output_sha256": "2975fc00700f3d98ed2c99b19e839fee4fb336b7aede98b6ba5fb9d8aeb2a0ca",
+      "summary": [
+        {
+          "id": "PZv57Y9Eot",
+          "price": {
+            "amount_minor": 2800,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        },
+        {
+          "id": "zEeZQYpm0i",
+          "price": {
+            "amount_minor": 700,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 4
+        },
+        {
+          "id": "kwPIDKhoUS",
+          "price": {
+            "amount_minor": 1100,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        }
+      ]
+    },
+    {
+      "pair": 1,
+      "label": "candidate",
+      "elapsed_ms": 9016,
+      "requests": [
+        {
+          "route": "graphql",
+          "start_ms": 16,
+          "duration_ms": 7437,
+          "bytes": 6663,
+          "status": 200
+        },
+        {
+          "route": "objects",
+          "start_ms": 2,
+          "duration_ms": 9005,
+          "bytes": 4115,
+          "status": 200
+        }
+      ],
+      "max_inflight": 2,
+      "request_count": 2,
+      "transferred_bytes": 10778,
+      "item_ids": [
+        "PZv57Y9Eot",
+        "zEeZQYpm0i",
+        "kwPIDKhoUS"
+      ],
+      "error_count": 0,
+      "failures": [],
+      "remaining_ids": [],
+      "normalized_output_sha256": "2975fc00700f3d98ed2c99b19e839fee4fb336b7aede98b6ba5fb9d8aeb2a0ca",
+      "summary": [
+        {
+          "id": "PZv57Y9Eot",
+          "price": {
+            "amount_minor": 2800,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        },
+        {
+          "id": "zEeZQYpm0i",
+          "price": {
+            "amount_minor": 700,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 4
+        },
+        {
+          "id": "kwPIDKhoUS",
+          "price": {
+            "amount_minor": 1100,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "label": "candidate",
+      "elapsed_ms": 5779,
+      "requests": [
+        {
+          "route": "objects",
+          "start_ms": 0,
+          "duration_ms": 259,
+          "bytes": 4115,
+          "status": 200
+        },
+        {
+          "route": "graphql",
+          "start_ms": 2,
+          "duration_ms": 5771,
+          "bytes": 6663,
+          "status": 200
+        }
+      ],
+      "max_inflight": 2,
+      "request_count": 2,
+      "transferred_bytes": 10778,
+      "item_ids": [
+        "PZv57Y9Eot",
+        "zEeZQYpm0i",
+        "kwPIDKhoUS"
+      ],
+      "error_count": 0,
+      "failures": [],
+      "remaining_ids": [],
+      "normalized_output_sha256": "2975fc00700f3d98ed2c99b19e839fee4fb336b7aede98b6ba5fb9d8aeb2a0ca",
+      "summary": [
+        {
+          "id": "PZv57Y9Eot",
+          "price": {
+            "amount_minor": 2800,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        },
+        {
+          "id": "zEeZQYpm0i",
+          "price": {
+            "amount_minor": 700,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 4
+        },
+        {
+          "id": "kwPIDKhoUS",
+          "price": {
+            "amount_minor": 1100,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "label": "baseline",
+      "elapsed_ms": 17541,
+      "requests": [
+        {
+          "route": "search_html",
+          "start_ms": 0,
+          "duration_ms": 5465,
+          "bytes": 11585,
+          "status": 200
+        },
+        {
+          "route": "config",
+          "start_ms": 5466,
+          "duration_ms": 17,
+          "bytes": 9756,
+          "status": 200
+        },
+        {
+          "route": "objects",
+          "start_ms": 5488,
+          "duration_ms": 5800,
+          "bytes": 8519,
+          "status": 200
+        },
+        {
+          "route": "graphql",
+          "start_ms": 11290,
+          "duration_ms": 6233,
+          "bytes": 6663,
+          "status": 200
+        }
+      ],
+      "max_inflight": 1,
+      "request_count": 4,
+      "transferred_bytes": 36523,
+      "item_ids": [
+        "PZv57Y9Eot",
+        "zEeZQYpm0i",
+        "kwPIDKhoUS"
+      ],
+      "error_count": 0,
+      "failures": [],
+      "remaining_ids": [],
+      "normalized_output_sha256": "2975fc00700f3d98ed2c99b19e839fee4fb336b7aede98b6ba5fb9d8aeb2a0ca",
+      "summary": [
+        {
+          "id": "PZv57Y9Eot",
+          "price": {
+            "amount_minor": 2800,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        },
+        {
+          "id": "zEeZQYpm0i",
+          "price": {
+            "amount_minor": 700,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 4
+        },
+        {
+          "id": "kwPIDKhoUS",
+          "price": {
+            "amount_minor": 1100,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        }
+      ]
+    },
+    {
+      "pair": 3,
+      "label": "baseline",
+      "elapsed_ms": 20606,
+      "requests": [
+        {
+          "route": "search_html",
+          "start_ms": 0,
+          "duration_ms": 5474,
+          "bytes": 11585,
+          "status": 200
+        },
+        {
+          "route": "config",
+          "start_ms": 5476,
+          "duration_ms": 29,
+          "bytes": 9756,
+          "status": 200
+        },
+        {
+          "route": "objects",
+          "start_ms": 5508,
+          "duration_ms": 5610,
+          "bytes": 8519,
+          "status": 200
+        },
+        {
+          "route": "graphql",
+          "start_ms": 11119,
+          "duration_ms": 9469,
+          "bytes": 6663,
+          "status": 200
+        }
+      ],
+      "max_inflight": 1,
+      "request_count": 4,
+      "transferred_bytes": 36523,
+      "item_ids": [
+        "PZv57Y9Eot",
+        "zEeZQYpm0i",
+        "kwPIDKhoUS"
+      ],
+      "error_count": 0,
+      "failures": [],
+      "remaining_ids": [],
+      "normalized_output_sha256": "2975fc00700f3d98ed2c99b19e839fee4fb336b7aede98b6ba5fb9d8aeb2a0ca",
+      "summary": [
+        {
+          "id": "PZv57Y9Eot",
+          "price": {
+            "amount_minor": 2800,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        },
+        {
+          "id": "zEeZQYpm0i",
+          "price": {
+            "amount_minor": 700,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 4
+        },
+        {
+          "id": "kwPIDKhoUS",
+          "price": {
+            "amount_minor": 1100,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        }
+      ]
+    },
+    {
+      "pair": 3,
+      "label": "candidate",
+      "elapsed_ms": 10406,
+      "requests": [
+        {
+          "route": "objects",
+          "start_ms": 11,
+          "duration_ms": 7552,
+          "bytes": 4115,
+          "status": 200
+        },
+        {
+          "route": "graphql",
+          "start_ms": 14,
+          "duration_ms": 10390,
+          "bytes": 6663,
+          "status": 200
+        }
+      ],
+      "max_inflight": 2,
+      "request_count": 2,
+      "transferred_bytes": 10778,
+      "item_ids": [
+        "PZv57Y9Eot",
+        "zEeZQYpm0i",
+        "kwPIDKhoUS"
+      ],
+      "error_count": 0,
+      "failures": [],
+      "remaining_ids": [],
+      "normalized_output_sha256": "2975fc00700f3d98ed2c99b19e839fee4fb336b7aede98b6ba5fb9d8aeb2a0ca",
+      "summary": [
+        {
+          "id": "PZv57Y9Eot",
+          "price": {
+            "amount_minor": 2800,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        },
+        {
+          "id": "zEeZQYpm0i",
+          "price": {
+            "amount_minor": 700,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 4
+        },
+        {
+          "id": "kwPIDKhoUS",
+          "price": {
+            "amount_minor": 1100,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        }
+      ]
+    },
+    {
+      "pair": 4,
+      "label": "candidate",
+      "elapsed_ms": 5787,
+      "requests": [
+        {
+          "route": "objects",
+          "start_ms": 1,
+          "duration_ms": 213,
+          "bytes": 4115,
+          "status": 200
+        },
+        {
+          "route": "graphql",
+          "start_ms": 2,
+          "duration_ms": 5783,
+          "bytes": 6663,
+          "status": 200
+        }
+      ],
+      "max_inflight": 2,
+      "request_count": 2,
+      "transferred_bytes": 10778,
+      "item_ids": [
+        "PZv57Y9Eot",
+        "zEeZQYpm0i",
+        "kwPIDKhoUS"
+      ],
+      "error_count": 0,
+      "failures": [],
+      "remaining_ids": [],
+      "normalized_output_sha256": "2975fc00700f3d98ed2c99b19e839fee4fb336b7aede98b6ba5fb9d8aeb2a0ca",
+      "summary": [
+        {
+          "id": "PZv57Y9Eot",
+          "price": {
+            "amount_minor": 2800,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        },
+        {
+          "id": "zEeZQYpm0i",
+          "price": {
+            "amount_minor": 700,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 4
+        },
+        {
+          "id": "kwPIDKhoUS",
+          "price": {
+            "amount_minor": 1100,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        }
+      ]
+    },
+    {
+      "pair": 4,
+      "label": "baseline",
+      "elapsed_ms": 16831,
+      "requests": [
+        {
+          "route": "search_html",
+          "start_ms": 1,
+          "duration_ms": 5541,
+          "bytes": 11585,
+          "status": 200
+        },
+        {
+          "route": "config",
+          "start_ms": 5542,
+          "duration_ms": 10,
+          "bytes": 9756,
+          "status": 200
+        },
+        {
+          "route": "objects",
+          "start_ms": 5553,
+          "duration_ms": 5685,
+          "bytes": 8519,
+          "status": 200
+        },
+        {
+          "route": "graphql",
+          "start_ms": 11239,
+          "duration_ms": 5592,
+          "bytes": 6663,
+          "status": 200
+        }
+      ],
+      "max_inflight": 1,
+      "request_count": 4,
+      "transferred_bytes": 36523,
+      "item_ids": [
+        "PZv57Y9Eot",
+        "zEeZQYpm0i",
+        "kwPIDKhoUS"
+      ],
+      "error_count": 0,
+      "failures": [],
+      "remaining_ids": [],
+      "normalized_output_sha256": "2975fc00700f3d98ed2c99b19e839fee4fb336b7aede98b6ba5fb9d8aeb2a0ca",
+      "summary": [
+        {
+          "id": "PZv57Y9Eot",
+          "price": {
+            "amount_minor": 2800,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        },
+        {
+          "id": "zEeZQYpm0i",
+          "price": {
+            "amount_minor": 700,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 4
+        },
+        {
+          "id": "kwPIDKhoUS",
+          "price": {
+            "amount_minor": 1100,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        }
+      ]
+    },
+    {
+      "pair": 5,
+      "label": "baseline",
+      "elapsed_ms": 17332,
+      "requests": [
+        {
+          "route": "search_html",
+          "start_ms": 0,
+          "duration_ms": 5477,
+          "bytes": 11585,
+          "status": 200
+        },
+        {
+          "route": "config",
+          "start_ms": 5477,
+          "duration_ms": 9,
+          "bytes": 9756,
+          "status": 200
+        },
+        {
+          "route": "objects",
+          "start_ms": 5487,
+          "duration_ms": 6002,
+          "bytes": 8519,
+          "status": 200
+        },
+        {
+          "route": "graphql",
+          "start_ms": 11491,
+          "duration_ms": 5836,
+          "bytes": 6663,
+          "status": 200
+        }
+      ],
+      "max_inflight": 1,
+      "request_count": 4,
+      "transferred_bytes": 36523,
+      "item_ids": [
+        "PZv57Y9Eot",
+        "zEeZQYpm0i",
+        "kwPIDKhoUS"
+      ],
+      "error_count": 0,
+      "failures": [],
+      "remaining_ids": [],
+      "normalized_output_sha256": "2975fc00700f3d98ed2c99b19e839fee4fb336b7aede98b6ba5fb9d8aeb2a0ca",
+      "summary": [
+        {
+          "id": "PZv57Y9Eot",
+          "price": {
+            "amount_minor": 2800,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        },
+        {
+          "id": "zEeZQYpm0i",
+          "price": {
+            "amount_minor": 700,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 4
+        },
+        {
+          "id": "kwPIDKhoUS",
+          "price": {
+            "amount_minor": 1100,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        }
+      ]
+    },
+    {
+      "pair": 5,
+      "label": "candidate",
+      "elapsed_ms": 5852,
+      "requests": [
+        {
+          "route": "objects",
+          "start_ms": 1,
+          "duration_ms": 4932,
+          "bytes": 4115,
+          "status": 200
+        },
+        {
+          "route": "graphql",
+          "start_ms": 3,
+          "duration_ms": 5848,
+          "bytes": 6663,
+          "status": 200
+        }
+      ],
+      "max_inflight": 2,
+      "request_count": 2,
+      "transferred_bytes": 10778,
+      "item_ids": [
+        "PZv57Y9Eot",
+        "zEeZQYpm0i",
+        "kwPIDKhoUS"
+      ],
+      "error_count": 0,
+      "failures": [],
+      "remaining_ids": [],
+      "normalized_output_sha256": "2975fc00700f3d98ed2c99b19e839fee4fb336b7aede98b6ba5fb9d8aeb2a0ca",
+      "summary": [
+        {
+          "id": "PZv57Y9Eot",
+          "price": {
+            "amount_minor": 2800,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        },
+        {
+          "id": "zEeZQYpm0i",
+          "price": {
+            "amount_minor": 700,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 4
+        },
+        {
+          "id": "kwPIDKhoUS",
+          "price": {
+            "amount_minor": 1100,
+            "currency": "EUR"
+          },
+          "availability": "available",
+          "source": "detail",
+          "photos": 5
+        }
+      ]
+    }
+  ],
+  "equivalence": [
+    {
+      "pair": 1,
+      "equivalent": true,
+      "error_free": true
+    },
+    {
+      "pair": 2,
+      "equivalent": true,
+      "error_free": true
+    },
+    {
+      "pair": 3,
+      "equivalent": true,
+      "error_free": true
+    },
+    {
+      "pair": 4,
+      "equivalent": true,
+      "error_free": true
+    },
+    {
+      "pair": 5,
+      "equivalent": true,
+      "error_free": true
+    }
+  ],
+  "summaries": {
+    "baseline": {
+      "samples": 5,
+      "elapsed_ms": {
+        "median": 17332,
+        "min": 14774,
+        "max": 20606
+      },
+      "requests": {
+        "median": 4,
+        "min": 4,
+        "max": 4
+      },
+      "transferred_bytes": {
+        "median": 36523,
+        "min": 36523,
+        "max": 36523
+      },
+      "errors": 0
+    },
+    "candidate": {
+      "samples": 5,
+      "elapsed_ms": {
+        "median": 5852,
+        "min": 5779,
+        "max": 10406
+      },
+      "requests": {
+        "median": 2,
+        "min": 2,
+        "max": 2
+      },
+      "transferred_bytes": {
+        "median": 10778,
+        "min": 10778,
+        "max": 10778
+      },
+      "errors": 0
+    }
+  },
+  "conclusion": {
+    "status": "paired_outputs_equal",
+    "median_elapsed_reduction_percent": 66.2,
+    "caveat": "A small paired sample of one workload in one environment. Not a p95, broad retrieval benchmark or general latency guarantee."
+  }
+}

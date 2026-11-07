@@ -1,0 +1,132 @@
+{
+  "checked_at": "2026-11-07T16:41:49.930Z",
+  "version": "1.2.0",
+  "checks": [
+    {
+      "name": "current_protocol_and_tools",
+      "protocol": "2026-07-28",
+      "tools": 27,
+      "model_tools": 26,
+      "app_only_browse": true,
+      "gallery_resource": "ui://sellpy/gallery-v3.html",
+      "gallery_bytes": 748282
+    },
+    {
+      "name": "native_search_link_import",
+      "items": 50,
+      "source_page": 2,
+      "plugin_start_page": 1,
+      "market_preserved": true,
+      "price_bound_preserved": true,
+      "unknown_restriction_rejected": true
+    },
+    {
+      "name": "live_implicit_collection",
+      "initial_cards": 12,
+      "selectable_cards": 24,
+      "frozen_members": 50,
+      "traversed_members": 50,
+      "pages": 3,
+      "duplicate_ids": 0,
+      "newer_collection_members": 100,
+      "initial_cover_maximum": 2,
+      "model_photo_count": 0,
+      "saved_visual_assessments": 0
+    },
+    {
+      "name": "global_shortlist_and_stored_details",
+      "off_first_page_item_found": true,
+      "structured_detail_identity": true,
+      "feedback_is_not_assessment": true
+    },
+    {
+      "name": "native_similar_brands",
+      "returned": 5,
+      "brand_names": [
+        "Arket",
+        "& Other Stories",
+        "Jouur",
+        "Uniqlo",
+        "Seaside Tones"
+      ],
+      "inventory_checked": false
+    },
+    {
+      "name": "native_image_inputs",
+      "stored_item_photo_results": 12,
+      "public_reference_results": 12,
+      "public_reference_retained_for_native_upload": true
+    },
+    {
+      "name": "matched_initial_page_measurement",
+      "matched_item_ids": 12,
+      "canonical_details_warmed": true,
+      "before_version": "1.1.1",
+      "before_samples": [
+        {
+          "sample": 1,
+          "milliseconds": 6056,
+          "cards": 12,
+          "hydrated_images": 12,
+          "response_bytes": 1201576,
+          "error": false
+        },
+        {
+          "sample": 2,
+          "milliseconds": 2829,
+          "cards": 12,
+          "hydrated_images": 12,
+          "response_bytes": 1201576,
+          "error": false
+        },
+        {
+          "sample": 3,
+          "milliseconds": 2957,
+          "cards": 12,
+          "hydrated_images": 12,
+          "response_bytes": 1201576,
+          "error": false
+        }
+      ],
+      "after_version": "1.2.0",
+      "after_samples": [
+        {
+          "milliseconds": 777,
+          "cards": 12,
+          "hydrated_covers": 2,
+          "response_bytes": 128089
+        },
+        {
+          "milliseconds": 733,
+          "cards": 12,
+          "hydrated_covers": 2,
+          "response_bytes": 128089
+        },
+        {
+          "milliseconds": 730,
+          "cards": 12,
+          "hydrated_covers": 2,
+          "response_bytes": 128089
+        }
+      ],
+      "before_median_ms": 2957,
+      "after_median_ms": 733,
+      "scope": "Initial useful 12-card response. Baseline eagerly hydrated all 12 covers; this version embeds at most two and the app loads visible remaining photos. This is not a full-photo-completion latency comparison."
+    },
+    {
+      "name": "legacy_client_compatibility",
+      "sdk": "1.32.2",
+      "tools": 27,
+      "existing_owner_preserved": true
+    },
+    {
+      "name": "disposable_fixture_cleanup",
+      "created": 3,
+      "deleted": 3,
+      "preexisting_baseline_retained": true,
+      "user_preferences_unchanged": true
+    }
+  ],
+  "outcome": "passed",
+  "finished_at": "2026-11-07T16:42:58.133Z"
+}

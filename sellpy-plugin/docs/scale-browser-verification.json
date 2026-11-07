@@ -1,0 +1,28 @@
+{
+  "status": "passed",
+  "source_bundle": true,
+  "unique_items_reached": 10137,
+  "pages": 423,
+  "peak_cover_requests": 4,
+  "final_bounds": {
+    "cards": 9,
+    "pages": 3,
+    "photos": 48,
+    "photoBytes": 35520,
+    "requests": 0
+  },
+  "stale_response_cases": [
+    "page",
+    "photo",
+    "details",
+    "refresh",
+    "feedback"
+  ],
+  "failed_assessment_refresh": "unknown_then_recovered",
+  "browser_errors": [],
+  "viewport_widths": [
+    360,
+    390,
+    1120
+  ]
+}

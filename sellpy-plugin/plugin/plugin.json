@@ -1,0 +1,28 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "sellpy-studio",
+  "version": "1.2.1",
+  "description": "Sellpy im Chat durchsuchen: Originalfotos, visuelle Suche, große Ergebnisübersichten, Merkliste und Vergleich.",
+  "author": {
+    "name": "Lars Martens"
+  },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Sellpy Studio",
+        "shortDescription": "Sellpy mit Text und Bildern durchsuchen",
+        "longDescription": "Persönliche Recherchehilfe für Sellpy: normale und visuelle Suche, ähnliche Marken, Suche nach falsch kategorisierter Kleidung, große blätterbare Ergebnisübersichten, kompakte Bildkriterien, private Merklisten, Vergleiche und beobachtete Preisänderungen.",
+        "developerName": "Lars Martens",
+        "category": "Other",
+        "capabilities": [],
+        "logo": "./assets/sellpy.png",
+        "composerIcon": "./assets/sellpy.png",
+        "defaultPrompt": [
+          "Finde Cottagecore-Kleider bis 60 Euro und zeige mir einen breiten Überblick mit Fotos.",
+          "Suche ähnliche Kleidungsstücke zu diesem Referenzbild.",
+          "Zeige meine Merkliste im Vergleich und die tatsächlich geprüften Bildkriterien."
+        ]
+      }
+    }
+  }
+}

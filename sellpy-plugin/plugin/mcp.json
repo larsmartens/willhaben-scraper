@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "sellpy-studio": {
+      "type": "streamable-http",
+      "url": "https://sellpy-studio.lars-e82.workers.dev/mcp"
+    }
+  }
+}
