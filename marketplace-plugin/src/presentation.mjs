@@ -60,7 +60,8 @@ export async function presentListings(args, env, provider) {
       const { card, thumbnailUrl } = listingCard(row, selection, position + 1, provider.kind, args.criteria ?? []);
       cards.push(card);
       if (card.image.error) errors.push({ ...card.image.error, stage: "image" });
-      if (card.image.url) requests.push({ id: card.id, index: card.image.index, url: card.image.url, size: "full", thumbnailUrl });
+      if (card.image.url) requests.push({ id: card.id, index: card.image.index,
+        url: thumbnailUrl ?? card.image.url, size: thumbnailUrl ? "thumbnail" : "full", thumbnailUrl });
     } catch (cause) {
       const error = { id: selection.id, stage: "observation", ...toolFailure(cause) };
       errors.push(error);
@@ -76,7 +77,18 @@ export async function presentListings(args, env, provider) {
   try { requireImageAccess(env); } catch { imageAccess = false; }
   const listingImages = [];
   if (requests.length && imageAccess) {
-    const batch = await imageBatch(requests, env, { deadline });
+    const selectedRequests = requests.slice(0, args.hydrationLimit ?? 2);
+    const batch = { results: [], errors: [], processed: 0, _images: [] };
+    let encodedBudget = 8 * 1024 * 1024 - 512 * 1024;
+    for (let offset = 0; offset < selectedRequests.length; offset += 8) {
+      const part = await imageBatch(selectedRequests.slice(offset, offset + 8), env, { deadline, encodedBudget });
+      batch.results.push(...part.results.map(result => ({ ...result, imageContentIndex: result.imageContentIndex + batch._images.length })));
+      batch.errors.push(...part.errors);
+      batch.processed += part.processed;
+      batch._images.push(...part._images);
+      encodedBudget -= part._images.reduce((sum, image) => sum + image.data.length, 0);
+      if (part.stopReason) break;
+    }
     const byId = new Map(cards.map(card => [card.id, card]));
     for (const result of batch.results) {
       const card = byId.get(result.id);
@@ -94,7 +106,7 @@ export async function presentListings(args, env, provider) {
     }
     const paused = batch.errors.find(pausesBatch);
     if (paused) {
-      for (const request of requests.slice(batch.processed)) {
+      for (const request of requests.slice(batch.processed, args.hydrationLimit ?? 2)) {
         const card = byId.get(request.id);
         card.image.error ??= { ...paused, id: card.id, index: card.image.index };
       }

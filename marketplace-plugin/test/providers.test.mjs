@@ -29,7 +29,42 @@ test('native search links encode user input and scope filters without fetching',
   assert.equal(u.searchParams.get('keyword'),q);
   assert.equal(u.searchParams.get('areaId'),'900');
   assert.deepEqual(u.searchParams.getAll('treeAttributes'),['2546','725']);
-  for(const [filters,err] of [[{city:'Vienna'},'invalid_input'],[{shipping:'shipping'},'unsupported_filter'],[{paylivery:false},'unsupported_filter'],[{priceMin:100,priceMax:1},'invalid_input']]) assert.throws(()=>buildSearchLink('x',filters),code(err));
+  for(const [filters,err] of [[{city:'Vienna'},'invalid_input'],[{paylivery:false},'unsupported_filter'],[{priceMin:100,priceMax:1},'invalid_input']]) assert.throws(()=>buildSearchLink('x',filters),code(err));
+});
+
+test('native handover and recent48h filters round-trip through search links',()=>{
+  for(const [shipping,id] of [['shipping','2537'],['pickup','2536']]) {
+    const url=buildSearchLink('Lampe',{shipping,recent48h:true});
+    assert.equal(new URL(url).searchParams.get('treeAttributes'),id);
+    assert.equal(new URL(url).searchParams.get('periode'),'2');
+    assert.deepEqual(parseSearchUrl(url).filters,{shipping,recent48h:true});
+    assert.equal(parseSearchUrl(url).fullyRepresented,true);
+  }
+});
+
+test('local title requirements and exclusions preserve upstream totals and continuation',async t=>{
+  const props=page([1,2,3],1,90);
+  props.searchResult.advertSummaryList.advertSummary.forEach((row,index)=>{
+    row.description=['Grüne Bankerlampe','Bankerlampe Ersatzglas','Tischlampe'][index];
+  });
+  t.mock.method(globalThis,'fetch',async()=>embed(props));
+  const result=await live().search({query:'Bankerlampe',filters:{titleOnly:true,requireTerms:['grune'],excludeTerms:['Ersatzglas']}});
+  assert.deepEqual(result.items.map(item=>item.id),['1']);
+  assert.equal(result.total,90);assert.equal(result.scannedCount,3);assert.equal(result.filteredOutCount,2);
+  assert.equal(result.totalScope,'upstream_before_local_filters');assert.equal(result.nextCursor,'2');
+  const none=await live().search({query:'absent',filters:{titleOnly:true}});
+  assert.equal(none.items.length,0);assert.equal(none.end,false);assert.equal(none.nextCursor,'2');
+});
+
+test('safe seller fields use existing detail metadata and omit contact information',async t=>{
+  const row=rawRow(19);
+  row.sellerProfileUserData={name:'SECRET',registerDate:'2006-09-25T00:00:00+0200',activeAdCount:306,private:true,street:'SECRET'};
+  row.attributeInformation=[{treeAttributeElement:{label:'Übergabe'},values:[{treeId:2537,label:'Versand'}]}];
+  t.mock.method(globalThis,'fetch',async()=>embed({advertDetails:row}));
+  const result=await live().detail('19');
+  assert.deepEqual(result.seller,{memberSince:'2006-09-24T22:00:00.000Z',activeListingCount:306});
+  assert.equal(result.sellerType,'private');assert.deepEqual(result.attributeIds,[2537]);
+  assert.equal(result.shipping,'shipping');assert.equal(JSON.stringify(result).includes('SECRET'),false);
 });
 test('demo data distinguishes evidence for shape and unknown dimensions from contradictory offers',async()=>{
   const p=getProvider('demo'), record=await p.detail('demo-glass-03');

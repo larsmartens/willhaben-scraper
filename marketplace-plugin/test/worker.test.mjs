@@ -3,6 +3,7 @@ import { once } from "node:events";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import worker from "../src/worker.mjs";
+import { readMcpResponse } from "./mcp-response.mjs";
 
 const protocol = "2026-07-28";
 const endpoint = "https://market.example/mcp";
@@ -48,23 +49,23 @@ test("legacy ChatGPT-style HTTP handshake, list, call and notification over a lo
     const rpc = (msg) => fetch("http://127.0.0.1:" + server.address().port + "/mcp", {
       method: "POST", headers, body: JSON.stringify(msg),
     });
-    const init = await (await rpc(message("initialize", { protocolVersion: "2025-11-25",
-      clientInfo: { name: "integration-test", version: "1" }, capabilities: {} }))).json();
+    const init = await readMcpResponse(await rpc(message("initialize", { protocolVersion: "2025-11-25",
+      clientInfo: { name: "integration-test", version: "1" }, capabilities: {} })));
     assert.deepEqual(init.result.capabilities, { tools: {}, resources: {} });
     assert.equal(init.result.protocolVersion, "2025-11-25");
-    assert.equal(init.result.serverInfo.name, "marktplatz-studie");
+    assert.equal(init.result.serverInfo.name, "willhaben");
     const notification = await rpc({ jsonrpc: "2.0", method: "notifications/initialized" });
     assert.equal(notification.status, 202);
     assert.equal(await notification.text(), "");
-    const list = await (await rpc(message("tools/list"))).json();
+    const list = await readMcpResponse(await rpc(message("tools/list")));
     const defs = list.result.tools;
     for (const tool of ["discover_filters", "search_listings", "inspect_listings", "study_market"])
       assert.ok(defs.some((def) => def.name === tool && def.inputSchema.type === "object"), tool);
-    const detail = await (await rpc(message("tools/call", { name: "discover_filters",
-      arguments: { source: "demo", query: "BANKAMP" } }))).json();
+    const detail = await readMcpResponse(await rpc(message("tools/call", { name: "discover_filters",
+      arguments: { source: "demo", query: "BANKAMP" } })));
     assert.ok(!detail.result.isError, JSON.stringify(detail));
     assert.deepEqual(JSON.parse(detail.result.content[0].text), detail.result.structuredContent);
-    assert.equal((await (await rpc(message("ping"))).json()).id, 7);
+    assert.equal((await readMcpResponse(await rpc(message("ping")))).id, 7);
   } finally {
     server.close();
     await once(server, "close");
@@ -72,7 +73,7 @@ test("legacy ChatGPT-style HTTP handshake, list, call and notification over a lo
 });
 
 test("published criterion schemas accept canonical and German keys in flag-free clients", async () => {
-  const { result } = await (await post(message("tools/list"))).json();
+  const { result } = await readMcpResponse(await post(message("tools/list")));
   for (const name of ["inspect_listings", "study_market", "save_study"]) {
     const tool = result.tools.find((entry) => entry.name === name);
     const keySchema = tool.inputSchema.properties.criteria.items.properties.key;
@@ -89,27 +90,27 @@ test("published criterion schemas accept canonical and German keys in flag-free 
     listings: [{ id: "123", title: "Lampenglas", price: 20, attributes: { Öffnung: 24 } }],
     criteria: [{ key: "Öffnung", value: 24 }] };
   const valid = await post(message("tools/call", { name: "inspect_listings", arguments: args }));
-  assert.equal((await valid.json()).result.structuredContent.results[0].evaluation.status, "confirmed");
+  assert.equal((await readMcpResponse(valid)).result.structuredContent.results[0].evaluation.status, "confirmed");
   const invalid = await post(message("tools/call", { name: "inspect_listings", arguments: {
     ...args, criteria: [{ key: "constructor", value: 24 }],
   } }));
-  const failure = (await invalid.json()).result;
+  const failure = (await readMcpResponse(invalid)).result;
   assert.equal(failure.isError, true);
   assert.match(failure.content[0].text, /Invalid criterion key/);
 });
 
 test("modern discovery, cached shared tool definitions, private per-call data and routing headers", async () => {
   const discovery = await post(stateless("server/discover"), modernHeaders("server/discover"));
-  const found = (await discovery.json()).result;
+  const found = (await readMcpResponse(discovery)).result;
   assert.equal(found.resultType, "complete");
-  assert.ok(found.supportedVersions.includes(protocol));
-  assert.equal(found._meta["io.modelcontextprotocol/serverInfo"].name, "marktplatz-studie");
+  assert.deepEqual(found.supportedVersions, [protocol]);
+  assert.equal(found._meta["io.modelcontextprotocol/serverInfo"].name, "willhaben");
   const list = await post(stateless("tools/list"), modernHeaders("tools/list"));
-  assert.equal((await list.json()).result.cacheScope, "public");
+  assert.equal((await readMcpResponse(list)).result.cacheScope, "public");
   const call = stateless("tools/call", { name: "discover_filters", arguments: { source: "demo", query: "BANKAMP" } });
   const valid = await post(call, modernHeaders("tools/call", "discover_filters"));
   assert.equal(valid.headers.get("cache-control"), "no-store");
-  const result = (await valid.json()).result;
+  const result = (await readMcpResponse(valid)).result;
   assert.equal(result.resultType, "complete");
   assert.ok(!result.isError);
   const encoded = await post(call, modernHeaders("tools/call", "=?base64?" + btoa("discover_filters") + "?="));
@@ -118,13 +119,13 @@ test("modern discovery, cached shared tool definitions, private per-call data an
     modernHeaders("tools/call", "wrong_tool"), { "Mcp-Method": "tools/call", "Mcp-Name": "discover_filters" }]) {
     const mismatch = await post(call, badHeaders);
     assert.equal(mismatch.status, 400);
-    assert.equal((await mismatch.json()).error.code, -32020);
+    assert.equal((await readMcpResponse(mismatch)).error.code, -32020);
   }
   const missingCapabilities = stateless("tools/list");
   delete missingCapabilities.params._meta["io.modelcontextprotocol/clientCapabilities"];
-  assert.equal((await (await post(missingCapabilities, modernHeaders("tools/list"))).json()).error.code, -32602);
+  assert.equal((await readMcpResponse(await post(missingCapabilities, modernHeaders("tools/list")))).error.code, -32602);
   const badVersion = await post(message("ping"), { "MCP-Protocol-Version": "1900-01-01" });
-  assert.equal((await badVersion.json()).error.code, -32022);
+  assert.equal((await readMcpResponse(badVersion)).error.code, -32000);
   const unknown = await post(stateless("unregistered/method"), modernHeaders("unregistered/method"));
   assert.equal(unknown.status, 404);
 });
@@ -135,12 +136,12 @@ test("modern resource responses include the cache fields required by MCP 2026-07
     ["resources/templates/list", {}],
   ]) {
     const modern = await post(stateless(method, params), modernHeaders(method, params.uri));
-    const result = (await modern.json()).result;
+    const result = (await readMcpResponse(modern)).result;
     assert.equal(modern.status, 200);
     assert.equal(result.resultType, "complete");
     assert.equal(result.ttlMs, 60000, method + " requires a nonnegative integer ttlMs");
     assert.equal(result.cacheScope, "public", method + " requires an explicit cacheScope");
-    const legacy = (await (await post(message(method, params))).json()).result;
+    const legacy = (await readMcpResponse(await post(message(method, params)))).result;
     assert.equal(Object.hasOwn(legacy, "ttlMs"), false);
     assert.equal(Object.hasOwn(legacy, "cacheScope"), false);
   }
@@ -160,7 +161,7 @@ test("modern discovery and UI resources accept omitted optional clientInfo on pu
           method: "POST", headers: { ...headers, ...modernHeaders(method, params.uri) },
           body: JSON.stringify(body),
         }), env);
-        const payload = await response.json();
+        const payload = await readMcpResponse(response);
         assert.equal(response.status, 200, JSON.stringify(payload));
         assert.equal(payload.result.resultType, "complete");
         if (method === "server/discover") {
@@ -182,7 +183,7 @@ test("modern requests reject malformed clientInfo when provided", async () => {
     body.params._meta["io.modelcontextprotocol/clientInfo"] = info;
     const response = await post(body, modernHeaders("server/discover"));
     assert.equal(response.status, 400, JSON.stringify(info));
-    assert.equal((await response.json()).error.code, -32602);
+    assert.equal((await readMcpResponse(response)).error.code, -32602);
   }
 });
 
@@ -203,12 +204,12 @@ test("malformed, oversized, batch and invalid tool requests have explicit errors
   assert.equal((await post(message("ping"), { "content-type": "text/plain" })).status, 415);
   assert.equal((await post(message("ping"), { accept: "text/event-stream" })).status, 406);
   const badJson = await worker.fetch(new Request(endpoint, { method: "POST", headers, body: "{" }));
-  assert.equal((await badJson.json()).error.code, -32700);
+  assert.equal((await readMcpResponse(badJson)).error.code, -32700);
   const huge = message("ping", { data: "a".repeat(2 * 1024 * 1024) });
   assert.equal((await post(huge)).status, 413);
-  assert.equal((await (await post([message("ping")])).json()).error.code, -32600);
-  assert.equal((await (await post(message("tools/call", { name: "missing" }))).json()).error.code, -32602);
-  assert.equal((await (await post(message("tools/call", { name: "search_listings", arguments: [] }))).json()).error.code, -32602);
+  assert.equal((await readMcpResponse(await post([stateless("tools/list")], modernHeaders("tools/list")))).error.code, -32600);
+  assert.equal((await readMcpResponse(await post(message("tools/call", { name: "missing" })))).error.code, -32602);
+  assert.equal((await readMcpResponse(await post(message("tools/call", { name: "search_listings", arguments: [] })))).error.code, -32602);
 });
 
 test("rate-limit binding returns a retry time and scopes requests to the Cloudflare client IP", async () => {
@@ -248,7 +249,7 @@ test("real MCP study walks all pages per variant and never prices unknown or con
     source: "provided", queries: ["BANKAMP", "Lampenglas"], criteria: [{key:"diameterMm",value:60}],
     listings, maxPages: 12, maxDetails: 1,
   } }));
-  const rpc = await response.json();
+  const rpc = await readMcpResponse(response);
   assert.ok(!rpc.result.isError, JSON.stringify(rpc.result.content));
   const report = rpc.result.structuredContent;
   assert.equal(report.source, "provided");
@@ -271,7 +272,7 @@ test("snapshot differences reflect observed cohort prices and missing capabiliti
     async get(key, mode) { assert.equal(mode, "json"); return kv.has(key) ? JSON.parse(kv.get(key)) : null; },
   };
   async function call(name, args) {
-    return (await (await post(message("tools/call", { name, arguments: args }), {}, {STUDIES})).json()).result;
+    return (await readMcpResponse(await post(message("tools/call", { name, arguments: args }), {}, {STUDIES}))).result;
   }
   function catalog(delta) {
     return Array.from({length:6}, (_,i)=>({ id:String(301+i), title:"Lens cap",model:"EF",
@@ -306,10 +307,10 @@ test("photo tools return real MCP image blocks only for the configured live imag
   const request = message("tools/call",{name:"inspect_listing_image",arguments:{id:"12345",index:0}});
   const auth = {authorization:"Bearer test-token"};
   const env = { LIVE_ACCESS:"authorized", MCP_BEARER_TOKEN:"test-token" };
-  let result = (await (await post(request,auth,env)).json()).result;
+  let result = (await readMcpResponse(await post(request,auth,env))).result;
   assert.equal(result.isError, true);
   assert.deepEqual(calls, []);
-  result = (await (await post(request,auth,{...env, IMAGE_ACCESS:"authorized"})).json()).result;
+  result = (await readMcpResponse(await post(request,auth,{...env, IMAGE_ACCESS:"authorized"}))).result;
   assert.ok(!result.isError, JSON.stringify(result.content[0]));
   assert.equal(result.content[1].type, "image");
   assert.equal(result.content[1].mimeType, "image/png");
@@ -325,12 +326,22 @@ test("a personal capability enables live search and photos only on its own conne
   const env={PERSONAL_TEST_TOKEN_SHA256:digest,PERSONAL_TEST_EXPIRES_AT:"2099-01-01T00:00:00Z"};
   const body=JSON.stringify(message("tools/call",{name:"plan_search",arguments:{queries:["BANKAMP"]}}));
   const ask=(path)=>worker.fetch(new Request("https://market.example"+path,{method:"POST",headers,body}),env);
-  const open=(await (await ask("/mcp")).json()).result.structuredContent;
+  const open=(await readMcpResponse(await ask("/mcp"))).result.structuredContent;
   assert.deepEqual([open.liveAvailable,open.imageAvailable],[false,false]);
   const hit=await ask("/p/"+token+"/mcp");
-  const scoped=(await hit.json()).result.structuredContent;
+  const scoped=(await readMcpResponse(hit)).result.structuredContent;
   assert.equal(scoped.mode,"personal_test");
   assert.deepEqual([scoped.liveAvailable,scoped.imageAvailable],[true,true]);
   assert.equal(hit.headers.get("referrer-policy"),"no-referrer");
   assert.equal((await ask("/p/"+digest+"/mcp")).status,404);
+});
+
+test("unexpected storage errors keep secrets out of tool results", async () => {
+  const response = await post(message("tools/call", { name: "get_study", arguments: { study_id: "ms_" + "0".repeat(32) } }), {}, {
+    STUDIES: { async get() { throw new Error("Internal failure containing a private-storage-secret"); } },
+  });
+  const result = (await readMcpResponse(response)).result;
+  assert.equal(result.isError, true);
+  assert.equal(result.structuredContent.error.code, "tool_error");
+  assert.ok(!JSON.stringify(result).includes("private-storage-secret"));
 });

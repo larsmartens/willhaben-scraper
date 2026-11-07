@@ -1,6 +1,25 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "marktplatz-studie",
-  "version": "1.3.3",
-  "description": "Research willhaben listings, verify requirements and compare asking prices with illustrated listing cards in German or English."
+  "name": "willhaben",
+  "version": "1.4.0",
+  "description": "Durchsuche willhaben nach Begriffen oder Referenzbildern. Prüfe Inserate, Beschreibungen und Originalfotos, vergleiche Angebote in blätterbaren Karten und zeige Suchanfragen, Trefferzahlen und geprüfte Inhalte transparent an.",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "willhaben",
+        "shortDescription": "willhaben mit Text und Bildern durchsuchen",
+        "longDescription": "Durchsuche willhaben nach Begriffen oder Referenzbildern. Prüfe Inserate, Beschreibungen und Originalfotos, vergleiche Angebote in blätterbaren Karten und zeige Suchanfragen, Trefferzahlen und geprüfte Inhalte transparent an.",
+        "developerName": "Lars Martens",
+        "category": "Other",
+        "capabilities": [],
+        "logo": "./assets/willhaben.png",
+        "composerIcon": "./assets/willhaben.png",
+        "defaultPrompt": [
+          "Finde Bankerlampen bis 100 Euro und zeige mir einen breiten Überblick mit Fotos.",
+          "Finde ähnliche Angebote zu diesem Referenzbild.",
+          "Zeige die Suchanfragen, Trefferzahlen und tatsächlich geprüften Inseratdetails."
+        ]
+      }
+    }
+  }
 }

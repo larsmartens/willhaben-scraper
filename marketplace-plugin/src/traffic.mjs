@@ -83,7 +83,8 @@ function targetUrl(value) {
   try { url = new URL(value); } catch { throw new TypeError("Expected a public willhaben URL"); }
   originPolicy(url.origin);
   const pagePath = url.pathname === "/iad/object" || url.pathname.startsWith("/iad/kaufen-und-verkaufen/d/") ||
-    url.pathname === "/iad/kaufen-und-verkaufen/marktplatz" || url.pathname.startsWith("/iad/kaufen-und-verkaufen/marktplatz/");
+    url.pathname === "/iad/kaufen-und-verkaufen/marktplatz" || url.pathname.startsWith("/iad/kaufen-und-verkaufen/marktplatz/") ||
+    url.pathname === "/iad/kaufen-und-verkaufen/aehnlichkeitssuche";
   if (url.username || url.password || url.port || url.hash || (url.hostname === "www.willhaben.at" && !pagePath) ||
       (url.hostname === "cache.willhaben.at" && !url.pathname.startsWith("/mmo/")))
     throw new TypeError("Expected a public willhaben URL");
@@ -128,6 +129,25 @@ async function acquire(gate, origin, deadline, taskDeadline) {
 
 export async function fetchPublic(value, env = {}, { accept = "text/html", timeoutMs = 9000 } = {}) {
   const url = targetUrl(value);
+  return fetchUpstream(url, env, { accept, timeoutMs });
+}
+
+export async function fetchVisualSearch(bytes, session, env = {}, { timeoutMs = 15000 } = {}) {
+  if (!(bytes instanceof Uint8Array) || !bytes.length || bytes.length > 10 * 1024 * 1024 ||
+      typeof session?.cookie !== "string" || !session.cookie || session.cookie.length > 16384 || /[\r\n]/.test(session.cookie) ||
+      typeof session?.csrfToken !== "string" || !session.csrfToken || session.csrfToken.length > 1024 || /[\r\n]/.test(session.csrfToken))
+    throw new TypeError("Invalid anonymous image-search request");
+  return fetchUpstream(new URL("https://www.willhaben.at/webapi/ad-search/imagesearch/atz"), env, {
+    accept: "application/json", timeoutMs, method: "PUT", body: bytes,
+    headers: {
+      "Content-Type": "image/jpeg", Cookie: session.cookie, "x-bbx-csrf-token": session.csrfToken,
+      "X-WH-Client": "api@willhaben.at;responsive_web;server;1.0.0;desktop",
+      Origin: "https://www.willhaben.at", Referer: "https://www.willhaben.at/iad/kaufen-und-verkaufen/marktplatz",
+    },
+  });
+}
+
+async function fetchUpstream(url, env, { accept, timeoutMs, method = "GET", headers = {}, body }) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30000 ||
       typeof accept !== "string" || accept.length > 256 || /[\r\n]/.test(accept))
     throw new TypeError("Invalid upstream request options");
@@ -147,8 +167,8 @@ export async function fetchPublic(value, env = {}, { accept = "text/html", timeo
     if (Date.now() >= deadline) throw error("upstream_timeout", Date.now() + 2000);
     let response;
     try {
-      response = await fetch(url, { method: "GET", redirect: "manual", signal,
-        headers: { Accept: accept, "User-Agent": CLIENT_AGENT } });
+      response = await fetch(url, { method, redirect: "manual", signal,
+        headers: { Accept: accept, "User-Agent": CLIENT_AGENT, ...headers }, ...(body ? { body } : {}) });
     } catch {
       // The signal owns its selected deadline even if the wall clock is one tick behind.
       if (Date.now() >= taskDeadline || signal.aborted && deadline === taskDeadline) throw error("time_budget", taskDeadline);

@@ -18,7 +18,7 @@ test("private route forwards payload and strips secrets before RPC",async()=>{
     assert.equal(request.headers.get("cf-connecting-ip"),"192.0.2.1");
     assert.equal(request.headers.has("referer"),false);
     assert.equal(request.headers.has("authorization"),false);
-    assert.deepEqual(view,{STUDIES:env.STUDIES,REQUEST_LIMITER:env.REQUEST_LIMITER,ORIGIN_GATE:undefined,
+    assert.deepEqual(view,{STUDIES:env.STUDIES,REQUEST_LIMITER:env.REQUEST_LIMITER,ORIGIN_GATE:undefined,RESEARCH_SESSIONS:undefined,IMAGES:undefined,
       REQUIRE_ORIGIN_GATE:false,REQUEST_LIMIT_KEY:"personal-access",LIVE_ACCESS:"personal_test",IMAGE_ACCESS:"personal_test"});
     assert.ok(Object.isFrozen(view));
     return new Response("ok",{headers:{"content-type":"text/plain"}});

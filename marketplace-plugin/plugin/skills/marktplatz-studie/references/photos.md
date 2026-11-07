@@ -10,12 +10,14 @@ Search covers reuse the search observation and require only image downloads. `im
 
 ## Inspect a gallery
 
-Call `inspect_listing_images` with the observed numeric listing ID. Use `indices` for precise zero-based positions, or `start` and `count` for a range. Continue with `nextIndex`. For an interrupted explicit selection, repeat the returned `remainingIndices`.
+Call `inspect_listing_images` with the observed numeric listing ID and the task's `researchId`. Use `indices` for precise zero-based positions, or `start` and `count` for a range. Continue with `nextIndex`. For an interrupted explicit selection, repeat the returned `remainingIndices`.
 
 Choose `size=thumbnail` for a visual shortlist and `size=full` for closer examination. The returned `size` identifies the available variant. A missing native thumbnail can produce a full-size fallback.
 
 Choose `mode=links` when only gallery URLs are needed. `galleryTotal` counts available references and `galleryComplete` indicates whether the source supplied an authoritative gallery. Preserve partial-gallery uncertainty when that flag is false.
 
 If `stopReason=response_budget`, continue from the returned position. If one image is too large, request its thumbnail or link. If a response contains `retryAt`, resume at that time. Successful image results remain usable when later images fail.
+
+After inspecting image blocks, record actual visible findings with `record_review`, the same research ID and exact photo indices.
 
 Read numerical dimensions from listing attributes or explicit text. Keep inferred appearance and documented specifications distinct in the answer.

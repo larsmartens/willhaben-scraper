@@ -34,15 +34,39 @@
       "type": "plain_text",
       "name": "REQUIRE_ORIGIN_GATE",
       "text": "true"
+    },
+    {
+      "type": "durable_object_namespace",
+      "name": "RESEARCH_SESSIONS",
+      "class_name": "ResearchSession"
+    },
+    {
+      "type": "images",
+      "name": "IMAGES"
     }
   ],
   "observability": {
     "enabled": false
   },
   "migrations": {
-    "new_tag": "origin-gate-v1",
-    "new_sqlite_classes": [
-      "OriginGate"
+    "new_tag": "research-v1",
+    "steps": [
+      {
+        "new_sqlite_classes": [
+          "OriginGate"
+        ]
+      },
+      {
+        "new_sqlite_classes": [
+          "ResearchSession"
+        ]
+      }
     ]
-  }
+  },
+  "compatibility_flags": [
+    "global_fetch_strictly_public"
+  ],
+  "keep_bindings": [
+    "secret_text"
+  ]
 }

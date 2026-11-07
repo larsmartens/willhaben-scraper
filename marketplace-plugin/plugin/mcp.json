@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
   "mcpServers": {
-    "marktplatz-studie": {
+    "willhaben": {
       "type": "streamable-http",
       "url": "https://marktplatz-studie.lars-e82.workers.dev/mcp"
     }

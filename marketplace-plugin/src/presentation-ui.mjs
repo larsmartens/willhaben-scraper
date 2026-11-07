@@ -1,8 +1,10 @@
+import { PRESENTATION_BRIDGE_SOURCE } from "./generated/presentation-bridge.mjs";
+
 export const PRESENTATION_URI = "ui://marktplatz/listings-v2.html";
 
 export const PRESENTATION_RESOURCE_META = {
   ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } },
-  "openai/widgetDescription": "Selected willhaben offers in app cards with photos, facts and original links, plus galleries on demand. For a request to show offers, finish with one plain-text sentence pointing to the app cards. For advice or a study, add the requested decision analysis.",
+  "openai/widgetDescription": "willhaben result overview with 12 offers per page, photos, facts and original links, plus galleries, research coverage and further pages on demand. For a request to show offers, finish with one plain-text sentence pointing to the app cards. For advice or a study, add the requested decision analysis.",
   "openai/widgetPrefersBorder": true,
   "openai/widgetCSP": { connect_domains: [], resource_domains: [], redirect_domains: ["https://www.willhaben.at", "https://willhaben.at"] },
   "openai/ui": { availableDisplayModes: ["inline", "fullscreen"] },
@@ -11,7 +13,8 @@ export const PRESENTATION_RESOURCE_META = {
 function mountPresentation() {
   const words = {
     de: {
-      title: "Ausgewählte Angebote", waiting: "Angebote werden geladen", source: { live: "willhaben", provided: "Bereitgestellte Angebote", demo: "Synthetische Demoangebote" },
+      queryMore: "Weitere Suchanfragen", detailCount: "Detailseiten abgerufen", coverage: "Rechercheumfang", queries: "Suchanfragen", fetched: "geladene Inserate", descriptions: "Beschreibungen an ChatGPT", modelPhotos: "Fotos an ChatGPT", reviews: "Fotoprüfungen dokumentiert", uiPhotos: "Fotos für die Ansicht", found: "gefunden", loaded: "geladen", pages: "Seiten", details: "Details lesen", closeDetails: "Details schließen", detailLoading: "Details werden geladen", pageNext: "Weitere Angebote", pagePrevious: "Vorherige Seite", pageLoading: "Angebote werden geladen", audit: "Einzelnachweise", auditMore: "Weitere Nachweise", coverRetry: "Foto laden", emptyAudit: "Bisher wurden Suchtreffer abgerufen.", fields: "Übergebene Felder", chars: "Zeichen", modelIndices: "Fotoindizes an ChatGPT", agentReview: "Dokumentierter Modellbefund",
+      title: "Angebotsübersicht", waiting: "Angebote werden geladen", source: { live: "willhaben", provided: "Bereitgestellte Angebote", demo: "Synthetische Demoangebote" },
       sort: "Sortieren", recommendation: "Empfehlung", priceUp: "Preis aufsteigend", priceDown: "Preis absteigend", fullscreen: "Größere Ansicht",
       previous: "Vorheriges Angebot", next: "Nächstes Angebot", of: "von", open: "Inserat öffnen", photos: "Fotos ansehen", closePhotos: "Fotos schließen",
       photo: "Foto", more: "Weitere Fotos", retry: "Erneut versuchen", loading: "Fotos werden geladen", gallery: "Inseratgalerie", photoCount: "Fotos", knownPhotos: "bekannte Fotos",
@@ -22,6 +25,10 @@ function mountPresentation() {
       assessment: "Einordnung", questions: "Offene Punkte", requirements: "Anforderungen", observed: "Beobachtet", unknownObservation: "Beobachtungszeit unbekannt",
       confirmed: "Bestätigt", contradicted: "Widersprochen", unknown: "Offen", expected: "Gesucht", actual: "Angabe", private: "Privat", dealer: "Händler",
       criterionLabels: { diameterMm: "Durchmesser", diameter_mm: "Durchmesser", openingMm: "Öffnungsdurchmesser", opening_mm: "Öffnungsdurchmesser", storageGb: "Speicher", shape: "Form", finish: "Oberfläche" },
+      filterLabels: { priceMin: "Preis ab (€)", priceMax: "Preis bis (€)", condition: "Zustand", categoryId: "Kategorie", areaId: "Region", sellerType: "Anbieter", paylivery: "PayLivery", shipping: "Übergabe", recent48h: "Letzte 48 Stunden", sort: "Sortierung", attributeIds: "Merkmale", requireTerms: "Enthaltene Begriffe", excludeTerms: "Ausgeschlossene Begriffe", titleOnly: "Textprüfung im Titel" },
+      fieldLabels: { title: "Titel", url: "Original-Link", price: "Preis", priceType: "Preisart", location: "Ort", condition: "Zustand", status: "Status", model: "Modell", category: "Kategorie", categoryId: "Kategorie", areaId: "Region", sellerType: "Anbietertyp", seller: "Anbieterinformationen", paylivery: "PayLivery", shipping: "Übergabe", shippingCost: "Versandkosten", imageCount: "Fotoanzahl", hasPhotos: "Fotos vorhanden", thumbnailUrl: "Vorschaubild-Link", galleryComplete: "Galerieumfang", gallery: "Galerie-Links", publishedAt: "Veröffentlichung", description: "Beschreibung", attributes: "Merkmale", quantity: "Stückzahl" },
+      filterValues: { newest: "Neueste zuerst", price_asc: "Preis aufsteigend", price_desc: "Preis absteigend", relevance: "Relevanz", shipping: "Versand", pickup: "Abholung", private: "Privat", dealer: "Händler" },
+      memberSince: "Mitglied seit", activeListings: "Aktive Inserate", queryDetails: "Details an ChatGPT", queryPhotos: "Fotos an ChatGPT", queryFindings: "Fotos mit dokumentiertem Befund",
       traitLabels: { round: "rund", spherical: "kugelförmig", cylinder: "zylindrisch", rectangular: "rechteckig", matte: "matt", glossy: "glänzend", clear: "klar" },
       conditions: { new: "Neu", as_new: "Neuwertig", refurbished: "Generalüberholt", used: "Gebraucht", defective: "Defekt", display_item: "Ausstellungsstück" },
       statuses: { reserved: "Reserviert", sold: "Verkauft", inactive: "Inaktiv", expired: "Abgelaufen", deleted: "Entfernt" },
@@ -32,7 +39,8 @@ function mountPresentation() {
       selectionError: "Die Auswahl konnte nicht aktualisiert werden.", booleanTrue: "Ja", booleanFalse: "Nein",
     },
     en: {
-      title: "Selected listings", waiting: "Loading listings", source: { live: "willhaben", provided: "Provided listings", demo: "Synthetic demo listings" },
+      queryMore: "More queries", detailCount: "detail pages retrieved", coverage: "Research coverage", queries: "queries", fetched: "retrieved listings", descriptions: "descriptions sent to ChatGPT", modelPhotos: "photos sent to ChatGPT", reviews: "documented photo reviews", uiPhotos: "photos for this view", found: "found", loaded: "retrieved", pages: "pages", details: "Read details", closeDetails: "Close details", detailLoading: "Loading details", pageNext: "More offers", pagePrevious: "Previous page", pageLoading: "Loading offers", audit: "Individual records", auditMore: "More records", coverRetry: "Load photo", emptyAudit: "Search summaries have been retrieved so far.", fields: "Delivered fields", chars: "characters", modelIndices: "Photo indices sent to ChatGPT", agentReview: "Agent-reported finding",
+      title: "Offer overview", waiting: "Loading listings", source: { live: "willhaben", provided: "Provided listings", demo: "Synthetic demo listings" },
       sort: "Sort", recommendation: "Recommended order", priceUp: "Price low to high", priceDown: "Price high to low", fullscreen: "Larger view",
       previous: "Previous listing", next: "Next listing", of: "of", open: "Open listing", photos: "View photos", closePhotos: "Close photos",
       photo: "Photo", more: "More photos", retry: "Try again", loading: "Loading photos", gallery: "Listing gallery", photoCount: "photos", knownPhotos: "known photos",
@@ -43,6 +51,10 @@ function mountPresentation() {
       assessment: "Assessment", questions: "Open questions", requirements: "Requirements", observed: "Observed", unknownObservation: "Observation time unknown",
       confirmed: "Confirmed", contradicted: "Contradicted", unknown: "Unknown", expected: "Wanted", actual: "Listed", private: "Private seller", dealer: "Dealer",
       criterionLabels: { diameterMm: "Diameter", diameter_mm: "Diameter", openingMm: "Opening diameter", opening_mm: "Opening diameter", storageGb: "Storage", shape: "Shape", finish: "Finish" },
+      filterLabels: { priceMin: "Price from (€)", priceMax: "Price to (€)", condition: "Condition", categoryId: "Category", areaId: "Area", sellerType: "Seller", paylivery: "PayLivery", shipping: "Handover", recent48h: "Last 48 hours", sort: "Order", attributeIds: "Attributes", requireTerms: "Required terms", excludeTerms: "Excluded terms", titleOnly: "Text match in title" },
+      fieldLabels: { title: "Title", url: "Original link", price: "Price", priceType: "Price type", location: "Location", condition: "Condition", status: "Status", model: "Model", category: "Category", categoryId: "Category", areaId: "Area", sellerType: "Seller type", seller: "Seller information", paylivery: "PayLivery", shipping: "Handover", shippingCost: "Shipping cost", imageCount: "Photo count", hasPhotos: "Has photos", thumbnailUrl: "Cover link", galleryComplete: "Gallery coverage", gallery: "Gallery links", publishedAt: "Publication", description: "Description", attributes: "Attributes", quantity: "Quantity" },
+      filterValues: { newest: "Newest first", price_asc: "Price low to high", price_desc: "Price high to low", relevance: "Relevance", shipping: "Shipping", pickup: "Collection", private: "Private", dealer: "Dealer" },
+      memberSince: "Member since", activeListings: "Active listings", queryDetails: "details sent to ChatGPT", queryPhotos: "photos sent to ChatGPT", queryFindings: "photos with recorded findings",
       traitLabels: { round: "round", spherical: "spherical", cylinder: "cylindrical", rectangular: "rectangular", matte: "matte", glossy: "glossy", clear: "clear" },
       conditions: { new: "New", as_new: "Like new", refurbished: "Refurbished", used: "Used", defective: "Defective", display_item: "Display item" },
       statuses: { reserved: "Reserved", sold: "Sold", inactive: "Inactive", expired: "Expired", deleted: "Removed" },
@@ -53,11 +65,9 @@ function mountPresentation() {
       selectionError: "The selection could not be updated.", booleanTrue: "Yes", booleanFalse: "No",
     },
   };
-  const elements = Object.fromEntries(["title", "summary", "source", "notice", "toolbar", "sort-label", "sort", "fullscreen", "cards", "pager", "previous", "position", "next"]
+  const elements = Object.fromEntries(["title", "summary", "source", "notice", "toolbar", "sort-label", "sort", "fullscreen", "cards", "pager", "previous", "position", "next", "coverage", "coverage-label", "coverage-counts", "coverage-queries", "queries-more", "audit", "audit-records", "audit-more", "page-nav", "page-previous", "page-label", "page-next"]
     .map(id => [id, document.getElementById(id)]));
-  const pending = new Map();
   const views = new Map();
-  let sequence = 0;
   let generation = 0;
   let connection = "connecting";
   let hostCapabilities = {};
@@ -69,6 +79,16 @@ function mountPresentation() {
   let language = "de";
   let resizeFrame = null;
   let lastHeight = 0;
+  let disposed = false;
+  let coverBusy = false;
+  let coverTimer;
+  let coverObserver;
+  let pageBusy = false;
+  let auditCursor;
+  let queryCursor;
+  let queryVersion;
+  const coverQueue = new Set();
+  const app = new window.WillhabenMcpApps.App({ name: "willhaben", version: "1.4.0" }, {}, { autoResize: false });
 
   const t = key => words[language][key];
   const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -83,17 +103,19 @@ function mountPresentation() {
     return element;
   }
 
-  function post(message) {
-    window.parent.postMessage({ jsonrpc: "2.0", ...message }, "*");
+  async function callTool(name, args) {
+    if (connection === "ready") return app.callServerTool({ name, arguments: args }, { timeout: 45000 });
+    if (typeof window.openai?.callTool === "function") return window.openai.callTool(name, args);
+    throw new Error(t("connection"));
   }
 
-  function request(method, params, timeout = 45000) {
-    const id = "market-ui-" + ++sequence;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { pending.delete(id); reject(new Error(t("timeout"))); }, timeout);
-      pending.set(id, { resolve, reject, timer });
-      post({ id, method, params });
-    });
+  function shareSelection(view) {
+    const state = { researchId: payload?.researchId, collectionId: payload?.collectionId,
+      offset: payload?.offset ?? 0, visibleIds: [...views.keys()],
+      ...(view ? { selectedId: view.card.id, photoIndex: view.gallery.selected } : {}) };
+    if (connection === "ready" && hostCapabilities.updateModelContext) {
+      app.updateModelContext({ content: [{ type: "text", text: JSON.stringify(state) }] }).catch(() => {});
+    }
   }
 
   function imageData(image) {
@@ -125,7 +147,7 @@ function mountPresentation() {
       const height = Math.ceil(document.body.getBoundingClientRect().height);
       if (height === lastHeight) return;
       lastHeight = height;
-      if (connection === "ready") post({ method: "ui/notifications/size-changed", params: { height } });
+      if (connection === "ready") app.sendSizeChanged({ height }).catch(() => {});
       else window.openai?.notifyIntrinsicHeight?.(height);
     });
   }
@@ -159,6 +181,7 @@ function mountPresentation() {
     if (!object(context)) return;
     const previousLanguage = language;
     const previousLocale = locale;
+    const previousMode = hostContext.displayMode;
     hostContext = { ...hostContext, ...context };
     if (["light", "dark"].includes(hostContext.theme)) document.documentElement.dataset.theme = hostContext.theme;
     if (["inline", "fullscreen", "pip"].includes(hostContext.displayMode)) document.documentElement.dataset.mode = hostContext.displayMode;
@@ -170,13 +193,14 @@ function mountPresentation() {
     elements.fullscreen.hidden = !hostContext.availableDisplayModes?.includes("fullscreen") || hostContext.displayMode === "fullscreen";
     updateLabels();
     if (lastEnvelope && (language !== previousLanguage || locale !== previousLocale)) render(lastEnvelope);
+    if (hostContext.displayMode !== previousMode) observeCovers();
     updatePosition();
     reportSize();
   }
 
   function updatePosition() {
     const cards = [...elements.cards.children];
-    elements.pager.hidden = cards.length < 2 || hostContext.displayMode === "fullscreen";
+    elements.pager.hidden = cards.length < 2 || hostContext.displayMode === "fullscreen" || window.innerWidth >= 640;
     if (!cards.length) return;
     const left = elements.cards.getBoundingClientRect().left;
     let current = 0;
@@ -281,7 +305,10 @@ function mountPresentation() {
     view.openButton.disabled = true;
     view.actionStatus.textContent = "";
     try {
-      if (connection === "ready" && object(hostCapabilities.openLinks)) await request("ui/open-link", { url });
+      if (connection === "ready" && object(hostCapabilities.openLinks)) {
+        const response = await app.openLink({ url });
+        if (response.isError) throw new Error(t("linkUnsupported"));
+      }
       else if (typeof window.openai?.openExternal === "function") await window.openai.openExternal({ href: url });
       else throw new Error(t("connection"));
     } catch (error) {
@@ -306,8 +333,9 @@ function mountPresentation() {
     for (const result of data.results) {
       if (result.id !== id || !Number.isSafeInteger(result.index) || result.index < 0 ||
           result.index >= data.galleryTotal || !Number.isSafeInteger(result.imageContentIndex) || result.imageContentIndex < 1) throw new Error(t("formatError"));
-      const block = response.content[result.imageContentIndex];
-      if (block?.type !== "image" || block.mimeType !== result.mimeType) throw new Error(t("formatError"));
+      const hydrated = response._meta?.listingImages?.find(image => image.id === id && image.index === result.index);
+      const block = hydrated ?? response.content[result.imageContentIndex];
+      if ((!hydrated && block?.type !== "image") || block.mimeType !== result.mimeType) throw new Error(t("formatError"));
       const url = imageData(block);
       if (!url) throw new Error(t("formatError"));
       images.push({ index: result.index, dataUrl: url });
@@ -345,7 +373,7 @@ function mountPresentation() {
       button.setAttribute("aria-label", t("photo") + " " + (index + 1));
       button.setAttribute("aria-pressed", String(index === gallery.selected));
       button.append(makePhoto(dataUrl, view.card.title, index, () => button.replaceChildren(node("span", "", String(index + 1)))));
-      button.addEventListener("click", () => { gallery.selected = index; drawGallery(view); });
+      button.addEventListener("click", () => { gallery.selected = index; drawGallery(view); shareSelection(view); });
       view.thumbnails.append(button);
     }
     const wait = gallery.retryAt && Date.parse(gallery.retryAt) > Date.now();
@@ -373,12 +401,13 @@ function mountPresentation() {
     try {
       const selection = gallery.remainingIndices.length ? { indices: gallery.remainingIndices } : { start, count: 4 };
       const args = { id: view.card.id, ...selection, size: "full", mode: "images" };
-      let response;
-      if (connection === "ready") response = await request("tools/call", { name: "inspect_listing_images", arguments: args });
-      else if (typeof window.openai?.callTool === "function") response = await window.openai.callTool("inspect_listing_images", args);
-      else throw new Error(t("connection"));
+      const response = payload.collectionId
+        ? await callTool("browse_collection", { researchId: payload.researchId, collectionId: payload.collectionId,
+          action: "photos", id: view.card.id, ...selection })
+        : await callTool("inspect_listing_images", { ...args, ...(payload.researchId ? { researchId: payload.researchId } : {}) });
       if (generation !== callGeneration) return;
       const { data, images } = galleryResult(response, view.card.id);
+      if (data.research) renderCoverage(data.research);
       for (const image of images) gallery.images.set(image.index, image.dataUrl);
       gallery.total = data.galleryTotal;
       gallery.complete = data.galleryComplete;
@@ -401,7 +430,7 @@ function mountPresentation() {
       gallery.nextIndex = start;
       gallery.retryAt = Number.isFinite(Date.parse(error.retryAt)) ? error.retryAt : null;
     } finally {
-      if (generation === callGeneration) { gallery.loading = false; drawGallery(view); }
+      if (generation === callGeneration) { gallery.loading = false; drawGallery(view); shareSelection(view); }
     }
   }
 
@@ -463,7 +492,7 @@ function mountPresentation() {
     gallerySection.append(galleryMain, galleryCaption, thumbnails, galleryStatus, moreButton);
     body.append(actions, actionStatus, gallerySection);
     element.append(figure, body);
-    const view = { card, element, openButton, photoButton, actionStatus, gallerySection, galleryMain, galleryCaption, thumbnails, galleryStatus, moreButton,
+    const view = { card, element, figure, openButton, photoButton, actionStatus, gallerySection, galleryMain, galleryCaption, thumbnails, galleryStatus, moreButton,
       gallery: { open: false, loading: false, initialized: false, images: new Map(), selected: null, total: card.imageCount, complete: card.galleryComplete, nextIndex: 0, remainingIndices: [], retryAt: card.image?.error?.retryAt ?? null, error: "", retryTimer: null } };
     openButton.addEventListener("click", () => openListing(view));
     photoButton.addEventListener("click", () => {
@@ -472,12 +501,28 @@ function mountPresentation() {
       if (view.gallery.open && !view.gallery.initialized) loadGallery(view);
     });
     moreButton.addEventListener("click", () => loadGallery(view));
+    if (payload.collectionId) {
+      const detailButton = node("button", "button", t("details"));
+      detailButton.type = "button";
+      const detailSection = node("section", "detail-content");
+      detailSection.hidden = true;
+      actions.append(detailButton);
+      body.append(detailSection);
+      view.detailButton = detailButton;
+      view.detailSection = detailSection;
+      detailButton.addEventListener("click", () => loadDetails(view));
+      if (!dataUrl && card.image?.status === "pending") {
+        const retry = node("button", "button cover-retry", t("coverRetry"));
+        retry.addEventListener("click", () => queueCover(view.card.id));
+        figure.append(retry);
+      }
+    }
     return view;
   }
 
   function render(envelope) {
     const data = envelope?.structuredContent;
-    if (envelope?.isError || !object(data) || !Array.isArray(data.cards) || data.cards.length > 8 ||
+    if (envelope?.isError || !object(data) || !Array.isArray(data.cards) || data.cards.length > 24 ||
         !["live", "provided", "demo"].includes(data.source) ||
         data.cards.some(card => !object(card) || typeof card.id !== "string" || typeof card.title !== "string") ||
         new Set(data.cards.map(card => card.id)).size !== data.cards.length) {
@@ -485,6 +530,14 @@ function mountPresentation() {
       return;
     }
     generation++;
+    pageBusy = false;
+    elements["queries-more"].disabled = false;
+    elements.audit.disabled = false;
+    elements["audit-more"].disabled = false;
+    queryVersion = undefined;
+    coverObserver?.disconnect();
+    coverQueue.clear();
+    clearTimeout(coverTimer);
     payload = data;
     lastEnvelope = envelope;
     for (const view of views.values()) clearTimeout(view.gallery.retryTimer);
@@ -505,6 +558,223 @@ function mountPresentation() {
     notice(missing ? missing + " " + t("unavailable") + "." : data.cards.length ? "" : t("empty"));
     updateLabels();
     sortCards();
+    renderCoverage(data.research);
+    elements["page-nav"].hidden = !data.collectionId;
+    elements["page-previous"].textContent = t("pagePrevious");
+    elements["page-next"].textContent = t("pageNext");
+    elements["page-previous"].disabled = !data.previousCursor;
+    elements["page-next"].disabled = !data.nextCursor;
+    elements["page-label"].textContent = ((data.offset ?? 0) + 1) + "–" + ((data.offset ?? 0) + data.cards.length) + " " + t("of") + " " + data.requestedCount;
+    elements["audit-records"].replaceChildren();
+    elements["audit-more"].hidden = true;
+    auditCursor = undefined;
+    observeCovers();
+    shareSelection();
+  }
+
+  function observeCovers() {
+    coverObserver?.disconnect();
+    coverQueue.clear();
+    clearTimeout(coverTimer);
+    if (payload?.collectionId && typeof IntersectionObserver === "function") {
+      coverObserver = new IntersectionObserver(entries => {
+        for (const entry of entries) if (entry.isIntersecting) queueCover(entry.target.dataset.id);
+      }, { root: hostContext.displayMode === "fullscreen" ? null : elements.cards, rootMargin: "240px" });
+      for (const view of views.values()) if (view.card.image?.status === "pending") coverObserver.observe(view.element);
+    }
+  }
+
+  function renderCoverage(research) {
+    elements.coverage.hidden = !research?.counts;
+    if (!research?.counts) return;
+    if (payload) payload.research = research;
+    const counts = research.counts;
+    elements["coverage-label"].textContent = t("coverage") + " · " + research.queryCount + " " + t("queries") + " · " + counts.uniqueSearchListings + " " + t("fetched");
+    elements["coverage-counts"].textContent = [
+      [counts.detailRecordsRetrieved, "detailCount"], [counts.descriptionsDeliveredToModel, "descriptions"], [counts.uniqueModelPhotoIndices, "modelPhotos"],
+      [counts.visualFindingsRecorded, "reviews"], [counts.uiPhotosLoaded, "uiPhotos"],
+    ].map(([count, label]) => (count ?? 0) + " " + t(label)).join(" · ");
+    const version = JSON.stringify([research.queries, locale]);
+    if (queryVersion !== version) {
+      queryVersion = version;
+      queryCursor = research.queriesNextCursor;
+      elements["coverage-queries"].replaceChildren();
+      drawQueries(research.queries ?? []);
+      elements["queries-more"].hidden = !queryCursor;
+    }
+    elements["queries-more"].textContent = t("queryMore");
+    elements.audit.textContent = t("audit");
+    elements["audit-more"].textContent = t("auditMore");
+    reportSize();
+  }
+
+  function drawQueries(queries) {
+    for (const query of queries) {
+      const row = node("div", "query-row");
+      row.append(node("p", "query-name", query.query || "∅"),
+        node("p", "", (query.reportedTotal ?? "?") + " " + t("found") + " · " + query.uniqueListings + " " + t("loaded") + " · " + query.pagesFetched + " " + t("pages")));
+      if (query.filteredOutCount) row.append(node("p", "", (language === "de" ? "Textfilter" : "Text filters") + " · " + query.filteredOutCount));
+      if (query.counts) row.append(node("p", "", [
+        [query.counts.detailRecordsDeliveredToModel, "queryDetails"],
+        [query.counts.uniqueModelPhotoIndices, "queryPhotos"],
+        [query.counts.photosWithRecordedFindings, "queryFindings"],
+      ].map(([count, label]) => (count ?? 0) + " " + t(label)).join(" · ")));
+      const filters = Object.entries(query.filters ?? {}).map(([key, value]) => {
+        const label = words[language].filterLabels[key] ?? key;
+        const display = Array.isArray(value) ? value.join(", ")
+          : words[language].conditions[value] ?? words[language].filterValues[value] ?? valueText(value);
+        return label + " · " + display;
+      });
+      if (filters.length) row.append(node("p", "", filters.join(" · ")));
+      elements["coverage-queries"].append(row);
+    }
+  }
+
+  async function loadQueries() {
+    if (!queryCursor || !payload?.researchId) return;
+    const callGeneration = generation;
+    const callVersion = queryVersion;
+    elements["queries-more"].disabled = true;
+    try {
+      const response = await callTool("get_research", { researchId: payload.researchId, section: "queries", limit: 8, cursor: queryCursor });
+      if (generation !== callGeneration || queryVersion !== callVersion) return;
+      if (response.isError) throw new Error(response.structuredContent?.error?.message || t("loadError"));
+      drawQueries(response.structuredContent?.queries ?? []);
+      queryCursor = response.structuredContent?.nextCursor;
+      elements["queries-more"].hidden = !queryCursor;
+    } catch (error) { if (generation === callGeneration) notice(error.message || t("loadError")); }
+    finally { if (generation === callGeneration) { elements["queries-more"].disabled = false; reportSize(); } }
+  }
+
+  async function loadAudit(cursor) {
+    if (!payload?.researchId) return;
+    const callGeneration = generation;
+    elements.audit.disabled = true;
+    elements["audit-more"].disabled = true;
+    try {
+      const response = await callTool("get_research", { researchId: payload.researchId, section: "listings", limit: 12, ...(cursor ? { cursor } : {}) });
+      if (generation !== callGeneration) return;
+      if (response.isError) throw new Error(response.structuredContent?.error?.message || t("loadError"));
+      if (!cursor) elements["audit-records"].replaceChildren();
+      for (const record of response.structuredContent?.listings ?? []) {
+        const row = node("div", "audit-row");
+        row.append(node("strong", "", record.id));
+        if (record.deliveredFields?.length) row.append(node("p", "", t("fields") + " · " + record.deliveredFields.map(field => words[language].fieldLabels[field] ?? field).join(", ")));
+        if (record.description) row.append(node("p", "", record.description.deliveredChars + " / " + record.description.totalChars + " " + t("chars")));
+        if (record.modelPhotos?.length) row.append(node("p", "", t("modelIndices") + " · " + record.modelPhotos.map(photo => photo.index + " (" + photo.size + ")").join(", ")));
+        for (const review of record.findings ?? []) row.append(node("p", "", t("agentReview") + " · " + review.findings));
+        if (!record.deliveredFields?.length && !record.modelPhotos?.length) row.append(node("p", "", t("emptyAudit")));
+        elements["audit-records"].append(row);
+      }
+      auditCursor = response.structuredContent?.nextCursor;
+      elements["audit-more"].hidden = !auditCursor;
+    } catch (error) { if (generation === callGeneration) notice(error.message || t("loadError")); }
+    finally { if (generation === callGeneration) { elements.audit.disabled = false; elements["audit-more"].disabled = false; reportSize(); } }
+  }
+
+  async function loadDetails(view) {
+    if (view.detailLoading) return;
+    view.detailSection.hidden = !view.detailSection.hidden;
+    view.detailButton.textContent = t(view.detailSection.hidden ? "details" : "closeDetails");
+    if (view.detailSection.hidden || view.detailLoaded) { reportSize(); return; }
+    view.detailLoading = true;
+    view.detailSection.textContent = t("detailLoading");
+    const callGeneration = generation;
+    try {
+      const response = await callTool("browse_collection", { researchId: payload.researchId, collectionId: payload.collectionId, action: "details", id: view.card.id });
+      if (generation !== callGeneration) return;
+      if (response.isError) throw new Error(response.structuredContent?.error?.message || t("loadError"));
+      const record = response.structuredContent?.results?.find(result => result.id === view.card.id)?.listing;
+      if (!record) throw new Error(t("unavailable"));
+      view.detailSection.replaceChildren(node("p", "", record.description || ""));
+      for (const [key, value] of Object.entries(record.attributes ?? {})) view.detailSection.append(node("p", "", key + " · " + valueText(value)));
+      if (record.seller?.memberSince) view.detailSection.append(node("p", "", t("memberSince") + " · " + record.seller.memberSince));
+      if (Number.isFinite(record.seller?.activeListingCount)) view.detailSection.append(node("p", "", t("activeListings") + " · " + record.seller.activeListingCount));
+      view.detailLoaded = true;
+      renderCoverage(response.structuredContent.research);
+      shareSelection(view);
+    } catch (error) {
+      if (generation === callGeneration) { view.detailSection.textContent = error.message || t("loadError"); view.detailSection.hidden = false; }
+    } finally { view.detailLoading = false; reportSize(); }
+  }
+
+  async function loadPage(cursor) {
+    if (!cursor || pageBusy || !payload?.collectionId) return;
+    const callGeneration = generation;
+    pageBusy = true;
+    elements["page-next"].disabled = true;
+    elements["page-previous"].disabled = true;
+    elements["page-label"].textContent = t("pageLoading");
+    try {
+      const response = await callTool("browse_collection", { researchId: payload.researchId,
+        collectionId: payload.collectionId, action: "page", cursor, pageSize: payload.pageSize ?? 12 });
+      if (generation !== callGeneration) return;
+      if (response.isError) throw new Error(response.structuredContent?.error?.message || t("selectionError"));
+      render(response);
+      elements.cards.scrollTop = 0;
+    } catch (error) {
+      if (generation !== callGeneration) return;
+      notice(error.message || t("selectionError"));
+      elements["page-next"].disabled = !payload.nextCursor;
+      elements["page-previous"].disabled = !payload.previousCursor;
+    } finally { if (generation === callGeneration) pageBusy = false; }
+  }
+
+  function queueCover(id) {
+    const view = views.get(id);
+    if (disposed || !payload?.collectionId || !view || view.coverLoading || view.card.image?.status === "ready" || view.card.image?.status === "missing") return;
+    if (Date.parse(view.card.image?.error?.retryAt) > Date.now()) return;
+    coverQueue.add(id);
+    clearTimeout(coverTimer);
+    coverTimer = setTimeout(flushCovers, 30);
+  }
+
+  async function flushCovers() {
+    if (disposed || coverBusy || !coverQueue.size || !payload?.collectionId || (connection !== "ready" && !window.openai?.callTool)) return;
+    const ids = [...coverQueue].slice(0, 4);
+    const callGeneration = generation;
+    const researchId = payload.researchId, collectionId = payload.collectionId;
+    for (const id of ids) { coverQueue.delete(id); const view = views.get(id); if (view) view.coverLoading = true; }
+    coverBusy = true;
+    try {
+      const response = await callTool("browse_collection", { researchId, collectionId, action: "covers", ids });
+      if (generation !== callGeneration) return;
+      if (response.isError) throw new Error(response.structuredContent?.error?.message || t("loadError"));
+      const data = response.structuredContent;
+      for (const id of ids) {
+        const view = views.get(id);
+        if (!view) continue;
+        const photo = response._meta?.listingImages?.find(image => image.id === id && image.index === view.card.image.index);
+        const dataUrl = imageData(photo);
+        const error = data?.errors?.find(error => error.id === id);
+        if (dataUrl) {
+          view.card.image.status = "ready";
+          view.figure.replaceChildren(makePhoto(dataUrl, view.card.title, photo.index, () => view.figure.replaceChildren(imagePlaceholder({ image: { status: "failed" } }))));
+          if (view.card.imageCount > 0) view.figure.append(node("span", "photo-count", view.card.imageCount + " " + t("photoCount")));
+          coverObserver?.unobserve(view.element);
+        } else {
+          view.card.image.status = data?.missingIds?.includes(id) ? "missing" : "failed";
+          view.card.image.error = error;
+          view.figure.replaceChildren(imagePlaceholder(view.card));
+          if (view.card.image.status !== "missing") {
+            const retry = node("button", "button cover-retry", t("coverRetry"));
+            retry.addEventListener("click", () => queueCover(id));
+            view.figure.append(retry);
+          }
+        }
+      }
+      renderCoverage(data?.research);
+    } catch (error) {
+      if (generation === callGeneration) for (const id of ids) {
+        const view = views.get(id);
+        if (view) view.actionStatus.textContent = error.message || t("loadError");
+      }
+    } finally {
+      if (generation === callGeneration) for (const id of ids) { const view = views.get(id); if (view) view.coverLoading = false; }
+      coverBusy = false;
+      if (!disposed && coverQueue.size) coverTimer = setTimeout(flushCovers, 30);
+      reportSize();
+    }
   }
 
   function legacyResult(globals = window.openai) {
@@ -514,27 +784,22 @@ function mountPresentation() {
     render({ structuredContent: globals.toolOutput, _meta: envelope?._meta ?? metadata });
   }
 
-  window.addEventListener("message", event => {
-    const message = event.data;
-    if (event.source !== window.parent || !object(message) || message.jsonrpc !== "2.0") return;
-    if (message.method === "ui/resource-teardown" && message.id !== undefined) {
-      post({ id: message.id, result: {} });
-      return;
-    }
-    if (message.id !== undefined && !message.method && pending.has(message.id)) {
-      const waiting = pending.get(message.id);
-      pending.delete(message.id);
-      clearTimeout(waiting.timer);
-      if (message.error) waiting.reject(new Error(String(message.error.message || t("connection"))));
-      else waiting.resolve(message.result);
-      return;
-    }
-    if (message.method === "ui/notifications/tool-result") {
-      receivedStandardResult = true;
-      render(message.params);
-    }
-    if (message.method === "ui/notifications/host-context-changed") applyHostContext(message.params?.hostContext ?? message.params);
+  app.addEventListener("toolresult", result => {
+    receivedStandardResult = true;
+    render(result);
   });
+  app.addEventListener("hostcontextchanged", context => applyHostContext(context.hostContext ?? context));
+  app.onteardown = async () => {
+    disposed = true;
+    generation++;
+    clearTimeout(coverTimer);
+    coverObserver?.disconnect();
+    resizeObserver?.disconnect();
+    if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+    for (const view of views.values()) clearTimeout(view.gallery.retryTimer);
+    coverQueue.clear();
+    return {};
+  };
   window.addEventListener("openai:set_globals", event => {
     const globals = event.detail?.globals;
     if (!object(globals)) return;
@@ -553,29 +818,34 @@ function mountPresentation() {
   });
   elements.fullscreen.addEventListener("click", async () => {
     try {
-      const result = await request("ui/request-display-mode", { mode: "fullscreen" });
+      const result = connection === "ready" ? await app.requestDisplayMode({ mode: "fullscreen" }) : await window.openai?.requestDisplayMode?.({ mode: "fullscreen" });
       if (result?.mode) applyHostContext({ displayMode: result.mode });
     } catch (error) { notice(error.message || t("connection")); }
   });
-  if (typeof ResizeObserver === "function") new ResizeObserver(reportSize).observe(document.body);
+  elements["page-next"].addEventListener("click", () => loadPage(payload?.nextCursor));
+  elements["page-previous"].addEventListener("click", () => loadPage(payload?.previousCursor));
+  elements["queries-more"].addEventListener("click", loadQueries);
+  elements.audit.addEventListener("click", () => loadAudit());
+  elements["audit-more"].addEventListener("click", () => loadAudit(auditCursor));
+  elements.coverage.addEventListener("toggle", reportSize);
+  const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(reportSize) : null;
+  resizeObserver?.observe(document.body);
   window.addEventListener("resize", () => { updatePosition(); reportSize(); });
   updateLabels();
   if (window.openai) { applyHostContext(window.openai); legacyResult(); }
-  request("ui/initialize", {
-    appInfo: { name: "marktplatz-listings", version: "1.3.3" },
-    appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] },
-    protocolVersion: "2026-01-26",
-  }, 10000).then(result => {
+  app.connect(undefined, { timeout: 10000 }).then(() => {
     connection = "ready";
-    hostCapabilities = object(result?.hostCapabilities) ? result.hostCapabilities : {};
-    applyHostContext(result?.hostContext);
+    hostCapabilities = app.getHostCapabilities() ?? {};
+    applyHostContext(app.getHostContext());
     for (const view of views.values()) view.openButton.disabled = !listingUrl(view.card.url) || !canOpenLinks();
-    post({ method: "ui/notifications/initialized", params: {} });
     lastHeight = 0;
     reportSize();
+    flushCovers();
+    shareSelection();
   }).catch(() => {
     connection = "fallback";
     if (!payload) notice(t("connection"));
+    flushCovers();
   });
 }
 
@@ -585,7 +855,7 @@ export const PRESENTATION_HTML = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
-<title>Marktplatz-Auswahl</title>
+<title>willhaben</title>
 <style>
   :root { color-scheme: light dark; --page: light-dark(#ffffff,#171717); --card: light-dark(#ffffff,#222222); --ink: light-dark(#202020,#f1f1f1); --muted: light-dark(#616161,#b8b8b8); --line: light-dark(#dcdcdc,#494949); --soft: light-dark(#f5f5f5,#292929); --image: light-dark(#f7f7f7,#ededed); --accent: light-dark(#202020,#eeeeee); --accent-ink: light-dark(#ffffff,#202020); }
   :root[data-theme="light"] { color-scheme: light; }
@@ -649,18 +919,33 @@ export const PRESENTATION_HTML = `<!doctype html>
   #position { font-size: 12px; color: var(--muted); min-width: 50px; text-align: center; font-variant-numeric: tabular-nums; }
   :root[data-mode="fullscreen"] body { max-width: 1260px; margin: auto; padding: 24px; }
   :root[data-mode="fullscreen"] #cards { grid-auto-flow: row; grid-template-columns: repeat(auto-fit,minmax(min(100%,290px),1fr)); grid-auto-columns: auto; overflow: visible; scroll-snap-type: none; }
+  #coverage { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; color: var(--muted); font-size: 12px; }
+  #coverage summary { cursor: pointer; color: var(--ink); font-weight: 550; }
+  #coverage-counts { margin: 9px 0; line-height: 1.7; }
+  .query-row,.audit-row { border-top: 1px solid var(--line); padding: 8px 0; overflow-wrap: anywhere; }
+  .query-name { font-weight: 600; color: var(--ink); }
+  #audit { margin-top: 8px; }
+  #audit-more { width: 100%; }
+  #page-nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+  #page-label { color: var(--muted); font-size: 12px; }
+  .detail-content { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 440px; overflow: auto; font-size: 13px; margin-top: 12px; }
+  .cover-retry { position: absolute; bottom: 12px; left: 12px; }
+  @media (min-width: 640px) { :root:not([data-mode="fullscreen"]) #cards { grid-auto-flow: row; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-columns: auto; max-height: 760px; overflow: auto; scroll-snap-type: none; } }
   @media (max-width: 380px) { body { padding: 12px; } .offer-body { padding: 12px; } .sort-control { flex: 1 1 100%; } select { flex: 1; min-width: 0; } #fullscreen { margin-left: 0; } }
   @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
 </head>
 <body>
-<main aria-label="Marktplatz-Auswahl">
+<main aria-label="willhaben Angebote">
   <header><h2 id="title">Angebote werden geladen</h2><p id="summary" hidden></p><p id="source"></p></header>
+  <details id="coverage" hidden><summary id="coverage-label">Rechercheumfang</summary><p id="coverage-counts"></p><div id="coverage-queries"></div><button id="queries-more" class="button" type="button" hidden>Weitere Suchanfragen</button><button id="audit" class="button" type="button">Einzelnachweise</button><div id="audit-records"></div><button id="audit-more" class="button" type="button" hidden>Weitere Nachweise</button></details>
   <p id="notice" role="status" hidden></p>
   <div id="toolbar" hidden><label class="sort-control"><span id="sort-label">Sortieren</span><select id="sort" aria-labelledby="sort-label"><option value="rank">Empfehlung</option><option value="price_asc">Preis aufsteigend</option><option value="price_desc">Preis absteigend</option></select></label><button id="fullscreen" class="button" type="button" hidden>Größere Ansicht</button></div>
   <ol id="cards"></ol>
   <nav id="pager" aria-label="Angebote durchblättern" hidden><button id="previous" class="button" type="button" aria-label="Vorheriges Angebot">‹</button><span id="position" aria-live="polite"></span><button id="next" class="button" type="button" aria-label="Nächstes Angebot">›</button></nav>
+  <nav id="page-nav" aria-label="Ergebnisseiten" hidden><button id="page-previous" class="button" type="button">Vorherige Seite</button><span id="page-label" aria-live="polite"></span><button id="page-next" class="button" type="button">Weitere Angebote</button></nav>
 </main>
+<script>${PRESENTATION_BRIDGE_SOURCE.replace(/<\/script/gi, "<\\/script")}</script>
 <script>(${mountPresentation.toString()})();</script>
 </body>
 </html>`;

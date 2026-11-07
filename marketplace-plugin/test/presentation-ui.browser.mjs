@@ -66,7 +66,8 @@ try {
       if (event.source !== frame.contentWindow || event.data?.jsonrpc !== "2.0") return;
       const message = event.data;
       window.calls.push(message);
-      if (message.method === "ui/initialize") send({ id: message.id, result: { protocolVersion: "2026-01-26", hostCapabilities: { openLinks: {} }, hostContext: { theme: "dark", locale: "de-AT", availableDisplayModes: ["inline", "fullscreen"], displayMode: "inline" } } });
+      if (message.method === "ui/initialize") send({ id: message.id, result: { protocolVersion: "2026-01-26", hostInfo: { name: "fixture", version: "1" }, hostCapabilities: { openLinks: {}, serverTools: {}, updateModelContext: {} }, hostContext: { theme: "dark", locale: "de-AT", availableDisplayModes: ["inline", "fullscreen"], displayMode: "inline" } } });
+      if (message.method === "ui/update-model-context") send({ id: message.id, result: {} });
       if (message.method === "ui/notifications/initialized") send({ method: "ui/notifications/tool-result", params: fixture });
       if (message.method === "ui/open-link") send({ id: message.id, result: {} });
       if (message.method === "ui/request-display-mode") send({ id: message.id, result: { mode: message.params.mode } });
@@ -105,7 +106,7 @@ try {
   await page.waitForFunction(() => window.calls.some(call => call.method === "ui/notifications/initialized"));
   const initialization = await page.evaluate(() => window.calls.find(call => call.method === "ui/initialize"));
   assert.equal(initialization.params.protocolVersion, "2026-01-26");
-  assert.equal(initialization.params.appInfo.version, "1.3.3");
+  assert.equal(initialization.params.appInfo.version, "1.4.0");
   assert.equal(await frame.locator(".offer").count(), 3);
   pass("MCP Apps initializes before receiving the presentation");
 

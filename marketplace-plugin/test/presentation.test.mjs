@@ -5,6 +5,7 @@ import { getProvider } from "../src/providers.mjs";
 import { responseCooldown } from "../src/traffic.mjs";
 import { PRESENTATION_URI } from "../src/presentation-ui.mjs";
 import worker from "../src/worker.mjs";
+import { readMcpResponse } from "./mcp-response.mjs";
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
 const photo = (id, index = 0) => `https://cache.willhaben.at/mmo/fixtures/${id}-${index}.png`;
@@ -72,7 +73,7 @@ test("presentation rejects malformed selections and external sources before I/O"
   const base = { source: "live", selections: [{ id: "1" }] };
   for (const args of [
     { ...base, selections: [] },
-    { ...base, selections: Array.from({ length: 9 }, (_, i) => ({ id: String(i + 1) })) },
+    { ...base, selections: Array.from({ length: 1001 }, (_, i) => ({ id: String(i + 1) })) },
     { ...base, selections: [{ id: "1" }, { id: "1" }] },
     { ...base, selections: [{ id: "foreign-id" }] },
     { ...base, selections: [{ id: "1", photoIndex: -1 }] },
@@ -207,7 +208,7 @@ test("presentation preserves photo cooldown and remaining cards without extra im
   assert.equal(result._meta.listingImages.length, 1);
 });
 
-test("oversize selected photos use their native thumbnails under the same paced image budget", async t => {
+test("overview covers prefer native thumbnails without downloading full photos", async t => {
   const storage = observations(), seen = [];
   const thumb = photo(1, "thumb");
   storage.set("summary:1", listing(1, { gallery: [{ index: 0, url: photo(1), thumbnailUrl: thumb }] }));
@@ -218,10 +219,10 @@ test("oversize selected photos use their native thumbnails under the same paced 
       : new Response(Buffer.from(png, "base64"), { headers: { "content-type": "image/png" } });
   });
   const result = await invokeTool("present_listings", { source: "live", selections: [{ id: "1" }] }, storage.env);
-  assert.deepEqual(seen, [photo(1), thumb]);
+  assert.deepEqual(seen, [thumb]);
   assert.deepEqual(result.cards[0].image, { index: 0, url: thumb, status: "ready", size: "thumbnail" });
   assert.equal(result._meta.listingImages[0].data, png);
-  assert.equal(storage.slots.length, 2);
+  assert.equal(storage.slots.length, 1);
 });
 
 test("private image hydration stays below the shared response budget and retains pending cards", async t => {
@@ -250,20 +251,20 @@ test("an expired presentation budget preserves every selected ID for a follow-up
   assert.deepEqual(storage.reads, []);
 });
 
-const headers = { "content-type": "application/json", accept: "application/json" };
+const headers = { "content-type": "application/json", accept: "application/json, text/event-stream" };
 async function rpc(method, params = {}, env = {}, extraHeaders = {}) {
   const response = await worker.fetch(new Request("https://market.example/mcp", {
     method: "POST", headers: { ...headers, ...extraHeaders },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
   }), env);
-  return response.json();
+  return readMcpResponse(response);
 }
 
 test("only the presentation tool binds the UI resource and both MCP protocols discover and read it", async () => {
   const renderTools = toolDefinitions.filter(tool => tool._meta?.ui?.resourceUri);
   assert.deepEqual(renderTools.map(tool => tool.name), ["present_listings"]);
   assert.equal(renderTools[0]._meta["openai/outputTemplate"], PRESENTATION_URI);
-  assert.equal(renderTools[0].inputSchema.properties.selections.maxItems, 8);
+  assert.equal(renderTools[0].inputSchema.properties.selections.maxItems, 1000);
   for (const tool of ["present_listings", "inspect_listings", "inspect_listing_images"]) {
     assert.ok(toolDefinitions.find(item => item.name === tool)._meta.ui.visibility.includes("app"));
   }
@@ -281,7 +282,7 @@ test("only the presentation tool binds the UI resource and both MCP protocols di
   assert.match(read._meta["openai/widgetDescription"], /For a request to show offers, finish with one plain-text sentence pointing to the app cards/);
   assert.match(read._meta["openai/widgetDescription"], /For advice or a study, add the requested decision analysis/);
   assert.deepEqual((await rpc("resources/templates/list")).result.resourceTemplates, []);
-  assert.equal((await rpc("resources/read", { uri: "https://evil.test" })).error.code, -32002);
+  assert.equal((await rpc("resources/read", { uri: "https://evil.test" })).error.code, -32602);
   assert.equal((await rpc("resources/list", { cursor: "next" })).error.code, -32602);
   const version = "2026-07-28";
   const modern = await rpc("resources/read", { uri: PRESENTATION_URI, _meta: {
@@ -332,9 +333,10 @@ test("Worker keeps hydrated image bytes outside model text and structuredContent
   assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
   assert.equal(result.structuredContent.cards[0].image.url, photo(1));
   const init = (await rpc("initialize", { protocolVersion: "2025-11-25", clientInfo: { name: "test", version: "1" }, capabilities: {} })).result;
-  assert.equal(init.serverInfo.version, "1.3.3");
-  assert.match(init.instructions.slice(0, 512), /visual presentation/);
-  assert.match(init.instructions.slice(0, 512), /present_listings/);
-  assert.match(init.instructions.slice(0, 512), /short decision-focused summary/);
-  assert.match(init.instructions, /inspect_listing_images with mode=images/);
+  assert.equal(init.serverInfo.version, "1.4.0");
+  assert.match(init.instructions, /present_listings/);
+  assert.match(init.instructions, /twelve relevant offers/);
+  assert.match(init.instructions, /one plain-text sentence/);
+  assert.match(init.instructions, /researchId/);
+  assert.match(init.instructions, /actual photos before making visual claims/);
 });

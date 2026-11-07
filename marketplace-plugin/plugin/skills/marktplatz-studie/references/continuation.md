@@ -2,13 +2,13 @@
 
 ## Search pages
 
-Repeat `source`, `query`, `filters` and `pageSize`, then pass the returned `nextCursor`. For provided data, repeat the same `listings`. Field and image selection may change between calls. Start a new search when its scope or page size changes.
+Follow the returned `continuation.tool` with `continuation.arguments`. It carries the research ID and search scope. If continuing manually, repeat `source`, `query`, `filters`, `pageSize` and `researchId`, then pass `nextCursor`. For provided data, repeat the same `listings`. Field and image selection may change between calls. Start a new search when its scope or page size changes.
 
-Deduplicate by listing ID across pages and variants. `returnedCount` describes this page and `total` carries the source's reported count. A null total means unknown. A short page can still have a continuation. A successful empty page ends that search.
+Deduplicate by listing ID across pages and variants. `returnedCount` describes this page and `total` carries the source's reported count. A null total means unknown. A short page can still have a continuation. Local text filters can produce an empty page while `nextCursor` still identifies further candidates. The `end` flag confirms upstream exhaustion.
 
 ## Detail batches
 
-Repeat the original `source` and complete `ids` selection with `nextCursor`. Repeat `listings` for provided data. Use `remainingCount` and `failedIds` to identify pending work. A smaller `limit` changes the next batch size without discarding pending IDs.
+Follow `continuation`, or repeat the original `source`, `researchId` and complete `ids` selection with `nextCursor`. Repeat `listings` for provided data. Use `remainingCount` and `failedIds` to identify pending work. A smaller `limit` changes the next batch size without discarding pending IDs.
 
 The returned `results` remain valid when `errors` is nonempty. An unavailable listing is a current availability observation. Preserve the user's unresolved criteria for other candidates.
 

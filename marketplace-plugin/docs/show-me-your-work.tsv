@@ -1,0 +1,11 @@
+ts	phase	decision	why	evidence	result
+2026-11-07	frame	Pin deployed 1.3.3 and exact Git parent	Preserve a reproducible comparison	97c90e0a4654b19a7f5f8920ad4b20c2b5547e12	Baseline established
+2026-11-07	design	Use official MCP SDK Fetch handler	Delegate version-specific wire contracts to maintained SDK	Four protocol revisions passed Node and workerd spike	Implementation assigned
+2026-11-07	design	Use native visual search	Support user photos and native similarity matches	Anonymous JPEG PUT returned 196 matches and valid filtered continuation	Implementation assigned
+2026-11-07	design	Separate research tasks by explicit researchId	A private plugin connection is shared across chats	Current personal environment uses one connection key	SQLite task ledger assigned
+2026-11-07	design	Bound UI pages and lazily hydrate images	Current eager eight-card path cannot scale by raising its limit	Existing imageBatch allows eight images and eagerly loads full covers	12 default and 24 maximum per page selected
+2026-11-07	verify	Use atomic upstream leases	Four parallel cold calls previously fetched four pages	workerd provider regression	Four cold calls now share one upstream request
+2026-11-07	verify	Keep all observed IDs in query snapshots	A fixed total collection ceiling would conceal searched offers	10000 IDs across 417 bounded SQLite pages	Every observed ID reachable
+2026-11-07	review	Guard asynchronous UI responses by generation	A delayed older page could replace a newer collection	Real Chromium reproduction and two passing reruns	Page query audit and photo races closed
+2026-11-07	review	Use viewport observation in fullscreen	The full grid observer treated offscreen cards as near-visible	Viewport geometry regression	Offscreen photos wait for scrolling
+2026-11-07	agent-interface	Apply AXI and Writing for Agents last	Keep discovery and continuation precise with bounded output	Validated skill and continuation regression	Explicit next-call arguments and progressive references

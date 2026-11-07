@@ -44,7 +44,8 @@ export async function handlePersonalMcp(request, env, rpc) {
   if (!await equalToken(digest, expected)) return missingPath();
 
   const scopedEnv = Object.freeze({ REQUEST_LIMITER: env.PERSONAL_LIMITER ?? env.REQUEST_LIMITER, STUDIES: env.STUDIES,
-    ORIGIN_GATE:env.ORIGIN_GATE, REQUIRE_ORIGIN_GATE:env.REQUIRE_ORIGIN_GATE === true || env.REQUIRE_ORIGIN_GATE === "true",
+    ORIGIN_GATE:env.ORIGIN_GATE, RESEARCH_SESSIONS:env.RESEARCH_SESSIONS, IMAGES:env.IMAGES,
+    REQUIRE_ORIGIN_GATE:env.REQUIRE_ORIGIN_GATE === true || env.REQUIRE_ORIGIN_GATE === "true",
     REQUEST_LIMIT_KEY:"personal-access", LIVE_ACCESS: "personal_test", IMAGE_ACCESS: "personal_test" });
   const clean = new Request(new URL("/mcp", url.origin), request);
   clean.headers.delete("referer");

@@ -9,6 +9,7 @@ const sourceRoot = fileURLToPath(new URL('../src/', import.meta.url));
 const runtimeRoot = await mkdtemp(join(tmpdir(), 'marktplatz-provider-review-'));
 const outboundCalls = [];
 let denyNext = false;
+let malformedNext = false;
 
 function listing(id, detailed = false) {
   return {
@@ -54,7 +55,7 @@ export default { async fetch(request, env) {
 } };`;
 
 const modules = [{ type: 'ESModule', path: runtimeRoot + '/entry.mjs', contents: entry }];
-for (const name of ['providers.mjs', 'origin-gate.mjs', 'traffic.mjs']) {
+for (const name of ['providers.mjs', 'origin-gate.mjs', 'traffic.mjs', 'visual-search.mjs']) {
   modules.push({ type: 'ESModule', path: runtimeRoot + '/' + name,
     contents: await readFile(sourceRoot + '/' + name, 'utf8') });
 }
@@ -74,6 +75,10 @@ const mf = new Miniflare({
       denyNext = false;
       return new Response('synthetic cooldown', { status: 429, headers: { 'retry-after': '1800' } });
     }
+    if (malformedNext) {
+      malformedNext = false;
+      return html({ unexpected: 'synthetic schema failure' });
+    }
     if (url.pathname.includes('/marktplatz')) {
       const page = Number(url.searchParams.get('page'));
       const records = page === 1 ? [listing(41), listing(42)] : [];
@@ -88,7 +93,7 @@ const mf = new Miniflare({
     }
     const id = url.pathname === '/iad/object' ? url.searchParams.get('adId') : url.pathname.split('-').at(-1);
     if (id === '999') return new Response('synthetic deleted listing', { status: 404 });
-    assert.equal(id, '41', 'Unexpected detail target');
+    assert.ok(['41','777'].includes(id), 'Unexpected detail target');
     return html({ advertDetails: listing(id, true) });
   },
 });
@@ -157,6 +162,36 @@ try {
   assert.equal(end.nextCursor, null);
   assert.equal(outboundCalls.length, 6);
   console.log('PASS page size and position have independent cache identities and exhaustion is verified');
+
+  await new Promise(resolve=>setTimeout(resolve,2600));
+  const beforeConcurrent = outboundCalls.length;
+  const concurrent = await Promise.all(Array.from({length:4},()=>call('search',{query:'Concurrent synthetic lamp'})));
+  const concurrentRequests = outboundCalls.length-beforeConcurrent;
+  console.log('Four concurrent cold searches produced '+concurrentRequests+' upstream requests');
+  assert.equal(concurrentRequests,1,'A cold cache miss must have one upstream owner');
+  assert.ok(concurrent.every(result=>result.observedAt===concurrent[0].observedAt));
+  assert.equal(concurrent.filter(result=>!result.cacheHit).length,1);
+  console.log('PASS four independent requests share one cold search observation');
+
+  const beforeFresh=outboundCalls.length;
+  const concurrentFresh=await Promise.all(Array.from({length:4},()=>call('search',{query:'Concurrent synthetic lamp',fresh:true})));
+  assert.equal(outboundCalls.length-beforeFresh,1);
+  assert.notEqual(concurrentFresh[0].observedAt,concurrent[0].observedAt);
+  assert.ok(concurrentFresh.every(result=>result.observedAt===concurrentFresh[0].observedAt));
+  console.log('PASS concurrent refreshes share one newly fetched observation');
+
+  const beforeDetails=outboundCalls.length;
+  const concurrentDetails=await Promise.all(Array.from({length:4},()=>call('detail',{id:'777'})));
+  assert.equal(outboundCalls.length-beforeDetails,1);
+  assert.ok(concurrentDetails.every(result=>result.observedAt===concurrentDetails[0].observedAt));
+  console.log('PASS four independent detail requests share one cold observation');
+
+  malformedNext=true;
+  await assert.rejects(call('search',{query:'Recovering synthetic search'}),{code:'upstream_schema'});
+  const recoveryStart=Date.now();
+  assert.equal((await call('search',{query:'Recovering synthetic search'})).items.length,2);
+  assert.ok(Date.now()-recoveryStart<5000,'Failed work must release its lease before the 15-second TTL');
+  console.log('PASS provider errors release ownership before retry');
 
   denyNext = true;
   await assert.rejects(call('search', { query: 'Synthetic lamp', fresh: true }), error =>

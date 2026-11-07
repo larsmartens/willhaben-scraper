@@ -1,10 +1,13 @@
 /** Read-only catalogue adapters. A provider instance lasts for one tool call. */
 import { fetchPublic, CLIENT_AGENT } from "./traffic.mjs";
+import { VISUAL_SEARCH_PATH, validateVisualSource, nativeSimilarityUrl, listingVisualUrl,
+  uploadSearchImage, encodeVisualCursor, decodeVisualCursor } from "./visual-search.mjs";
 export { CLIENT_AGENT };
 
 const ORIGIN = "https://www.willhaben.at";
 const SEARCH = "/iad/kaufen-und-verkaufen/marktplatz";
 const CONDITIONS = {new:22, as_new:2546, refurbished:5013256, used:23, defective:24, display_item:2539};
+const HANDOVER = {shipping:2537, pickup:2536};
 const SORTS = {newest:1, price_asc:3, price_desc:4, relevance:7};
 const MAX_PROVIDED = 300;
 export const DEFAULT_PAGE_SIZE = 50;
@@ -23,7 +26,10 @@ const filterFields = {
   priceMin:money, priceMax:money, condition:choice(...Object.keys(CONDITIONS)),
   categoryId:positive, areaId:positive, sellerType:choice("private","dealer"),
   paylivery:{type:"boolean"}, shipping:choice("shipping","pickup"),
-  sort:choice(...Object.keys(SORTS)), attributeIds:ids
+  recent48h:{type:"boolean"}, sort:choice(...Object.keys(SORTS)), attributeIds:ids,
+  requireTerms:{type:"array",maxItems:12,uniqueItems:true,items:str(80)},
+  excludeTerms:{type:"array",maxItems:12,uniqueItems:true,items:str(80)},
+  titleOnly:{type:"boolean"}
 };
 export const FILTER_SCHEMA = {type:"object",additionalProperties:false, properties:filterFields};
 const itemFields = {
@@ -78,14 +84,13 @@ function validatePageSize(pageSize) {
 }
 export function buildSearchLink(query,filters={}) {
   const kw=queryText(query), f=validateFilters(filters);
-  if (f.shipping !== undefined) fail("unsupported_filter","Shipping and pickup require detail evidence. Remove the shipping filter and inspect handover separately.");
   if (f.paylivery === false) fail("unsupported_filter","The native search supports PayLivery-only, not exclusion of PayLivery.");
   const u=new URL(SEARCH,ORIGIN);
   if (kw) u.searchParams.set("keyword",kw);
-  for (const [k,v] of Object.entries({PRICE_FROM:f.priceMin,PRICE_TO:f.priceMax,ATTRIBUTE_TREE:f.categoryId,areaId:f.areaId,ISPRIVATE:f.sellerType===undefined?undefined:f.sellerType==="private"?1:0,sort:SORTS[f.sort],paylivery:f.paylivery || undefined})) {
+  for (const [k,v] of Object.entries({PRICE_FROM:f.priceMin,PRICE_TO:f.priceMax,ATTRIBUTE_TREE:f.categoryId,areaId:f.areaId,ISPRIVATE:f.sellerType===undefined?undefined:f.sellerType==="private"?1:0,sort:SORTS[f.sort],paylivery:f.paylivery || undefined,periode:f.recent48h?2:undefined})) {
     if(v!==undefined) u.searchParams.set(k,String(v));
   }
-  for (const n of [CONDITIONS[f.condition],...(f.attributeIds??[])]) if(n) u.searchParams.append("treeAttributes",String(n));
+  for (const n of new Set([CONDITIONS[f.condition],HANDOVER[f.shipping],...(f.attributeIds??[])])) if(n) u.searchParams.append("treeAttributes",String(n));
   return u.href;
 }
 
@@ -133,6 +138,9 @@ export function parseSearchUrl(value) {
   const paylivery = single("paylivery");
   if (["true", "1"].includes(paylivery)) filters.paylivery = true;
   else if (paylivery !== undefined) unsupportedParameters.push({ name: "paylivery", values: [paylivery] });
+  const period = single("periode");
+  if (period === "2") filters.recent48h = true;
+  else if (period !== undefined) unsupportedParameters.push({ name: "periode", values: [period] });
 
   const attributes = [...new Set(params.getAll("treeAttributes"))];
   if (attributes.some(id => !/^[1-9]\d*$/.test(id))) invalid("Invalid treeAttributes");
@@ -140,10 +148,13 @@ export function parseSearchUrl(value) {
   const conditions = attributes.filter(id => conditionNames.has(id));
   if (conditions.length === 1) filters.condition = conditionNames.get(conditions[0]);
   else if (conditions.length > 1) unsupportedParameters.push({ name: "treeAttributes", values: conditions });
-  const attributeIds = attributes.filter(id => !conditionNames.has(id)).map(Number);
+  const handoverNames = new Map(Object.entries(HANDOVER).map(([name, id]) => [String(id), name]));
+  const handover = attributes.filter(id => handoverNames.has(id));
+  if (handover.length === 1) filters.shipping = handoverNames.get(handover[0]);
+  const attributeIds = attributes.filter(id => !conditionNames.has(id) && (handover.length !== 1 || !handoverNames.has(id))).map(Number);
   if (attributeIds.length) filters.attributeIds = attributeIds;
 
-  const handled = new Set(["keyword", "page", "rows", "ISPRIVATE", "sort", "paylivery", "treeAttributes", ...Object.keys(numericFilters)]);
+  const handled = new Set(["keyword", "page", "rows", "ISPRIVATE", "sort", "paylivery", "periode", "treeAttributes", ...Object.keys(numericFilters)]);
   for (const name of new Set(params.keys())) {
     if (!handled.has(name)) unsupportedParameters.push({ name, values: params.getAll(name) });
   }
@@ -209,10 +220,12 @@ function selectRows(rows, query, filters) {
   const terms=queryText(query).match(/-?"[^"]+"|-?[^\s]+/g)??[];
   const f=validateFilters(filters);
   const selected=rows.filter(row=>{
-    const hay=fold([row.title,row.description,row.model,row.category,...Object.values(row.attributes??{})].join(" "));
+    const hay=fold(f.titleOnly ? row.title : [row.title,row.description,row.model,row.category,...Object.values(row.attributes??{})].join(" "));
     if(!terms.every(t=>{const neg=t.startsWith("-"), word=fold((neg?t.slice(1):t).replaceAll('"',""));return neg?!hay.includes(word):hay.includes(word);})) return false;
     if(f.priceMin!==undefined && (row.price==null || row.price<f.priceMin) || f.priceMax!==undefined && (row.price==null || row.price>f.priceMax)) return false;
     if(f.shipping && row.shipping!=="both" && row.shipping!==f.shipping) return false;
+    if(f.recent48h && !(Date.parse(row.publishedAt) >= Date.now()-48*60*60*1000)) return false;
+    if(!matchesLocalTerms(row,query,f)) return false;
     if(f.attributeIds?.some(id=>!row.attributeIds?.includes(id))) return false;
     if (f.areaId!==undefined && row.areaId!==f.areaId && !row.areaPathIds?.includes(f.areaId)) return false;
     if (f.categoryId!==undefined && row.categoryId!==f.categoryId && !row.categoryPathIds?.includes(f.categoryId)) return false;
@@ -221,6 +234,27 @@ function selectRows(rows, query, filters) {
   if (f.sort?.startsWith("price_")) selected.sort((a,b)=>a.price==null?Number(b.price!=null):b.price==null?-1:f.sort==="price_asc"?a.price-b.price:b.price-a.price);
   if (f.sort==="newest") selected.sort((a,b)=>(Date.parse(b.publishedAt)||0)-(Date.parse(a.publishedAt)||0));
   return selected;
+}
+
+function matchesLocalTerms(row, query, filters) {
+  const text = fold(filters.titleOnly ? row.title : [row.title, row.description, row.model, row.category,
+    ...Object.values(row.attributes ?? {})].join(" "));
+  if ((filters.requireTerms ?? []).some(term => !text.includes(fold(term))) ||
+      (filters.excludeTerms ?? []).some(term => text.includes(fold(term)))) return false;
+  if (!filters.titleOnly) return true;
+  return (query.match(/-?"[^"]+"|-?[^\s]+/g) ?? []).every(term => {
+    const excluded = term.startsWith("-");
+    const value = fold((excluded ? term.slice(1) : term).replaceAll('"', ""));
+    return excluded ? !text.includes(value) : text.includes(value);
+  });
+}
+
+function applyLocalFilters(value, query, filters) {
+  const items = value.items.filter(row => matchesLocalTerms(row, query, filters));
+  const hasLocalFilters = filters.titleOnly || filters.requireTerms?.length || filters.excludeTerms?.length;
+  return { ...value, items, returnedCount:items.length, scannedCount:value.items.length,
+    filteredOutCount:value.items.length-items.length,
+    ...(hasLocalFilters ? {totalScope:"upstream_before_local_filters", localFilterScope:filters.titleOnly?"title":"listing_summary"} : {}) };
 }
 function localProvider(kind, rows) {
   const observedAt = new Date().toISOString();
@@ -287,7 +321,9 @@ function normalizeGallery(raw, allImages, cover, detailed) {
     const identity = photoIdentity(reference ?? url);
     if (seen.has(identity)) continue;
     seen.add(identity);
-    gallery.push({index:gallery.length, url, thumbnailUrl:imageUrl(entry?.thumbnailImageUrl)});
+    const similarSearchUrl = nativeSimilarityUrl(entry?.similarImageSearchUrl);
+    gallery.push({index:gallery.length, url, thumbnailUrl:imageUrl(entry?.thumbnailImageUrl),
+      ...(similarSearchUrl ? {similarSearchUrl} : {})});
   }
   const hasAllImages = typeof allImages === "string" && Boolean(allImages.trim());
   const extra = String(hasAllImages ? allImages : cover ?? "").split(";").filter(value => value.trim());
@@ -316,7 +352,7 @@ function liveListing(raw, detailed = false){
   for(const entry of (Array.isArray(raw.attributeInformation)?raw.attributeInformation:[])){
     const label=entry?.treeAttributeElement?.label;
     if(!Array.isArray(entry?.values)) continue;
-    for(const v of entry.values) if(v?.treeAttributeValueId!=null) facetIds.push(v.treeAttributeValueId);
+    for(const v of entry.values) if((v?.treeAttributeValueId??v?.treeId)!=null) facetIds.push(v.treeAttributeValueId??v.treeId);
     if(dataKeys.test(label) && Object.keys(attributes).length<45){
       const value=entry.values.map(v=>v?.label).filter(v=>typeof v==="string").join(", ");
       if(value) attributes[label]=textFrom(value,300);
@@ -351,6 +387,11 @@ function liveListing(raw, detailed = false){
   const when=raw.publishedDate??attr("PUBLISHED_String")??tms.publish_date;
   const descriptionValue = attr("DESCRIPTION") ?? attr("BODY_DYN");
   const description = typeof descriptionValue === "string" ? descriptionValue.trim() : "";
+  const profile = raw.sellerProfileUserData;
+  const memberSince = typeof profile?.registerDate === "string" && Number.isFinite(Date.parse(profile.registerDate))
+    ? new Date(profile.registerDate).toISOString() : null;
+  const activeListingCount = Number.isSafeInteger(profile?.activeAdCount) && profile.activeAdCount >= 0 ? profile.activeAdCount : null;
+  const seller = { ...(memberSince ? {memberSince} : {}), ...(activeListingCount !== null ? {activeListingCount} : {}) };
   return {id:String(raw.id),title,price,url,description:description.slice(0,6000),descriptionLength:description.length,
     descriptionTruncated:description.length>6000,attributes,...photos,status,
     ...(price!==null?{priceType:isFree&&price===0?"free":/verhand|\bvb\b/.test(priceLabel)?"negotiable":"asking"}:/anfrage/.test(priceLabel)?{priceType:"on_request"}:{}),
@@ -359,6 +400,7 @@ function liveListing(raw, detailed = false){
     ...(typeof category==="string"?{category:category.slice(0,160)}:{}), ...(categoryId?{categoryId,categoryPathIds}:{}),
     ...(areaId?{areaId,areaPathIds}:{}), ...(location?{location}:{}),
     ...(["1","true","0","false"].includes(type)?{sellerType:["1","true"].includes(type)?"private":"dealer"}:{}),
+    ...(Object.keys(seller).length ? {seller} : {}),
     ...(["true","false"].includes(attr("p2penabled"))?{paylivery:attr("p2penabled")==="true"}:{}),
     ...(facetIds.length?{attributeIds:numericIds(facetIds)}:{}),
     ...(explicit.modell?{model:explicit.modell}:{}), ...(typeof when==="string"?{publishedAt:when}:{})
@@ -366,7 +408,7 @@ function liveListing(raw, detailed = false){
 }
 // Never follow a redirect to an externally supplied URL, non-marketplace path, or host.
 function allowedPath(url) {
-  return url.origin===ORIGIN && !url.username && !url.password && (url.pathname===SEARCH || url.pathname.startsWith(SEARCH+"/") || url.pathname==="/iad/object" || url.pathname.startsWith("/iad/kaufen-und-verkaufen/d/"));
+  return url.origin===ORIGIN && !url.username && !url.password && (url.pathname===SEARCH || url.pathname.startsWith(SEARCH+"/") || url.pathname===VISUAL_SEARCH_PATH || url.pathname==="/iad/object" || url.pathname.startsWith("/iad/kaufen-und-verkaufen/d/"));
 }
 async function limitedText(response) {
   const maximum=4*1024*1024;
@@ -414,6 +456,9 @@ async function pageProps(url, env, {allowGone=false, deadline} = {}) {
 }
 async function readPage(url, page, env, deadline) {
   const {props}=await pageProps(url,env,{deadline}), data=props.searchResult;
+  return validateSearchPage(data,page);
+}
+function validateSearchPage(data, page) {
   // Landing-page suggestions may ignore filters. A missing result is a schema error.
   if(!plain(data) || !Array.isArray(data.advertSummaryList?.advertSummary)) schemaError("Expected a structured marketplace result list");
   if(Number(data.verticalId)!==5 || Number(data.pageRequested)!==page) schemaError("Marketplace or page identity not verified");
@@ -431,6 +476,10 @@ function metaFacets(page) {
       const values=[];
       for(const entry of all){
         for(const p of entry.urlParamRepresentationForValue??[]){
+          if(p.urlParameterName==="periode" && String(p.value)==="2") {
+            values.push({label:textFrom(entry.label,120),filter:"recent48h",value:true,count:entry.hits??entry.count??null});
+            continue;
+          }
           if(!Object.hasOwn(nativeParams,p.urlParameterName) || !/^\d+$/.test(String(p.value))) continue;
           values.push({label:textFrom(entry.label,120),filter:nativeParams[p.urlParameterName],value:Number(p.value),count:entry.hits??entry.count??null});
         }
@@ -484,8 +533,35 @@ function liveProvider(env) {
     if (!entry || !Number.isFinite(Date.parse(entry.observedAt)) || !Number.isFinite(Date.parse(entry.expiresAt)) || Date.parse(entry.expiresAt) <= Date.now()) return null;
     return entry;
   }
-  async function writeCache(entries, deadline) {
+  async function claimObservation(key, fresh, deadline) {
+    if (!cache || typeof cache.claimObservation !== "function")
+      return {entry:fresh?null:await readCache(key,deadline)};
+    const owner = crypto.randomUUID();
+    const minObservedAt = fresh ? Date.now() : 0;
+    const endsAt = Math.min(Date.now()+35000,Number.isFinite(deadline)?deadline:Infinity,
+      Number.isFinite(env.REQUEST_DEADLINE)?env.REQUEST_DEADLINE:Infinity);
+    for (;;) {
+      const result = await cacheCall("claimObservation",[key,owner,{leaseMs:15000,minObservedAt}],endsAt);
+      if (result?.state === "cached" && result.entry) return {entry:result.entry};
+      if (result?.state === "owner") return {key,owner};
+      if (result?.state !== "waiting" || !Number.isFinite(result.expiresAt))
+        fail("traffic_unavailable","The shared observation lease is unavailable.",{recoverable:true});
+      const wait = Math.min(250,Math.max(1,result.expiresAt-Date.now()),endsAt-Date.now());
+      if (wait <= 0) fail("time_budget","Continue in another call to reuse the pending observation.",{recoverable:true});
+      await new Promise(resolve => setTimeout(resolve,wait));
+    }
+  }
+  async function releaseObservation(lease, deadline) {
+    if (!lease.owner) return;
+    try { await cacheCall("releaseObservation",[lease.key,lease.owner],deadline); }
+    catch { /* An expired owner is reclaimed by the lease TTL. */ }
+  }
+  async function writeCache(entries, deadline, lease) {
     if (!cache) return;
+    if (lease?.owner) {
+      await cacheCall("commitObservation",[lease.key,lease.owner,entries],deadline);
+      return;
+    }
     for (let offset = 0; offset < entries.length; offset += 101)
       await cacheCall("putCached",[entries.slice(offset,offset+101)],deadline);
   }
@@ -497,43 +573,106 @@ function liveProvider(env) {
   }
   async function searchPage(query, filters, page, pageSize, fresh, deadline) {
     const base = new URL(buildSearchLink(query,filters));
+    return searchUrl(base,page,pageSize,fresh,deadline);
+  }
+  async function searchUrl(base, page, pageSize, fresh, deadline, uploadedResult) {
     const url = new URL(base);
     url.searchParams.set("page",String(page));
     url.searchParams.set("rows",String(pageSize));
     const key = await cacheKey("page",url);
-    if (!fresh) {
-      const entry = await readCache(key,deadline);
-      if (entry) return {...entry,cacheHit:true};
-    }
-    const raw = await request(() => readPage(url,page,env,deadline));
-    const rows = raw.advertSummaryList.advertSummary;
-    if(rows.length>200) schemaError("Unexpected page size");
-    const total=raw.rowsFound??null;
-    if(total===0 && rows.length) schemaError("Non-empty result contradicts zero total");
-    const items=rows.map(row => liveListing(row));
-    const end=rows.length===0;
-    const facets = Array.isArray(raw.navigatorGroups) ? metaFacets(raw) : null;
-    const observedAt = new Date().toISOString();
-    // Only an empty, correctly numbered page confirms exhaustion when the source clamps page sizes.
-    const value = {items,total,end,nextCursor:end?null:String(page+1),page,requestedPageSize:pageSize,
-      returnedCount:items.length,upstreamPageSize:Number.isSafeInteger(raw.rowsRequested)?raw.rowsRequested:null,facets};
-    const entries = [{key,value,observedAt,ttlSeconds:300},
-      ...items.map(row => ({key:"summary:"+row.id,value:row,observedAt,ttlSeconds:300}))];
-    if (facets) entries.push({key:await cacheKey("facets",base),value:facets,observedAt,ttlSeconds:300});
-    await writeCache(entries,deadline);
-    return {value,observedAt,cacheHit:false};
+    const lease = await claimObservation(key,fresh,deadline);
+    if (lease.entry) return {...lease.entry,cacheHit:true};
+    try {
+      const raw = uploadedResult ? validateSearchPage(uploadedResult,page) : await request(() => readPage(url,page,env,deadline));
+      const rows = raw.advertSummaryList.advertSummary;
+      if(rows.length>200) schemaError("Unexpected page size");
+      const total=raw.rowsFound??null;
+      if(total===0 && rows.length) schemaError("Non-empty result contradicts zero total");
+      const items=rows.map(row => liveListing(row));
+      const end=rows.length===0;
+      const facets = Array.isArray(raw.navigatorGroups) ? metaFacets(raw) : null;
+      const observedAt = new Date().toISOString();
+      // Only an empty, correctly numbered page confirms exhaustion when the source clamps page sizes.
+      const value = {items,total,end,nextCursor:end?null:String(page+1),page,requestedPageSize:pageSize,
+        returnedCount:items.length,upstreamPageSize:Number.isSafeInteger(raw.rowsRequested)?raw.rowsRequested:null,facets};
+      if (url.pathname === VISUAL_SEARCH_PATH) {
+        const nextLink = raw.pagingLinksList?.contextLink?.find(link => link.description === "nextLink")?.uri;
+        if (typeof nextLink === "string") {
+          const next = new URL(nextLink,ORIGIN).searchParams.get("publishedDateTo");
+          if (next && /^\d+$/.test(next) && Number.isSafeInteger(Number(next))) value.nextPublishedDateTo = next;
+        }
+      }
+      const entries = [{key,value,observedAt,ttlSeconds:300},
+        ...items.map(row => ({key:"summary:"+row.id,value:row,observedAt,ttlSeconds:300}))];
+      if (facets) entries.push({key:await cacheKey("facets",base),value:facets,observedAt,ttlSeconds:300});
+      await writeCache(entries,deadline,lease);
+      return {value,observedAt,cacheHit:false};
+    } finally { await releaseObservation(lease,deadline); }
   }
   function listingId(id) {
     if(typeof id!=="string" || !/^\d{1,20}$/.test(id)) invalid("Expected a numeric willhaben listing ID");
   }
-  return {
+  const provider = {
     kind:"live",
     async search({query,filters={},cursor,pageSize=DEFAULT_PAGE_SIZE,fresh=false,deadline}) {
       validatePageSize(pageSize);
       checkFresh(fresh);
       const entry = await searchPage(query,filters,parseCursor(cursor),pageSize,fresh,deadline);
       const {facets,...value} = entry.value;
-      return observation(value,entry.observedAt,entry.cacheHit);
+      return observation(applyLocalFilters(value,query,filters),entry.observedAt,entry.cacheHit);
+    },
+    async searchByImage(args = {}) {
+      const source = validateVisualSource(args);
+      const continuation = args.cursor === undefined ? null : decodeVisualCursor(args.cursor);
+      const filters = validateFilters(args.filters ?? continuation?.filters ?? {});
+      const pageSize = validatePageSize(args.pageSize ?? Number(continuation?.url.searchParams.get("rows") ?? DEFAULT_PAGE_SIZE));
+      const fresh = args.fresh ?? false;
+      checkFresh(fresh);
+      const nativeFilters = new URL(buildSearchLink("",filters)).searchParams;
+      const deadline = Math.min(Date.now()+35000, Number.isFinite(args.deadline)?args.deadline:Infinity,
+        Number.isFinite(env.REQUEST_DEADLINE)?env.REQUEST_DEADLINE:Infinity);
+      let base, visual, uploadedResult;
+      if (continuation) {
+        const canonical = value => JSON.stringify(Object.entries(validateFilters(value)).sort(([a],[b]) => a.localeCompare(b)));
+        const sameFilters = [continuation.filters,continuation.requestedFilters].some(value => canonical(value)===canonical(filters));
+        if (!sameFilters || pageSize!==Number(continuation.url.searchParams.get("rows")))
+          fail("invalid_cursor","Continue with the same filters and pageSize, or start a new image search.");
+        base = continuation.url;
+        visual = continuation.visual;
+      } else {
+        if (source.source === "listing") {
+          const listing = await this.detail(source.listingId,{fresh,deadline});
+          if (!listing) fail("listing_unavailable","This listing is unavailable. Choose another image.");
+          base = listingVisualUrl(listing,source.photoIndex);
+          visual = source;
+        } else {
+          const uploaded = await request(() => uploadSearchImage(source,env,deadline));
+          base = uploaded.url;
+          visual = {source:source.source};
+          uploadedResult = uploaded.raw;
+        }
+        for (const key of new Set(nativeFilters.keys())) base.searchParams.delete(key);
+        for (const [key,value] of nativeFilters) base.searchParams.append(key,value);
+        if (nativeFilters.size || uploadedResult?.rowsRequested !== pageSize) uploadedResult = undefined;
+      }
+      const page = parseCursor(base.searchParams.get("page"));
+      const entry = await searchUrl(base,page,pageSize,fresh,deadline,uploadedResult);
+      const {facets,nextPublishedDateTo,...value} = entry.value;
+      const nextUrl = new URL(base);
+      nextUrl.searchParams.set("page",String(page+1));
+      nextUrl.searchParams.set("rows",String(pageSize));
+      if (nextPublishedDateTo) nextUrl.searchParams.set("publishedDateTo",nextPublishedDateTo);
+      const filterUrl = new URL(base);
+      filterUrl.pathname = SEARCH;
+      for (const key of ["pictureKey","adId","imageId","imageUrl","isNavigation","publishedDateTo"]) filterUrl.searchParams.delete(key);
+      const effectiveFilters = {...parseSearchUrl(filterUrl.href).filters,...filters};
+      const requestedKeys = continuation?.requestedKeys ?? Object.keys(filters);
+      const nextCursor = value.end ? null : encodeVisualCursor(nextUrl,effectiveFilters,visual,requestedKeys);
+      const identity = new URL(base);
+      for (const key of ["rows","page","publishedDateTo","isNavigation"]) identity.searchParams.delete(key);
+      const filterIdentity = JSON.stringify(Object.entries(effectiveFilters).sort(([a],[b]) => a.localeCompare(b)));
+      const searchId = (await cacheKey("visual:"+pageSize+":"+filterIdentity,identity)).slice("search:".length);
+      return observation({...applyLocalFilters(value,"",effectiveFilters),nextCursor,visual:{...visual,searchId},filters:effectiveFilters},entry.observedAt,entry.cacheHit);
     },
     async facets({query,filters={},fresh=false,deadline}) {
       checkFresh(fresh);
@@ -560,22 +699,27 @@ function liveProvider(env) {
       const key = "detail:"+id;
       const prior = await readCache(key,deadline);
       if (prior && !fresh) return prior.value && !prior.value.gone ? observation(prior.value,prior.observedAt,true) : null;
-      const hint = prior?.value ?? (await readCache("summary:"+id,deadline))?.value;
-      const target = hint?.url && allowedPath(new URL(hint.url)) ? hint.url : objectUrl(id);
-      const result = await request(() => pageProps(target,env,{allowGone:true,deadline}));
-      const observedAt = new Date().toISOString();
-      if (result === null || result.props.is404 === true) {
-        const value = {id,gone:true};
-        await writeCache([{key,value,observedAt,ttlSeconds:60},{key:"summary:"+id,value,observedAt,ttlSeconds:60}],deadline);
-        return null;
-      }
-      if(String(result.props.advertDetails?.id)!==id) schemaError("Detail response has a different or missing ID");
-      const row = liveListing(result.props.advertDetails,true);
-      if (row.url === objectUrl(id) && allowedPath(new URL(result.url))) row.url = result.url;
-      await writeCache([{key,value:row,observedAt,ttlSeconds:900}],deadline);
-      return observation(row,observedAt,false);
+      const lease = await claimObservation(key,fresh,deadline);
+      if (lease.entry) return lease.entry.value.gone ? null : observation(lease.entry.value,lease.entry.observedAt,true);
+      try {
+        const hint = prior?.value ?? (await readCache("summary:"+id,deadline))?.value;
+        const target = hint?.url && allowedPath(new URL(hint.url)) ? hint.url : objectUrl(id);
+        const result = await request(() => pageProps(target,env,{allowGone:true,deadline}));
+        const observedAt = new Date().toISOString();
+        if (result === null || result.props.is404 === true) {
+          const value = {id,gone:true};
+          await writeCache([{key,value,observedAt,ttlSeconds:60},{key:"summary:"+id,value,observedAt,ttlSeconds:60}],deadline,lease);
+          return null;
+        }
+        if(String(result.props.advertDetails?.id)!==id) schemaError("Detail response has a different or missing ID");
+        const row = liveListing(result.props.advertDetails,true);
+        if (row.url === objectUrl(id) && allowedPath(new URL(result.url))) row.url = result.url;
+        await writeCache([{key,value:row,observedAt,ttlSeconds:900}],deadline,lease);
+        return observation(row,observedAt,false);
+      } finally { await releaseObservation(lease,deadline); }
     }
   };
+  return provider;
 }
 export function getProvider(source,env={},listings) {
   if(source==="provided") {

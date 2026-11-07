@@ -86,13 +86,51 @@ try {
   assert.equal(await rpc('getCached',['detail:999']),null);
   console.log('PASS oversize records fail before writes');
 
+  const leaseKey='detail:601', owners=Array.from({length:4},(_,i)=>'parallel-owner-'+i);
+  const leases=await Promise.all(owners.map(owner=>rpc('claimObservation',[leaseKey,owner])));
+  assert.equal(leases.filter(lease=>lease.state==='owner').length,1);
+  assert.equal(leases.filter(lease=>lease.state==='waiting').length,3);
+  const owner=owners[leases.findIndex(lease=>lease.state==='owner')];
+  const ownedEntry={...entry,key:leaseKey,value:{...listing,id:'601'},observedAt:new Date().toISOString()};
+  assert.deepEqual(await rpc('commitObservation',[leaseKey,'wrong-owner',[ownedEntry]]),{committed:false,stored:0});
+  assert.deepEqual(await rpc('releaseObservation',[leaseKey,'wrong-owner']),{released:false});
+  assert.deepEqual(await rpc('commitObservation',[leaseKey,owner,[ownedEntry]]),{committed:true,stored:1});
+  const reused=await rpc('claimObservation',[leaseKey,'later-owner']);
+  assert.equal(reused.state,'cached');assert.deepEqual(reused.entry.value,ownedEntry.value);
+  console.log('PASS atomic leases select one owner and publish a shared observation');
+
+  const orphanKey='detail:602', previousOwner='expired-owner', nextOwner='replacement-owner';
+  assert.equal((await rpc('claimObservation',[orphanKey,previousOwner,{leaseMs:100}])).state,'owner');
+  assert.equal((await rpc('claimObservation',[orphanKey,nextOwner])).state,'waiting');
+  await new Promise(resolve=>setTimeout(resolve,140));
+  assert.equal((await rpc('claimObservation',[orphanKey,nextOwner])).state,'owner');
+  const replacement={...ownedEntry,key:orphanKey,value:{id:'602',title:'Replacement'},observedAt:new Date().toISOString()};
+  assert.deepEqual(await rpc('commitObservation',[orphanKey,previousOwner,[{...replacement,value:{id:'602',title:'Late old owner'}}]]),{committed:false,stored:0});
+  assert.deepEqual(await rpc('releaseObservation',[orphanKey,previousOwner]),{released:false});
+  assert.deepEqual(await rpc('commitObservation',[orphanKey,nextOwner,[replacement]]),{committed:true,stored:1});
+  assert.equal((await rpc('getCached',[orphanKey])).value.title,'Replacement');
+  console.log('PASS TTL reclaims abandoned work and rejects late commits and releases');
+
+  const failedKey='detail:603';
+  await rpc('claimObservation',[failedKey,'failed-owner']);
+  assert.deepEqual(await rpc('releaseObservation',[failedKey,'failed-owner']),{released:true});
+  assert.equal((await rpc('claimObservation',[failedKey,'retry-owner'])).state,'owner');
+  await rpc('releaseObservation',[failedKey,'retry-owner']);
+  console.log('PASS failed work releases ownership for an immediate retry');
+
+  const pendingKey='detail:604';
+  const pending=await rpc('claimObservation',[pendingKey,'surviving-owner']);
+  assert.equal(pending.state,'owner');
+
   await mf.dispose();
   mf = new Miniflare(options);
   const restored=await rpc('acquire',[origin]);
   assert.equal(restored.granted,false);
   assert.equal(restored.retryAtMs,blocked.until);
   assert.deepEqual(await rpc('getCached',['detail:123']),cached);
+  assert.deepEqual(await rpc('claimObservation',[pendingKey,'another-owner']),{state:'waiting',expiresAt:pending.expiresAt});
   console.log('PASS cooldown and original observations survive real workerd restart');
+  console.log('PASS pending observation ownership survives real workerd restart');
   console.log('All OriginGate Workers-runtime checks passed');
 } finally {
   await mf.dispose();

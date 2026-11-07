@@ -4,6 +4,11 @@ import { originPolicy, reservation, responseCooldown, mergeCooldown } from "./tr
 const cacheKey = /^(?:search:[a-f0-9]{64}|(?:detail|summary):\d{1,20})$/;
 const encoder = new TextEncoder();
 
+function leaseIdentity(key, owner) {
+  if (typeof key !== "string" || !cacheKey.test(key) || typeof owner !== "string" || !/^[a-zA-Z0-9_-]{8,128}$/.test(owner))
+    throw new TypeError("Invalid observation lease identity");
+}
+
 export class OriginGate extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -18,6 +23,9 @@ export class OriginGate extends DurableObject {
         observed_ms INTEGER NOT NULL, expires_at INTEGER NOT NULL
       )`);
       ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS observations_expiry ON observations (expires_at)");
+      ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS observation_leases (
+        key TEXT PRIMARY KEY, owner TEXT NOT NULL, expires_at INTEGER NOT NULL
+      )`);
     });
   }
 
@@ -65,11 +73,53 @@ export class OriginGate extends DurableObject {
     return { value: JSON.parse(row.value), observedAt: row.observed_at, expiresAt: new Date(row.expires_at).toISOString() };
   }
 
+  claimObservation(key, owner, { leaseMs = 15000, minObservedAt = 0 } = {}) {
+    leaseIdentity(key, owner);
+    const now = Date.now();
+    if (!Number.isInteger(leaseMs) || leaseMs < 100 || leaseMs > 30000 ||
+        !Number.isSafeInteger(minObservedAt) || minObservedAt < 0 || minObservedAt > now + 5000)
+      throw new TypeError("Invalid observation lease policy");
+    return this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("DELETE FROM observation_leases WHERE expires_at <= ?", now);
+      const entry = this.getCached(key);
+      if (entry && Date.parse(entry.observedAt) >= minObservedAt) return {state:"cached",entry};
+      const lease = this.ctx.storage.sql.exec("SELECT owner, expires_at FROM observation_leases WHERE key = ?",key).toArray()[0];
+      if (lease) return {state:lease.owner === owner ? "owner" : "waiting",expiresAt:lease.expires_at};
+      const expiresAt = now + leaseMs;
+      this.ctx.storage.sql.exec("INSERT INTO observation_leases (key, owner, expires_at) VALUES (?, ?, ?)",key,owner,expiresAt);
+      return {state:"owner",expiresAt};
+    });
+  }
+
+  commitObservation(key, owner, entries) {
+    leaseIdentity(key,owner);
+    const records = this.#cacheRecords(entries,202);
+    if (!records.some(record => record.key === key)) throw new TypeError("A lease commit must include its observation");
+    return this.ctx.storage.transactionSync(() => {
+      const lease = this.ctx.storage.sql.exec("SELECT owner, expires_at FROM observation_leases WHERE key = ?",key).toArray()[0];
+      if (!lease || lease.owner !== owner || lease.expires_at <= Date.now()) return {committed:false,stored:0};
+      const result = this.#storeRecords(records);
+      this.ctx.storage.sql.exec("DELETE FROM observation_leases WHERE key = ? AND owner = ?",key,owner);
+      return {committed:true,...result};
+    });
+  }
+
+  releaseObservation(key, owner) {
+    leaseIdentity(key,owner);
+    const result = this.ctx.storage.sql.exec("DELETE FROM observation_leases WHERE key = ? AND owner = ? RETURNING key",key,owner);
+    return {released:result.toArray().length === 1};
+  }
+
   putCached(entries) {
-    if (!Array.isArray(entries) || !entries.length || entries.length > 101)
-      throw new TypeError("Supply 1–101 observations");
+    const records = this.#cacheRecords(entries,101);
+    return this.ctx.storage.transactionSync(() => this.#storeRecords(records));
+  }
+
+  #cacheRecords(entries, maximum) {
+    if (!Array.isArray(entries) || !entries.length || entries.length > maximum)
+      throw new TypeError("Supply 1–"+maximum+" observations");
     let bytes = 1;
-    const records = entries.map(entry => {
+    return entries.map(entry => {
       if (!entry || typeof entry.key !== "string" || !cacheKey.test(entry.key) ||
           !entry.value || typeof entry.value !== "object" || Array.isArray(entry.value) ||
           typeof entry.observedAt !== "string" || !Number.isInteger(entry.ttlSeconds) || entry.ttlSeconds < 1 || entry.ttlSeconds > 3600)
@@ -84,21 +134,22 @@ export class OriginGate extends DurableObject {
         throw new RangeError("Observation cache payload exceeds its size budget");
       return { ...entry, value, observedMs, expiresAt: observedMs + entry.ttlSeconds * 1000 };
     });
-    return this.ctx.storage.transactionSync(() => {
-      const now = Date.now();
-      this.ctx.storage.sql.exec("DELETE FROM observations WHERE expires_at <= ?", now);
-      let stored = 0;
-      for (const row of records) {
-        if (row.expiresAt <= now) continue;
-        const result = this.ctx.storage.sql.exec(`INSERT INTO observations (key, value, observed_at, observed_ms, expires_at)
-          VALUES (?, ?, ?, ?, ?) ON CONFLICT (key) DO UPDATE SET
-            value = excluded.value, observed_at = excluded.observed_at,
-            observed_ms = excluded.observed_ms, expires_at = excluded.expires_at
-          WHERE excluded.observed_ms >= observations.observed_ms RETURNING key`,
-        row.key, row.value, row.observedAt, row.observedMs, row.expiresAt);
-        stored += result.toArray().length;
-      }
-      return { stored };
-    });
+  }
+
+  #storeRecords(records) {
+    const now = Date.now();
+    this.ctx.storage.sql.exec("DELETE FROM observations WHERE expires_at <= ?", now);
+    let stored = 0;
+    for (const row of records) {
+      if (row.expiresAt <= now) continue;
+      const result = this.ctx.storage.sql.exec(`INSERT INTO observations (key, value, observed_at, observed_ms, expires_at)
+        VALUES (?, ?, ?, ?, ?) ON CONFLICT (key) DO UPDATE SET
+          value = excluded.value, observed_at = excluded.observed_at,
+          observed_ms = excluded.observed_ms, expires_at = excluded.expires_at
+        WHERE excluded.observed_ms >= observations.observed_ms RETURNING key`,
+      row.key, row.value, row.observedAt, row.observedMs, row.expiresAt);
+      stored += result.toArray().length;
+    }
+    return { stored };
   }
 }

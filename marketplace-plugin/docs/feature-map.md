@@ -1,6 +1,25 @@
-# Verifikationsübersicht für 1.3.3
+# Verifikationsübersicht für 1.4.0
 
 Die Node-Suite prüft die Tool- und Protokollverträge. Zwei zusätzliche Miniflare-Suiten prüfen denselben Traffic- und Cache-Code in workerd mit SQLite. Die unabhängigen Reviews verwenden eigene synthetische Repros.
+
+## Neue Prüfpfade in 1.4.0
+
+| Nutzerpfad | Prüffall |
+| --- | --- |
+| Offizieller MCP-Transport | `worker.runtime.mjs` prüft 2026-07-28 und drei 2025-Revisionen mit realem workerd |
+| Native Bildsuche | `visual-search.test.mjs` prüft Anhang, URL, Inseratfoto, Normalisierung, effektive Filter und Cursor-Identität |
+| Parallel gleiche Suche | `provider.runtime.mjs` prüft vier parallele Cold-Requests gegen einen Upstream-Aufruf sowie Fresh- und Detailfälle |
+| Recherche und Herkunft | `research.runtime.mjs` prüft atomare Ereignisse, Owner-Scope, Query-Fortschritt, Beschreibungslängen und Fotoindizes |
+| Große Sammlungen | 10.000 Inserate in 417 Seiten mit höchstens 24 Einträgen und stabiler Snapshot-Zugehörigkeit |
+| Toolübergreifende Nachweise | `research-tools.runtime.mjs` prüft Text- und Bildsuche, Details, Fotos, App-Ausgabe, Studien und korrekte Fortsetzungen |
+| Kleine Bildpakete | `presentation-scale.browser.mjs` prüft zwei vorab geladene Bilder und sichtbarkeitsabhängige Pakete mit höchstens vier IDs |
+| Vollständige Rechercheanzeige | Browserprüfung über 17 Queries und 24 Inseratnachweise mit weiterer Pagination |
+| Seitenwechsel während Abruf | Browserregressionen für verspätete Angebots-, Query-, Nachweis- und Fotoantworten |
+| Größere Ansicht | 320/360-Pixel-Karussell, 700-Pixel-Raster und viewportabhängige Vollbild-Bildabrufe |
+
+Die Chromium-Suiten verwenden einen simulierten Host mit der tatsächlichen offiziellen App-Bridge. Ein zusätzlicher Produktionsnachweis dokumentiert den Lauf im echten ChatGPT-Webclient. Frühere clientbezogene Beobachtungen in der folgenden Tabelle gehören zur Abnahme von 1.3.3.
+
+## Fortgeführte Prüfpfade
 
 | Nutzerpfad | Erwartetes Verhalten | Wiederholbare Prüfung |
 | --- | --- | --- |

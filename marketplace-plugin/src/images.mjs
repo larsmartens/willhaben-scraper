@@ -119,11 +119,12 @@ async function readImage(value, env, deadline, encodedBudget) {
   return { image: { type: "image", mimeType, data: btoa(blocks.join("")) }, bytes: size };
 }
 
-export async function imageBatch(requests, env, { mode = "images", deadline = Date.now() + 35000 } = {}) {
+export async function imageBatch(requests, env, { mode = "images", deadline = Date.now() + 35000, encodedBudget = MAX_ENCODED_BYTES } = {}) {
   if (!Array.isArray(requests) || requests.length > 8 || !["images", "links"].includes(mode)) {
     throw failure("invalid_input", "Request at most eight photos in images or links mode.");
   }
   if (Number.isFinite(env.REQUEST_DEADLINE)) deadline = Math.min(deadline, env.REQUEST_DEADLINE);
+  encodedBudget = Math.min(MAX_ENCODED_BYTES, encodedBudget);
   if (mode === "images" && requests.length) requireImageAccess(env);
   const results = [], errors = [], images = [];
   let processed = 0, encodedBytes = 0, stopReason = null;
@@ -137,13 +138,13 @@ export async function imageBatch(requests, env, { mode = "images", deadline = Da
       } else {
         let fetched;
         try {
-          fetched = await readImage(url, env, deadline, MAX_ENCODED_BYTES - encodedBytes);
+          fetched = await readImage(url, env, deadline, encodedBudget - encodedBytes);
         } catch (cause) {
           if (!["image_too_large", "response_budget"].includes(cause?.code) ||
               !request.thumbnailUrl || request.thumbnailUrl === url) throw cause;
           url = imageUrl(request.thumbnailUrl).href;
           size = "thumbnail";
-          fetched = await readImage(url, env, deadline, MAX_ENCODED_BYTES - encodedBytes);
+          fetched = await readImage(url, env, deadline, encodedBudget - encodedBytes);
         }
         encodedBytes += fetched.image.data.length;
         images.push(fetched.image);

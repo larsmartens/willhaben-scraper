@@ -7,6 +7,8 @@ import { createCursor, readCursor } from "./cursors.mjs";
 import { galleryOf, imageBatch, pausesBatch, readGallery, toolFailure } from "./images.mjs";
 import { presentListings } from "./presentation.mjs";
 import { PRESENTATION_URI } from "./presentation-ui.mjs";
+import { ensureResearch, recordResearch, getResearch, saveCollection, readCollection } from "./research.mjs";
+import { VISUAL_IMAGE_SCHEMA } from "./visual-search.mjs";
 
 const string = maxLength => ({ type: "string", minLength: 1, maxLength });
 const integer = (minimum, maximum) => ({ type: "integer", minimum, maximum });
@@ -15,6 +17,11 @@ const object = (properties, required = []) => ({ type: "object", additionalPrope
 const choice = (...values) => ({ type: "string", enum: values });
 const boolean = { type: "boolean" };
 const cursor = { ...string(512), description: "Copy nextCursor from this tool and repeat the original selection arguments." };
+const researchId = { type: "string", pattern: "^wr_[a-f0-9]{32}$",
+  description: "Reuse the researchId returned by the first search for every related search, detail, photo and presentation call in this task." };
+const collectionId = { type: "string", pattern: "^wc_[a-f0-9]{32}$" };
+const researchCursor = string(4096);
+const overviewPageSize = { type: "integer", enum: [12, 24], default: 12 };
 const queries = array(string(150), 1, 8);
 const criteria = array(object({ key: string(64), value: { anyOf: [
   string(100), { type: "number" }, boolean,
@@ -37,7 +44,7 @@ const presentationSelection = object({ id: string(96), reason: string(280),
   cautions: array(string(180), 0, 3), photoIndex }, ["id"]);
 const summaryFields = ["title", "url", "price", "priceType", "location", "condition", "status", "model",
   "category", "categoryId", "areaId", "sellerType", "paylivery", "shipping", "imageCount", "hasPhotos",
-  "thumbnailUrl", "galleryComplete", "publishedAt"];
+  "thumbnailUrl", "galleryComplete", "publishedAt", "seller"];
 const detailFields = [...summaryFields, "description", "attributes", "gallery", "quantity", "shippingCost"];
 const fields = names => ({ ...array(choice(...names), 1, names.length), uniqueItems: true,
   description: "Select output fields. The listing ID is always included." });
@@ -59,7 +66,7 @@ export const toolDefinitions = [
     object({ ...search, dimension: string(100), filter: string(64), valueQuery: string(120),
       limit: { ...integer(1, 50), default: 10 }, cursor }, ["source", "query"]), online),
   def("search_listings", "Inserate suchen",
-    "Read one compact result page, 50 listings by default and at most 100. Repeat nextCursor with the same query, filters and pageSize for further pages. Select fields and images only as needed. thumbnails reads covers for imageIds from the current page or the first imageLimit results with photos. Missing thumbnail variants use a full-size cover marked full. A null total means unknown.",
+    "Read one compact result page, 50 listings by default and at most 100. Follow continuation for further pages and carry researchId through this task. Select fields and images for the next decision. thumbnails reads covers for imageIds from this page or the first imageLimit results with photos. A full-size fallback is marked full. A null total means unknown. Local text filters can leave an empty page with more results in nextCursor.",
     object({ ...search, pageSize, cursor, fields: fields(summaryFields),
       images: { ...choice("none", "links", "thumbnails"), default: "none" },
       imageLimit: { ...integer(1, 8), default: 4 },
@@ -82,9 +89,10 @@ export const toolDefinitions = [
     object({ id: photoId, index: photoIndex, fresh }, ["id", "index"]), online),
   {
     ...def("present_listings", "Angebote mit Bildern präsentieren",
-      "Render selected listings as photo cards with facts, original links, reasons and open questions. Usually select three to six observed IDs, at most eight. Use the rendered cards for the visual presentation and add brief decision text. Facts come from cached observations. Inspect missingIds before recommending. Supply reason/cautions as assistant assessments. image.status=ready confirms server photo retrieval. If the host reports a display failure, give compact facts and original links. For needed live-listing photos, call inspect_listing_images with the selected id and precise indices, then render its MCP image blocks. Follow retryAt and image.error.nextAction. Inspect actual photos before visual claims.",
-      object({ ...data, selections: array(presentationSelection, 1, 8), title: string(100), summary: string(400), criteria },
-        ["source", "selections"]), online),
+      "Show 12 offers initially, optionally 24 per page, with original photos, facts, links and research coverage. Pass researchId for all observed results or queryIds for selected searches. Use selections for a ranked selection with reasons or open questions. The user can page through the collection and open galleries. Inspect missingIds before recommending them. Keep offer facts and photos in the app cards. Finish a display request with one plain sentence pointing to them. For requested advice, add decision analysis. Inspect actual image blocks before visual claims.",
+      object({ ...data, researchId, selections: array(presentationSelection, 1, 1000),
+        queryIds: array(string(100), 1, 32), pageSize: overviewPageSize,
+        title: string(100), summary: string(400), criteria }, ["source"]), online),
     _meta: {
       ui: { resourceUri: PRESENTATION_URI, visibility: ["model", "app"] },
       "openai/outputTemplate": PRESENTATION_URI,
@@ -107,7 +115,40 @@ export const toolDefinitions = [
     object({ before: handle, after: handle }, ["before", "after"])),
 ];
 
-for (const name of ["inspect_listings", "inspect_listing_images"]) {
+for (const name of ["search_listings", "inspect_listings", "inspect_listing_images", "inspect_listing_image", "study_market", "save_study"]) {
+  toolDefinitions.find(tool => tool.name === name).inputSchema.properties.researchId = researchId;
+}
+
+toolDefinitions.push(
+  {
+    ...def("search_by_image", "Mit Foto suchen",
+      "Use willhaben's native visual search to find similar offers. Start with exactly one image attachment, public HTTPS imageUrl, or listingId with a zero-based photoIndex. Attachment inputs are downloaded and normalized outside the model context. Continue with nextCursor alone and the same researchId. The default is 50 compact listings, at most 100 per page. Results are native similarity matches and still need requirement checks. Pass the researchId to present_listings for a photo overview.",
+      object({ image: VISUAL_IMAGE_SCHEMA, imageUrl: string(6000), listingId: photoId, photoIndex,
+        filters: FILTER_SCHEMA, pageSize, cursor: researchCursor, fields: fields(summaryFields), researchId, fresh }), online),
+    _meta: { "openai/fileParams": ["image"] },
+  },
+  def("get_research", "Rechercheumfang anzeigen",
+    "Read the current research audit. Summary gives compact counters, queries gives native totals and retrieved pages per query, listings gives delivered fields, description lengths, exact photo indices and documented findings. Counts distinguish server retrieval, delivery to ChatGPT and display in the app. Use section and cursor for precise follow-up.",
+    object({ researchId, section: { ...choice("summary", "queries", "listings"), default: "summary" },
+      limit: { ...integer(1, 100), default: 24 }, cursor: researchCursor }, ["researchId"])),
+  def("record_review", "Fotoprüfung dokumentieren",
+    "Record your actual visual findings after receiving the selected image blocks through inspect_listing_images or search thumbnails. Supply the precise zero-based photoIndices and a concise evidence-grounded finding. The audit labels this as an agent-reported review and rejects photo indices not previously delivered to ChatGPT in this research.",
+    object({ researchId, id: string(96), photoIndices: { ...array(photoIndex, 1, 32), uniqueItems: true },
+      findings: string(2000) }, ["researchId", "id", "photoIndices", "findings"]),
+    { ...read, readOnlyHint: false, idempotentHint: false }),
+  {
+    ...def("browse_collection", "Angebotsübersicht bedienen",
+      "Load a saved offer page, visible covers, selected gallery photos or a focused detail view for the app. Photo bytes are app metadata. Every selected ID must belong to this research collection.",
+      object({ researchId, collectionId, action: choice("page", "covers", "photos", "details"),
+        cursor: researchCursor, pageSize: overviewPageSize,
+        ids: { ...array(string(96), 1, 8), uniqueItems: true }, id: string(96),
+        start: photoIndex, count: { ...integer(1, 8), default: 4 },
+        indices: { ...array(photoIndex, 1, 8), uniqueItems: true } }, ["researchId", "collectionId", "action"]), online),
+    _meta: { ui: { visibility: ["app"] }, "openai/widgetAccessible": true },
+  },
+);
+
+for (const name of ["inspect_listings", "inspect_listing_images", "get_research"]) {
   toolDefinitions.find(tool => tool.name === name)._meta = {
     ui: { visibility: ["model", "app"] }, "openai/widgetAccessible": true,
   };
@@ -160,10 +201,20 @@ function checkArgs(name, args) {
   if (args.source !== undefined && (args.source === "provided") !== (args.listings !== undefined)) invalid("Pass listings exactly when source is provided");
   if (args.criteria !== undefined) validateCriteria(args.criteria);
   if (args.ids?.some(id => !/^[A-Za-z0-9_-]{1,96}$/.test(id) || (args.source === "live" && !/^\d{1,20}$/.test(id)))) invalid("Invalid listing ID");
+  if (name === "present_listings") {
+    if (!args.selections && !args.researchId) invalid("Pass selections or an existing researchId to present observed offers");
+    if (args.selections && args.queryIds) invalid("Use selections or queryIds in one presentation");
+    if (args.source === "provided" && (!args.selections || args.selections.length > 24)) invalid("Select up to 24 provided offers for one presentation");
+  }
   if (args.selections) {
     const selectedIds = args.selections.map(selection => selection.id);
     if (new Set(selectedIds).size !== selectedIds.length) invalid("Each presentation selection must use a different listing ID");
     if (selectedIds.some(id => !/^[A-Za-z0-9_-]{1,96}$/.test(id) || args.source === "live" && !/^\d{1,20}$/.test(id))) invalid("Invalid listing ID");
+  }
+  if (name === "browse_collection") {
+    if (args.action === "covers" && !args.ids?.length) invalid("Cover loading requires ids");
+    if (["photos", "details"].includes(args.action) && !args.id) invalid("Gallery and detail loading require id");
+    if (args.action === "page" && (args.ids || args.id || args.indices || args.start !== undefined || args.count !== undefined)) invalid("Page loading accepts pagination arguments");
   }
   if (args.indices && (args.start !== undefined || args.count !== undefined)) invalid("Use indices or start/count in one photo request");
   if (args.dimension !== undefined && args.filter !== undefined) invalid("Select dimension or filter in one discovery request");
@@ -211,7 +262,7 @@ function projectListing(row, selection, { descriptionLimit = 1500, attributeKeys
 function plan(args, env) {
   const filters = { ...args.filters }, verifyInDetail = {};
   for (const key of ["shipping", "paylivery"]) {
-    if (filters[key] !== undefined && (key === "shipping" || filters[key] === false)) {
+    if (filters[key] !== undefined && key === "paylivery" && filters[key] === false) {
       verifyInDetail[key] = filters[key];
       delete filters[key];
     }
@@ -222,7 +273,7 @@ function plan(args, env) {
     source: "search_plan", liveAvailable: personal || authorized,
     imageAvailable: personal && env.IMAGE_ACCESS === PERSONAL_TEST || authorized && env.IMAGE_ACCESS === "authorized",
     ...(personal ? { mode: PERSONAL_TEST } : {}), resultCount: null, filtersInLinks: filters, verifyInDetail,
-    defaults: { pageSize: DEFAULT_PAGE_SIZE, maxPageSize: MAX_PAGE_SIZE, detailsPerCall: 5, photosPerCall: 4 },
+    defaults: { pageSize: DEFAULT_PAGE_SIZE, maxPageSize: MAX_PAGE_SIZE, detailsPerCall: 5, photosPerCall: 4, overviewCards: 12, overviewPageMax: 24 },
     searches: [...new Set(args.queries.map(query => query.trim()))].map(query => ({ query,
       url: buildSearchLink(query, filters), webQuery: "site:willhaben.at/iad/kaufen-und-verkaufen/d/ " + query })),
     guidance: "Search one compact page, inspect promising IDs, then request relevant photos. Continue with nextCursor or nextIndex as needed. Report observed coverage and respect retryAt when returned.",
@@ -315,10 +366,12 @@ async function searchListings(args, env, provider) {
     return item;
   });
   const result = { ...observation(provider), query: args.query.trim(), observedAt: page.observedAt,
+    ...(page.researchQueryId ? { queryId: page.researchQueryId } : {}),
     cacheAgeSeconds: page.cacheAgeSeconds ?? 0, page: pageNumber,
     requestedPageSize: page.requestedPageSize ?? identity.pageSize, returnedCount: items.length,
     ...(page.upstreamPageSize !== undefined ? { upstreamPageSize: page.upstreamPageSize } : {}),
     total: page.total, end: page.end, items,
+    ...(page.scannedCount !== undefined ? { scannedCount: page.scannedCount, filteredOutCount: page.filteredOutCount ?? 0, totalScope: page.totalScope, localFilterScope: page.localFilterScope } : {}),
     nextCursor: page.nextCursor == null ? null : await createCursor("search", identity, Number(page.nextCursor)) };
   if (args.images === "thumbnails") {
     const selected = args.imageIds ? args.imageIds.map(id => {
@@ -420,7 +473,7 @@ async function study(name, args, env, provider) {
   for (const query of report.coverage.queries) {
     if (!query.continuation) continue;
     const identity = searchIdentity({ ...args, query: query.query, pageSize: definition.pageSize });
-    query.continuation = { ...query.continuation, tool: "search_listings", pageSize: definition.pageSize,
+    query.continuation = { ...query.continuation, tool: "search_listings", pageSize: definition.pageSize, ...(args.researchId ? {researchId:args.researchId} : {}),
       cursor: await createCursor("search", identity, Number(query.continuation.cursor ?? 1)) };
   }
   if (name === "study_market") return report;
@@ -432,25 +485,210 @@ async function study(name, args, env, provider) {
   return { study_id, expiresAt, report };
 }
 
-export async function invokeTool(name, args, env = {}) {
-  checkArgs(name, args);
-  if (name === "plan_search") return plan(args, env);
-  if (name === "parse_search_url") return parseUrl(args);
-  if (name === "get_study") return readSaved(args.study_id, env);
-  if (name === "compare_studies") return compare(await readSaved(args.before, env), await readSaved(args.after, env));
-  if (name === "inspect_listing_images") return readGallery(args, env, getProvider("live", env));
+async function coverageFor(env, researchId) {
+  return getResearch(env, { researchId });
+}
+
+async function recordPhotos(env, researchId, result, audience) {
+  const records = result.coverImages?.results ?? result.results ?? [];
+  const photos = records.filter(row => Number.isSafeInteger(row.imageContentIndex)).map(row => ({
+    id: row.id, index: row.index, size: row.size, observedAt: result.observedAt,
+  }));
+  if (photos.length) await recordResearch(env, { researchId, event: { type: "photos", audience, photos } });
+}
+
+function trackedProvider(provider, env, researchId, audience = "model", listings) {
+  if (!researchId) return provider;
+  return {
+    ...provider,
+    async search(options) {
+      const page = await provider.search(options);
+      const nextCursor = page.nextCursor == null ? null : await createCursor("search",
+        searchIdentity({ source: provider.kind, listings, query: options.query, filters: options.filters, pageSize: options.pageSize }), Number(page.nextCursor));
+      const logged = await recordResearch(env, { researchId, event: {
+        type: "search", query: options.query, filters: options.filters, searchType: "text",
+        page: Number(options.cursor ?? 1), pageSize: options.pageSize ?? DEFAULT_PAGE_SIZE,
+        ids: page.items.map(row => row.id), scannedCount: page.scannedCount,
+        filteredOutCount: page.filteredOutCount, reportedTotal: page.total, exhausted: page.end === true,
+        nextCursor, observedAt: page.observedAt,
+      } });
+      return { ...page, researchQueryId: logged.queryId };
+    },
+    async detail(id, options) {
+      const row = await provider.detail(id, options);
+      if (row) await recordResearch(env, { researchId, event: {
+        type: "details", audience, retrievedIds: [row.id], records: [], observedAt: row.observedAt,
+      } });
+      return row;
+    },
+  };
+}
+
+async function visualSearch(args, env, provider) {
+  const page = await provider.searchByImage({ ...args, deadline: requestDeadline(env) });
+  const result = { ...observation(provider), visual: page.visual,
+    observedAt: page.observedAt, cacheAgeSeconds: page.cacheAgeSeconds ?? 0,
+    page: page.page ?? page.pageNumber ?? 1, requestedPageSize: page.requestedPageSize ?? args.pageSize ?? DEFAULT_PAGE_SIZE,
+    returnedCount: page.items.length, total: page.total, end: page.end,
+    items: page.items.map(row => projectListing(row, args.fields ?? defaultSummary)), nextCursor: page.nextCursor,
+    ...(page.scannedCount !== undefined ? { scannedCount: page.scannedCount, filteredOutCount: page.filteredOutCount ?? 0, totalScope: page.totalScope, localFilterScope: page.localFilterScope } : {}),
+  };
+  if (args.researchId) {
+    const descriptor = page.visual?.listingId ? "Inseratfoto " + page.visual.listingId + " / " + (page.visual.photoIndex ?? 0)
+      : page.visual?.source === "attachment" ? "Hochgeladenes Bild" : "Bild aus öffentlicher URL";
+    const logged = await recordResearch(env, { researchId: args.researchId, event: {
+      type: "search", searchType: "visual", query: descriptor,
+      queryId: page.visual?.searchId ?? page.visual?.pictureKey,
+      filters: page.filters ?? args.filters ?? {}, page: result.page, pageSize: result.requestedPageSize,
+      ids: page.items.map(row => row.id), scannedCount: page.scannedCount,
+      filteredOutCount: page.filteredOutCount, reportedTotal: page.total, exhausted: page.end === true,
+      nextCursor: page.nextCursor, observedAt: page.observedAt,
+    } });
+    result.queryId = logged.queryId;
+  }
+  return result;
+}
+
+async function present(args, env, provider) {
+  if (args.researchId && provider.kind !== "provided") {
+    const collection = await saveCollection(env, { researchId: args.researchId,
+      selections: args.selections, queryIds: args.queryIds, title: args.title, summary: args.summary, criteria: args.criteria });
+    const page = await readCollection(env, { researchId: args.researchId,
+      collectionId: collection.collectionId, pageSize: args.pageSize ?? 12 });
+    const result = await presentListings({ ...args, selections: page.selections }, env, provider);
+    const { selections, ...navigation } = page;
+    return { ...result, ...navigation, requestedCount: page.total, shownCount: result.cards.length };
+  }
+  if (!args.selections) invalid("This connection needs explicit selections for presentation");
+  if (args.selections.length > 24) invalid("A saved researchId is required to page through more than 24 offers");
+  return presentListings({ ...args, hydrationLimit: args.selections.length }, env, provider);
+}
+
+function appImages(result) {
+  const { _images = [], ...data } = result;
+  return { ...data, _meta: { ...data._meta, listingImages: (result.results ?? []).flatMap(row => {
+    const image = _images[row.imageContentIndex - 1];
+    return image ? [{ id: row.id, index: row.index, size: row.size, mimeType: image.mimeType, data: image.data }] : [];
+  }) } };
+}
+
+async function browseCollection(args, env) {
+  const page = await readCollection(env, { researchId: args.researchId, collectionId: args.collectionId,
+    pageSize: args.pageSize ?? 12, cursor: args.cursor,
+    ...(args.action === "covers" ? { ids: args.ids } : args.action === "page" ? {} : { ids: [args.id] }) });
+  const provider = trackedProvider(getProvider(page.source, env), env, args.researchId, "app");
+  let result;
+  if (args.action === "page") {
+    const rendered = await presentListings({ selections: page.selections, title: page.title,
+      summary: page.summary, criteria: page.criteria, hydrationLimit: 0 }, env, provider);
+    const { selections, ...navigation } = page;
+    result = { ...rendered, ...navigation, requestedCount: page.total };
+    await recordResearch(env, { researchId: args.researchId, event: { type: "presentation", ids: rendered.cards.map(card => card.id) } });
+  } else if (args.action === "covers") {
+    if (!args.ids?.length) invalid("Cover loading requires ids");
+    const requests = [], missingIds = [];
+    for (const selection of page.selections) {
+      const row = await provider.summary(selection.id, { deadline: requestDeadline(env) });
+      const index = selection.photoIndex ?? 0;
+      const photo = galleryOf(row)[index];
+      const url = photo?.thumbnailUrl ?? photo?.url;
+      if (url) requests.push({ id: selection.id, index, url, size: photo.thumbnailUrl ? "thumbnail" : "full" });
+      else missingIds.push(selection.id);
+    }
+    const batch = await imageBatch(requests, env, { deadline: requestDeadline(env) });
+    await recordPhotos(env, args.researchId, batch, "app");
+    result = appImages({ ...batch, missingIds, remainingIds: requests.slice(batch.processed).map(row => row.id) });
+  } else if (args.action === "photos") {
+    if (!args.id) invalid("Gallery loading requires id");
+    const gallery = await readGallery({ id: args.id, start: args.start, count: args.count,
+      indices: args.indices, mode: "images", size: "full" }, env, provider);
+    await recordPhotos(env, args.researchId, gallery, "app");
+    result = appImages(gallery);
+  } else {
+    if (!args.id) invalid("Detail loading requires id");
+    result = await inspectListings({ source: page.source, ids: [args.id], limit: 1,
+      fields: [...defaultDetails, "seller", "shipping", "shippingCost", "quantity"], descriptionLimit: 6000 }, env, provider);
+    await recordDetails(env, args.researchId, result, "app");
+  }
+  return { ...result, researchId: args.researchId, collectionId: args.collectionId,
+    research: await coverageFor(env, args.researchId) };
+}
+
+async function recordDetails(env, researchId, result, audience) {
+  const records = result.results.filter(row => row.listing).map(row => ({
+    id: row.id, fields: Object.keys(row.listing).filter(key => key !== "id"),
+    ...(row.observedAt ? { observedAt: row.observedAt } : {}),
+    ...(typeof row.listing.description === "string" ? { description: {
+      deliveredChars: row.listing.description.length, totalChars: row.listing.descriptionLength,
+      truncated: row.listing.descriptionTruncated,
+    } } : {}),
+  }));
+  if (records.length) await recordResearch(env, { researchId, event: { type: "details", audience, records } });
+}
+
+async function dispatch(name, args, env, provider) {
+  if (name === "inspect_listing_images") return readGallery(args, env, provider);
   if (name === "inspect_listing_image") {
-    const result = await readGallery({ ...args, indices: [args.index] }, env, getProvider("live", env));
+    const result = await readGallery({ ...args, indices: [args.index] }, env, provider);
     if (!result._images.length && result.errors.length) {
       const { message, ...error } = result.errors[0];
       throw Object.assign(new Error(message), error);
     }
     return { ...result, index: args.index, url: result.results[0]?.url ?? null };
   }
-  const provider = getProvider(args.source, env, args.listings);
-  if (name === "present_listings") return presentListings(args, env, provider);
+  if (name === "present_listings") return present(args, env, provider);
   if (name === "discover_filters") return discover(args, env, provider);
   if (name === "search_listings") return searchListings(args, env, provider);
+  if (name === "search_by_image") return visualSearch(args, env, provider);
   if (name === "inspect_listings") return inspectListings(args, env, provider);
   return study(name, args, env, provider);
+}
+
+function continuationFor(name, args, nextCursor) {
+  if (!nextCursor || !["search_listings", "inspect_listings", "search_by_image"].includes(name)) return {};
+  const { listings, image, imageUrl, listingId, photoIndex, imageIds, ...next } = args;
+  if (name === "search_by_image") {
+    delete next.filters;
+    delete next.pageSize;
+  }
+  if (imageIds) next.images = "none";
+  return { continuation: { tool: name, arguments: { ...next, cursor: nextCursor },
+    ...(listings ? { repeatArguments: ["listings"] } : {}) } };
+}
+
+export async function invokeTool(name, args, env = {}) {
+  checkArgs(name, args);
+  if (name === "plan_search") return plan(args, env);
+  if (name === "parse_search_url") return parseUrl(args);
+  if (name === "get_study") return readSaved(args.study_id, env);
+  if (name === "compare_studies") return compare(await readSaved(args.before, env), await readSaved(args.after, env));
+  if (name === "get_research") return getResearch(env, args);
+  if (name === "record_review") return recordResearch(env, { researchId: args.researchId,
+    event: { type: "review", id: args.id, photoIndices: args.photoIndices, findings: args.findings } });
+  if (name === "browse_collection") return browseCollection(args, env);
+  const source = ["inspect_listing_images", "inspect_listing_image", "search_by_image"].includes(name) ? "live" : args.source;
+  const session = name !== "discover_filters" && (env.REQUEST_LIMIT_KEY || args.researchId)
+    ? await ensureResearch(env, { researchId: args.researchId, source }) : null;
+  args = session ? { ...args, researchId: session.researchId } : args;
+  const provider = trackedProvider(getProvider(source, env, args.listings), env, session?.researchId, "model", args.listings);
+  const result = await dispatch(name, args, env, provider);
+  if (!session) return result;
+  const id = session.researchId;
+  if (name === "inspect_listings") await recordDetails(env, id, result, "model");
+  if (["study_market", "save_study"].includes(name)) {
+    const report = result.report ?? result;
+    const records = [...report.shortlist, ...report.unknown, ...report.excluded]
+      .filter(row => row.detailed).map(row => ({ id: row.id, fields: Object.keys(row).filter(key => key !== "id"),
+        ...(row.observedAt ? { observedAt: row.observedAt } : {}) }));
+    if (records.length) await recordResearch(env, { researchId: id, event: { type: "details", audience: "model", records } });
+  }
+  if (result._images?.length) await recordPhotos(env, id, result, "model");
+  if (name === "present_listings") {
+    await recordResearch(env, { researchId: id, event: { type: "presentation", ids: result.cards.map(card => card.id) } });
+    const photos = (result._meta?.listingImages ?? []).map(photo => ({ id: photo.id, index: photo.index,
+      size: result.cards.find(card => card.id === photo.id)?.image.size ?? "thumbnail" }));
+    if (photos.length) await recordResearch(env, { researchId: id, event: { type: "photos", audience: "app", photos } });
+  }
+  return { ...result, researchId: id, research: await coverageFor(env, id),
+    ...continuationFor(name, args, result.nextCursor) };
 }

@@ -2,23 +2,23 @@
 
 ## Ziel
 
-Jedes im Chat empfohlene oder einzeln besprochene Angebot erhält sein eigenes Inseratfoto, den Original-Link, Preis, Ort und eine knappe nachvollziehbare Einordnung. Die erste Auswahl umfasst gewöhnlich drei bis sechs Angebote. Such- und Detailwerkzeuge unterstützen die Recherche, ein gezielter Präsentationsaufruf stellt die ausgewählten Ergebnisse dar.
+Jedes im Chat empfohlene oder einzeln besprochene Angebot erhält sein eigenes Inseratfoto, den Original-Link, Preis, Ort und eine knappe nachvollziehbare Einordnung. Die erste Übersicht umfasst gewöhnlich zwölf relevante Angebote. Such- und Detailwerkzeuge unterstützen die Recherche, ein gezielter Präsentationsaufruf stellt die ausgewählten Ergebnisse dar.
 
 ## Entscheidung
 
-Ein zusätzliches `present_listings` verbindet die geprüfte Auswahl mit einer versionierten MCP-Apps-Ressource. Die Karten verwenden vorhandene Beobachtungen aus dem Provider. Empfehlungsgründe und offene Fragen sind als Einordnung des Assistenten gekennzeichnet. Die Modellantwort enthält kompakte Kartenfakten und konkrete Bild-URLs für den Markdown-Fallback. Bilddaten für die Oberfläche werden ausschließlich in Tool-Result-`_meta` übertragen.
+Ein zusätzliches `present_listings` verbindet die geprüfte Auswahl mit einer versionierten MCP-Apps-Ressource. Die Karten verwenden vorhandene Beobachtungen aus dem Provider. Empfehlungsgründe und offene Fragen sind als Einordnung des Assistenten gekennzeichnet. Die Modellantwort enthält kompakte Kartenfakten und konkrete Bild-URLs. Der normale Antwortpfad verweist knapp auf die App-Karten. Bilddaten für die Oberfläche werden ausschließlich in Tool-Result-`_meta` übertragen.
 
 Die Oberfläche zeigt unbeschnittene Produktfotos, Preis und bekannte Versandkosten, Ort, Zustand, Beobachtungszeit und offene Anforderungen. Lokales Sortieren benötigt keinen neuen Abruf. Galerie und Originalinserat sind gezielte Folgeaktionen. Ein fehlendes Foto oder ein Abruffehler bleibt am zugehörigen Angebot sichtbar.
 
 ## Datenform
 
-`present_listings` erhält die Datenquelle und eine geordnete Auswahl von höchstens acht Inserat-IDs mit optionalen kurzen Empfehlungsgründen, offenen Fragen und einem ausgewählten Fotoindex. Kanonische Inseratfakten und Bildzuordnungen stammen aus dem Provider. Einträge außerhalb des vorhandenen Beobachtungsbestands werden als erneut zu prüfende IDs ausgewiesen.
+`present_listings` erhält die Datenquelle und eine Recherche-ID. Die Sammlung kann alle beobachteten Inserate, ausgewählte Suchläufe oder bis zu 1.000 ausdrücklich geordnete Inserat-IDs umfassen. Gründe, offene Fragen und ausgewählte Fotoindizes ergänzen einzelne Karten. Kanonische Inseratfakten und Bildzuordnungen stammen aus dem Provider. Einträge außerhalb des vorhandenen Beobachtungsbestands werden als erneut zu prüfende IDs ausgewiesen.
 
 Die kompakte Antwort enthält Quelle, Titel, Auswahl, Fehler und offene IDs. Jede Karte verbindet Inserat-ID, Original-Link, Beobachtungszeit, verifizierte Fakten, Assistenteneinordnung und Bildstatus. Die UI-Hydration enthält die tatsächlichen Bilddaten. Der Worker trennt diese Metadaten vor der modelllesbaren Serialisierung ab.
 
 ## Betriebsparameter
 
-Die vorhandene Bildfunktion liefert die ausgewählten Titelbilder mit gemeinsamem CDN-Pacing und Antwortbudget. Zusätzliche Galeriefotos werden über die vorhandenen Fotowerkzeuge angefordert. Ein Renderaufruf erzeugt höchstens acht Karten und lädt ausschließlich deren ausgewählte Fotos. Weitere Auswahlen bleiben als separate Aufrufe möglich.
+Die Bildfunktion liefert zwei Titelbilder vorab. Die App fordert sichtbare Hauptbilder in Viererpaketen sowie Galerien und Details über `browse_collection` an. CDN-Pacing und Antwortbudget gelten gemeinsam. Eine Seite erzeugt zwölf oder vierundzwanzig Karten. Der offizielle MCP-Apps-Client steuert Host-Kommunikation und Lifecycle. Generation-Prüfungen verhindern, dass verspätete Antworten eine neuere Auswahl überschreiben.
 
 ## Arbeitsfolge
 
