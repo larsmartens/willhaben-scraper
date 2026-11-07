@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import type { ProviderPageRequest, RequestContext } from '../src/domain.js';
-import { createSellpyProvider } from '../src/sellpy/client.js';
+import { ToolError, type ProviderPageRequest, type RequestContext } from '../src/domain.js';
+import { createSellpyProvider, sharedSellpyProvider } from '../src/sellpy/client.js';
 import { createConfigLoader, parsePublicConfig, SERVICE_PATHS, VERIFIED_RELEASE } from '../src/sellpy/config.js';
 import { algoliaFilterParams, effectiveFilters, imageIdentity, matchesFilters, nativeFilters, normalizeItem } from '../src/sellpy/normalize.js';
 
@@ -300,4 +300,207 @@ test('default outfit pages use the verified native per-part window', async () =>
   const result=await createSellpyProvider().search({...input({id:'outfit',route:'outfit',seed_ids:[itemId]}),page_size:50},context);
   assert.equal(result.end_reason,'upstream_window');
   assert.ok(result.warnings.some(warning=>warning.includes('20 recommendations')));
+});
+
+test('independent detail sources overlap and both complete before returning', async () => {
+  const started = new Set<string>();
+  let release!: () => void;
+  const bothStarted = new Promise<void>(resolve => { release = resolve; });
+  const completed: string[] = [];
+  const { context } = mockContext(async url => {
+    const route = url.endsWith('/objects') ? 'catalog' : 'graph';
+    started.add(route);
+    if (started.size === 2) release();
+    let timer: ReturnType<typeof setTimeout>;
+    try {
+      await Promise.race([bothStarted, new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('independent sources did not overlap')), 1000);
+      })]);
+    } finally { clearTimeout(timer!); }
+    completed.push(route);
+    return route === 'catalog' ? json({ results: [item] }) : json({ data: { item0: detail } });
+  });
+  const result = await createSellpyProvider().details([itemId], 'AT', 'de', context);
+  assert.equal(result.items.length, 1);
+  assert.deepEqual(result.failures, []);
+  assert.deepEqual(new Set(completed), new Set(['catalog', 'graph']));
+});
+
+test('a failed canonical source retains the fresh catalog observation and explicit failure', async () => {
+  const { context } = mockContext(url => url.endsWith('/objects')
+    ? json({ results: [{ ...item, price_AT: { amount: 1900, currency: 'EUR' } }] })
+    : json({ error: 'unavailable' }, 500));
+  const result = await createSellpyProvider().details([itemId], 'AT', 'de', context);
+  assert.equal(result.items[0]?.source, 'catalog');
+  assert.equal(result.items[0]?.price?.amount_minor, 1900);
+  assert.equal(result.failures[0]?.error.code, 'source_http_error');
+  assert.equal(result.failures[0]?.error.retryable, true);
+  assert.deepEqual(result.remaining_ids, []);
+});
+
+test('a catalog rate limit is preserved while the parallel canonical source is drained', async () => {
+  let canonicalFinished = false;
+  const start = Date.now();
+  const { context } = mockContext(async url => {
+    if (url.endsWith('/objects')) return json({}, 429, { 'retry-after': '60' });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    canonicalFinished = true;
+    return json({ data: { item0: detail } });
+  });
+  const result = await createSellpyProvider().details([itemId], 'AT', 'de', context);
+  assert.equal(canonicalFinished, true);
+  assert.deepEqual(result.items, []);
+  assert.deepEqual(result.remaining_ids, [itemId]);
+  assert.equal(result.failures[0]?.error.code, 'rate_limited');
+  assert.ok(Date.parse(result.failures[0]?.error.retry_at ?? '') >= start + 60_000);
+});
+
+test('a single parallel-source timeout preserves every unprocessed detail ID', async () => {
+  const ids = Array.from({ length: 11 }, (_, index) => `id${index}`);
+  let objectsFinished = false;
+  const { context } = mockContext((url, init) => {
+    if (url.endsWith('/objects')) {
+      objectsFinished = true;
+      return json({ results: JSON.parse(String(init.body)).requests.map((entry: {objectID: string}) => ({ ...item, objectID: entry.objectID })) });
+    }
+    throw new ToolError('time_budget', 'Canonical detail budget ended', { retryable: true });
+  });
+  const result = await createSellpyProvider().details(ids, 'AT', 'de', context);
+  assert.equal(objectsFinished, true);
+  assert.deepEqual(result.items, []);
+  assert.deepEqual(result.remaining_ids, ids);
+  assert.ok(result.failures.every(failure => failure.error.code === 'time_budget' && failure.error.retryable));
+});
+
+test('simultaneous source failures retain the latest observed cooldown', async () => {
+  const started = Date.now();
+  const { context } = mockContext(url => url.endsWith('/objects')
+    ? json({}, 429, { 'retry-after': '10' }) : json({}, 429, { 'retry-after': '120' }));
+  const result = await createSellpyProvider().details([itemId], 'AT', 'de', context);
+  assert.deepEqual(result.remaining_ids, [itemId]);
+  assert.equal(result.failures[0]?.error.code, 'rate_limited');
+  assert.ok(Date.parse(result.failures[0]?.error.retry_at ?? '') >= started + 120_000);
+});
+
+test('a canonical-source pause is not discarded when the parallel catalog source fails', async () => {
+  const { context } = mockContext(url => url.endsWith('/objects') ? json({}, 500) : json({}, 429, { 'retry-after': '60' }));
+  const result = await createSellpyProvider().details([itemId], 'AT', 'de', context);
+  assert.deepEqual(result.remaining_ids, [itemId]);
+  assert.equal(result.failures[0]?.error.code, 'rate_limited');
+});
+
+test('an in-flight cancellation retains all detail IDs for retry', async () => {
+  const { context } = mockContext(url => {
+    if (url.endsWith('/objects')) return json({ results: [item] });
+    throw new ToolError('cancelled', 'Request cancelled', { retryable: true });
+  });
+  const result = await createSellpyProvider().details([itemId], 'AT', 'de', context);
+  assert.deepEqual(result.remaining_ids, [itemId]);
+  assert.equal(result.failures[0]?.error.code, 'cancelled');
+});
+
+test('object hydration limits returned fields without omitting any filter or normalized shopper field', async () => {
+  const { context } = mockContext((url, init) => {
+    if (url.endsWith('/get-similar-by-text')) return json({ results: [{ text: 'flowers', items: [{ objectid: itemId }] }] });
+    const request = JSON.parse(String(init.body)).requests[0];
+    assert.deepEqual(request.attributesToRetrieve, ['objectID', 'metadata', 'images', 'isReserved', 'isForSale', 'p2p', 'categories', 'sizes', 'materials',
+      'keywords', 'style', 'brandGroups', 'segment', 'saleType', 'saleStartedAt', 'searchableExternalCategory', 'price_AT', 'firstOfferedAt_AT']);
+    const full = { ...item, privateWarehouse: 'never-return', price_SE: { amount: 250, currency: 'SEK' },
+      metadata: { ...(item.metadata as object), measurement: { lengthInCm: 95 } } };
+    const selected = Object.fromEntries(Object.entries(full).filter(([key]) => request.attributesToRetrieve.includes(key)));
+    assert.deepEqual(normalizeItem(selected, 'AT', 'de', 'fixed'), normalizeItem(full, 'AT', 'de', 'fixed'));
+    assert.equal(matchesFilters(selected, { facets: { 'metadata.brand': ['Cellbes'] }, measurements: { lengthInCm: { min: 90, max: 100 } } }, 'AT'), true);
+    return json({ results: [selected] });
+  });
+  const result = await createSellpyProvider().search(input({ id: 'semantic', route: 'semantic', query: 'flowers' }), context);
+  assert.equal(result.items.length, 1);
+  assert.ok(!JSON.stringify(result).includes('never-return'));
+});
+
+test('overlapping native arms reuse only completed raw objects inside the same request and preserve timestamps', async () => {
+  let objectCalls = 0;
+  const { context } = mockContext((url, init) => {
+    if (url.endsWith('/get-similar-by-text')) return json({ results: [{ text: 'flowers', items: [{ objectid: itemId }, { objectid: 'missing' }] }] });
+    objectCalls++;
+    assert.equal(JSON.parse(String(init.body)).requests.length, 2);
+    return json({ results: [item, null] });
+  });
+  const provider = createSellpyProvider();
+  const first = await provider.search(input({ id: 'first', route: 'semantic', query: 'flowers' }), context);
+  const second = await provider.search(input({ id: 'second', route: 'semantic', query: 'flowers', filters: { facets: { 'metadata.brand': ['Different'] } } }), context);
+  const third = await provider.search(input({ id: 'third', route: 'semantic', query: 'flowers' }), context);
+  assert.equal(objectCalls, 1);
+  assert.equal(first.items.length, 1);
+  assert.equal(second.items.length, 0, 'changed hard filters are reapplied to the raw memoized item');
+  assert.equal(third.items[0]?.observed_at, first.items[0]?.observed_at);
+  await provider.search(input({ id: 'next_request', route: 'semantic', query: 'flowers' }), { ...context });
+  assert.equal(objectCalls, 2, 'a new request cannot reuse the previous request’s object observations');
+});
+
+test('native hydration memo is isolated by market and language', async () => {
+  const lookups: { indexName: string; attributesToRetrieve: string[] }[] = [];
+  const { context } = mockContext((url, init) => {
+    if (url.endsWith('/get-similar-by-text')) return json({ results: [{ text: 'flowers', items: [{ objectid: itemId }] }] });
+    const request = JSON.parse(String(init.body)).requests[0];
+    lookups.push(request);
+    return json({ results: [{ ...item, price_DE: { amount: 1700, currency: 'EUR' } }] });
+  });
+  const provider = createSellpyProvider();
+  const arm = { id: 'semantic', route: 'semantic' as const, query: 'flowers' };
+  const at = await provider.search(input(arm), context);
+  const de = await provider.search(input(arm, { market: 'DE' }), context);
+  await provider.search(input(arm, { language: 'en' }), context);
+  assert.equal(at.items[0]?.price?.amount_minor, 2400);
+  assert.equal(de.items[0]?.price?.amount_minor, 1700);
+  assert.equal(lookups.length, 3);
+  assert.ok(lookups[0]?.attributesToRetrieve.includes('price_AT'));
+  assert.ok(lookups[1]?.attributesToRetrieve.includes('price_DE'));
+  assert.equal(lookups[2]?.indexName, 'en_newest');
+});
+
+test('unexpected ordered object identities fail explicitly without memoizing a partial batch', async () => {
+  let corrupt = true;
+  let lookups = 0;
+  const { context } = mockContext((url, init) => {
+    if (url.endsWith('/get-similar-by-text')) return json({ results: [{ text: 'flowers', items: [{ objectid: itemId }, { objectid: 'second' }] }] });
+    lookups++;
+    assert.equal(JSON.parse(String(init.body)).requests.length, 2);
+    return json({ results: [item, corrupt ? item : { ...item, objectID: 'second' }] });
+  });
+  const provider = createSellpyProvider();
+  const request = input({ id: 'semantic', route: 'semantic', query: 'flowers' });
+  await assert.rejects(provider.search(request, context), (error: unknown) => error instanceof ToolError && error.code === 'source_contract_changed');
+  corrupt = false;
+  const result = await provider.search(request, context);
+  assert.equal(lookups, 2);
+  assert.deepEqual(result.items.map(value => value.id), [itemId, 'second']);
+});
+
+test('canonical detail validation always bypasses a search hydration memo for fresh prices', async () => {
+  let lookups = 0;
+  const { context } = mockContext(url => {
+    if (url.endsWith('/get-similar-by-text')) return json({ results: [{ text: 'flowers', items: [{ objectid: itemId }] }] });
+    if (url.includes('/graphql')) return json({ data: { item0: detail } });
+    lookups++;
+    return json({ results: [{ ...item, price_AT: { amount: lookups === 1 ? 2400 : 1800, currency: 'EUR' } }] });
+  });
+  const provider = createSellpyProvider();
+  const before = await provider.search(input({ id: 'semantic', route: 'semantic', query: 'flowers' }), context);
+  const after = await provider.details([itemId], 'AT', 'de', context);
+  assert.equal(lookups, 2);
+  assert.equal(before.items[0]?.price?.amount_minor, 2400);
+  assert.equal(after.items[0]?.price?.amount_minor, 1800);
+  assert.equal(after.items[0]?.source, 'detail');
+});
+
+test('shared stateless provider caches parsed configuration but makes fresh detail requests in each context', async () => {
+  const create = () => mockContext(url => url.endsWith('/objects') ? json({ results: [item] }) : json({ data: { item0: detail } }));
+  const first = create(), second = create();
+  await sharedSellpyProvider.details([itemId], 'AT', 'de', first.context);
+  await sharedSellpyProvider.details([itemId], 'AT', 'de', second.context);
+  assert.equal(first.calls.filter(call => call.url === sourceUrl).length, 1);
+  assert.equal(second.calls.filter(call => call.url === sourceUrl).length, 0);
+  assert.equal(first.calls.filter(call => call.url.endsWith('/objects')).length, 1);
+  assert.equal(second.calls.filter(call => call.url.endsWith('/objects')).length, 1);
+  assert.equal(second.calls.filter(call => call.url.includes('/graphql')).length, 1);
 });

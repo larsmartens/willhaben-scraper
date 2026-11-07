@@ -17,6 +17,30 @@ const CATALOG_ATTRIBUTES = [
 ];
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
 const OUTFIT_WINDOW_PER_PART = 20;
+const REQUEST_OBJECT_CACHE_SIZE = 2000;
+
+interface CatalogObject {
+  value: Record<string, unknown>;
+  observed_at: string;
+}
+
+type ObjectMemo = Map<string, CatalogObject | null>;
+
+function catalogAttributes(market: string): string[] {
+  return [...CATALOG_ATTRIBUTES, `price_${market}`, `firstOfferedAt_${market}`];
+}
+
+function objectCacheKey(id: string, locale: LocaleConfig, market: string): string {
+  return `${locale.application_id}:${locale.indices.newest}:${market}:${id}`;
+}
+
+function memoizeObject(memo: ObjectMemo | undefined, key: string, item: CatalogObject | null): void {
+  if (!memo) return;
+  memo.delete(key);
+  memo.set(key, item);
+  // This bounds temporary memory, not the number of reachable search results.
+  while (memo.size > REQUEST_OBJECT_CACHE_SIZE) memo.delete(memo.keys().next().value!);
+}
 
 function localeConfig(config: PublicConfig, market: string, language: string): LocaleConfig {
   validateLocale(market, language);
@@ -34,20 +58,35 @@ async function algolia(path: string, body: unknown, locale: LocaleConfig, contex
   }, context));
 }
 
-async function objects(ids: string[], locale: LocaleConfig, context: RequestContext): Promise<Map<string, Record<string, unknown>>> {
-  const output = new Map<string, Record<string, unknown>>();
+async function objects(ids: string[], locale: LocaleConfig, market: string, context: RequestContext, memo?: ObjectMemo): Promise<Map<string, CatalogObject>> {
+  checkDeadline(context);
+  const output = new Map<string, CatalogObject>();
   const unique = [...new Set(ids.map(validateId))];
+  const pending = unique.filter(id => {
+    const key = objectCacheKey(id, locale, market);
+    if (!memo?.has(key)) return true;
+    const cached = memo.get(key);
+    if (cached) output.set(id, cached);
+    return false;
+  });
   // Sellpy's own getObjects adapter uses batches of at most 1,000 objects.
-  for (let start = 0; start < unique.length; start += 1000) {
-    const batch = unique.slice(start, start + 1000);
-    const response = await algolia('objects', { requests: batch.map((objectID) => ({ indexName: locale.indices.newest, objectID })) }, locale, context);
+  for (let start = 0; start < pending.length; start += 1000) {
+    const batch = pending.slice(start, start + 1000);
+    const response = await algolia('objects', { requests: batch.map((objectID) => ({ indexName: locale.indices.newest, objectID,
+      attributesToRetrieve: catalogAttributes(market) })) }, locale, context);
     if (!Array.isArray(response.results) || response.results.length !== batch.length) throw contractError('Sellpy’s item lookup response no longer matches its requested objects.');
-    for (const result of response.results) {
-      if (result === null) continue;
-      const raw = record(result);
-      const id = string(raw.objectID);
-      if (!id || !batch.includes(id)) throw contractError('Sellpy’s item lookup returned an unexpected item identifier.');
-      output.set(id, raw);
+    const observed_at = new Date().toISOString();
+    const records = response.results.map((result, index) => {
+      if (result === null) return null;
+      const value = record(result);
+      if (string(value.objectID) !== batch[index]) throw contractError('Sellpy’s item lookup returned an unexpected item identifier.');
+      return { value, observed_at };
+    });
+    // Validate the whole batch before retaining any part of a changed contract.
+    for (const [index, id] of batch.entries()) {
+      const item = records[index] ?? null;
+      memoizeObject(memo, objectCacheKey(id, locale, market), item);
+      if (item) output.set(id, item);
     }
   }
   return output;
@@ -100,6 +139,17 @@ function errorForDetail(error: unknown): ToolError {
   return error instanceof ToolError ? error : new ToolError('source_unavailable', 'The requested Sellpy item details could not be loaded.', { retryable: true });
 }
 
+function detailInterrupted(error: ToolError): boolean {
+  return ['time_budget', 'rate_limited', 'cancelled'].includes(error.code);
+}
+
+function dominantDetailFailure(errors: ToolError[]): ToolError {
+  // If both concurrent sources fail, retain an observed cooldown/deadline even
+  // when the other failure would normally be a non-pausing source error.
+  const pauses = errors.filter(detailInterrupted);
+  return pauses.sort((a, b) => (Date.parse(b.retry_at ?? '') || 0) - (Date.parse(a.retry_at ?? '') || 0))[0] ?? errors[0]!;
+}
+
 function nativeResults(response: unknown, expected: string[], key: 'text' | 'objectid'): { id: string; score?: number; local_rank: number }[] {
   const results = record(response).results;
   if (!Array.isArray(results)) throw contractError('The native Sellpy search response has no results array.');
@@ -150,6 +200,14 @@ async function referenceImage(reference: ReferenceImage, context: RequestContext
 
 export function createSellpyProvider(): SellpyProvider {
   const loadConfig = createConfigLoader();
+  // Only completed public data is memoized, scoped by the current tool request.
+  // No response, stream, request or I/O promise survives a request boundary.
+  const objectMemos = new WeakMap<RequestContext, ObjectMemo>();
+  function objectMemo(context: RequestContext): ObjectMemo {
+    let memo = objectMemos.get(context);
+    if (!memo) { memo = new Map(); objectMemos.set(context, memo); }
+    return memo;
+  }
 
   async function catalog(input: ProviderPageRequest, filters: SearchFilters, config: PublicConfig, context: RequestContext): Promise<ProviderPage> {
     if (input.offset % input.page_size !== 0) throw new ToolError('invalid_pagination', 'A catalog offset must align with the source page size.');
@@ -160,7 +218,7 @@ export function createSellpyProvider(): SellpyProvider {
     const response = await algolia('queries', { requests: [{
       indexName, query: input.arm.query ?? '', hitsPerPage: input.page_size, page: input.offset / input.page_size,
       ...algoliaFilterParams(filters, input.market),
-      attributesToRetrieve: [...CATALOG_ATTRIBUTES, `price_${input.market}`, `firstOfferedAt_${input.market}`],
+      attributesToRetrieve: catalogAttributes(input.market),
     }] }, locale, context);
     const result = record(Array.isArray(response.results) ? response.results[0] : undefined);
     if (!Array.isArray(result.hits)) throw contractError('The public Sellpy catalog response has no hits array.');
@@ -279,14 +337,15 @@ export function createSellpyProvider(): SellpyProvider {
       });
       sourceCount = Math.max(0, ...counts); sourceFull = sourceCount >= input.page_size;
     }
-    const hydrated = await objects(ranked.map((entry) => entry.id), locale, context);
+    const hydrated = await objects(ranked.map((entry) => entry.id), locale, input.market, context, objectMemo(context));
     const observed_at = new Date().toISOString();
     const ranks: Record<string, number> = {}, scores: Record<string, number> = {};
     const seen = new Set<string>();
     const items = ranked.flatMap((entry) => {
-      const raw = hydrated.get(entry.id);
+      const observation = hydrated.get(entry.id);
+      const raw = observation?.value;
       if (!raw || !matchesFilters(raw, filters, input.market) || seen.has(entry.id)) return [];
-      const item = normalizeItem(raw, input.market, input.language, observed_at);
+      const item = normalizeItem(raw, input.market, input.language, observation!.observed_at);
       if (!item) throw contractError('A hydrated Sellpy result has an invalid item shape.');
       seen.add(entry.id); ranks[entry.id] = input.offset + entry.local_rank;
       if (entry.score !== undefined) scores[entry.id] = entry.score;
@@ -335,25 +394,40 @@ export function createSellpyProvider(): SellpyProvider {
         const batch = unique.slice(start, start + 10);
         if (context.signal?.aborted || Date.now() >= context.deadline) { result.remaining_ids = unique.slice(start); break; }
         try {
-          const catalogItems = await objects(batch, locale, context);
+          // These two sources are independent. Keep concurrency at two while
+          // awaiting both outcomes so a failed source never leaves floating I/O.
+          // Canonical details deliberately bypass request-local search hydration
+          // memoization: current price/availability checks always hit the source.
+          const [catalogResult, graphResult] = await Promise.allSettled([
+            objects(batch, locale, market, context),
+            graphDetails(batch, config, market, language, context),
+          ]);
+          if (catalogResult.status === 'rejected') throw dominantDetailFailure([
+            errorForDetail(catalogResult.reason), ...(graphResult.status === 'rejected' ? [errorForDetail(graphResult.reason)] : []),
+          ]);
+          const catalogItems = catalogResult.value;
           let graph: Awaited<ReturnType<typeof graphDetails>>;
-          try { graph = await graphDetails(batch, config, market, language, context); }
+          try {
+            if (graphResult.status === 'rejected') throw graphResult.reason;
+            graph = graphResult.value;
+          }
           catch (error) {
             const providerError = errorForDetail(error);
-            if (providerError.code === 'time_budget' || providerError.code === 'rate_limited') {
+            if (detailInterrupted(providerError)) {
               result.remaining_ids = unique.slice(start);
               result.failures.push(...result.remaining_ids.map(id => ({id,error:providerError.toJSON()})));
               break;
             }
             for (const id of batch) {
-              const item = normalizeItem(catalogItems.get(id), market, language, new Date().toISOString());
+              const observation = catalogItems.get(id);
+              const item = normalizeItem(observation?.value, market, language, observation?.observed_at ?? new Date().toISOString());
               if (item) result.items.push(item);
               result.failures.push({ id, error: providerError.toJSON() });
             }
             continue;
           }
           for (const id of batch) {
-            const item = normalizeItem(catalogItems.get(id), market, language, new Date().toISOString(), graph.items.get(id));
+            const item = normalizeItem(catalogItems.get(id)?.value, market, language, new Date().toISOString(), graph.items.get(id));
             if (item && graph.missing.has(id)) item.availability = 'unknown';
             if (item) result.items.push(item);
             if (graph.failed.has(id)) result.failures.push({ id, error: new ToolError('detail_unavailable', 'Sellpy returned an error for this public item detail.', { retryable: true }).toJSON() });
@@ -361,7 +435,7 @@ export function createSellpyProvider(): SellpyProvider {
           }
         } catch (error) {
           const providerError = errorForDetail(error);
-          if (providerError.code === 'time_budget' || providerError.code === 'rate_limited') {
+          if (detailInterrupted(providerError)) {
             result.remaining_ids = unique.slice(start);
             result.failures.push(...result.remaining_ids.map(id => ({id,error:providerError.toJSON()})));
             break;
@@ -396,3 +470,7 @@ export function createSellpyProvider(): SellpyProvider {
     },
   };
 }
+
+// Stateless tool handlers reuse the already existing parsed-configuration TTL.
+// SearchRun retains its own instance; only request-local data is memoized above.
+export const sharedSellpyProvider = createSellpyProvider();

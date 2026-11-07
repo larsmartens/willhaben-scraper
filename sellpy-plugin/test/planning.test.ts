@@ -31,3 +31,23 @@ test('image edits combine native visual retrieval with separately inspectable te
   assert.ok(plan.arms.some(arm=>arm.route==='semantic' && arm.query?.includes('long sleeves')));
   assert.equal(plan.intent.modification,'similar but long sleeves');
 });
+
+test('identical strict and relaxed requests do not spend two calls or gain two fusion votes', () => {
+  const plan = stylePlan(inputSchemas.search_style.parse({ query: 'floral puff sleeves', style: 'floral puff sleeves',
+    desired_type: 'dress', attribute_queries: ['floral puff sleeves'], relaxed_queries: ['floral puff sleeves'],
+    filters: { price_max: 35, facets: { 'metadata.size': ['WMN-INT-M'] } } }));
+  assert.equal(plan.arms.length, 2);
+  assert.deepEqual(plan.arms.map(arm => arm.route).sort(), ['catalog', 'semantic']);
+  assert(plan.arms.every(arm => arm.category_relaxed === true));
+  assert.equal(plan.intent.desired_type, 'dress');
+  assert(plan.arms.every(arm => arm.filters?.price_max === 35));
+});
+
+test('different taxonomy filters retain independent strict and relaxed search arms', () => {
+  const plan = stylePlan(inputSchemas.search_style.parse({ query: 'floral puff sleeves', style: 'floral puff sleeves',
+    attribute_queries: ['floral puff sleeves'], relaxed_queries: ['floral puff sleeves'],
+    filters: { facets: { 'metadata.type': ['Dress'], style: ['Cottagecore'] } } }));
+  assert.equal(plan.arms.length, 4);
+  assert.equal(plan.arms.filter(arm => arm.category_relaxed).length, 2);
+  assert.equal(plan.arms.filter(arm => !arm.category_relaxed).length, 2);
+});

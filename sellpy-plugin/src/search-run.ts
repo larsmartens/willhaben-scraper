@@ -1,16 +1,21 @@
 import { DurableObject } from 'cloudflare:workers';
-import { type Candidate, type ItemObservation, type SearchPage, type SearchPlan, type VisualAssessment } from './domain.js';
+import { type Candidate, type ItemFeedback, type ItemObservation, type SearchPage, type SearchPlan, type VisualAssessment } from './domain.js';
 import { createSellpyProvider } from './sellpy/client.js';
 import { SearchStore, parseSearchCursor, type Bookmark, type PresentationRecord, type StoredReference } from './search-store.js';
 import { createProviderContext } from './traffic.js';
+import { ResearchStore, type PreferenceProfile, type RefinementPage } from './research-store.js';
+import type { RankingPreferences } from './refinement.js';
+import type { ObservedItemChange } from './observations.js';
 
 export class SearchRun extends DurableObject<Env> {
   private readonly state: SearchStore;
+  private readonly research: ResearchStore;
   private readonly provider = createSellpyProvider();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.state = new SearchStore(ctx.storage.sql, operation => ctx.storage.transactionSync(operation));
+    this.research = new ResearchStore(ctx.storage.sql, operation => ctx.storage.transactionSync(operation), this.state);
   }
 
   private context(deadline?: number) {
@@ -31,7 +36,7 @@ export class SearchRun extends DurableObject<Env> {
   }
 
   async getCandidates(ids: string[]): Promise<Candidate[]> { return this.state.getCandidates(ids); }
-  async updateItems(items: ItemObservation[]): Promise<void> { this.state.updateItems(items); }
+  async updateItems(items: ItemObservation[]): Promise<ObservedItemChange[]> { return this.state.updateItems(items); }
   async recordAssessment(assessment: VisualAssessment): Promise<void> { this.state.recordAssessment(assessment); }
   async markImagesDelivered(itemId: string, imageIds: string[]): Promise<void> { this.state.markImagesDelivered(itemId, imageIds); }
   async status(): Promise<{ plan: SearchPlan; coverage: SearchPage['coverage'] }> { return this.state.status(); }
@@ -45,4 +50,30 @@ export class SearchRun extends DurableObject<Env> {
   async getPresentation(id: string): Promise<PresentationRecord | null> { return this.state.getPresentation(id); }
   async saveBookmark(value: Bookmark): Promise<void> { this.state.saveBookmark(value); }
   async listBookmarks(offset: number, limit: number): Promise<{ items: Bookmark[]; next_offset: number | null }> { return this.state.listBookmarks(offset, limit); }
+  async removeBookmark(runId: string): Promise<void> { this.state.removeBookmark(runId); }
+  async getProfile(name: string): Promise<PreferenceProfile | null> { this.state.assertActive(); return this.research.getProfile(name); }
+  async setProfile(name: string, preferences: RankingPreferences): Promise<PreferenceProfile> { this.state.assertActive(); return this.research.setProfile(name, preferences); }
+  async setFeedback(itemId: string, decision: ItemFeedback['decision'], reason?: string): Promise<ItemFeedback> {
+    this.state.status(); return this.research.setFeedback(itemId, decision, reason);
+  }
+  async getFeedback(ids: string[]): Promise<Record<string, ItemFeedback>> { this.state.assertActive(); return this.research.getFeedback(ids); }
+  async inheritFeedback(values: ItemFeedback[]): Promise<void> { this.state.status(); this.research.inheritFeedback(values); }
+  async responseNotes(step: number): Promise<Record<string, unknown> | null> { this.state.status(); return this.research.responseNotes(step); }
+  async saveResponseNotes(step: number, value: Record<string, unknown>): Promise<Record<string, unknown>> { this.state.status(); return this.research.saveResponseNotes(step, value); }
+  async listFeedback(decision: ItemFeedback['decision'] | 'all', after: number, limit: number) {
+    this.state.status(); return this.research.listFeedback(decision, after, limit);
+  }
+  async refine(runId: string, preferences: RankingPreferences, pageSize: number): Promise<RefinementPage> {
+    const { plan } = this.state.status(); this.state.initialize(plan, runId);
+    const id = this.research.createRefinement(runId, preferences, pageSize);
+    return this.research.advanceRefinement(id, 0);
+  }
+  async continueRefinement(id: string, step: number): Promise<RefinementPage> {
+    this.state.status(); return this.research.advanceRefinement(id, step);
+  }
+  async itemHistory(itemId: string, after: number, limit: number) { return this.state.itemHistory(itemId, after, limit); }
+  async forget(): Promise<{ deleted: true }> {
+    this.ctx.storage.transactionSync(() => { this.research.erase(); this.state.erase(); });
+    return { deleted: true };
+  }
 }

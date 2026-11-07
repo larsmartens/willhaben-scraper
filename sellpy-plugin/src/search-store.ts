@@ -15,6 +15,7 @@ import {
   type VisualAssessment,
 } from './domain.js';
 import { assessmentStillApplies, preferObservation, reciprocalRankScore } from './ranking.js';
+import { itemSnapshot, observationChanges, type ItemSnapshot, type ObservedItemChange } from './observations.js';
 
 type SqlValue = string | number | ArrayBuffer | null;
 export interface SqlPort {
@@ -41,6 +42,7 @@ const REFERENCE_CHUNK_BYTES = 256 * 1024;
 const encoder = new TextEncoder();
 
 const schema = [
+  'CREATE TABLE IF NOT EXISTS lifecycle (id INTEGER PRIMARY KEY CHECK(id=1), deleted INTEGER NOT NULL DEFAULT 0)',
   'CREATE TABLE IF NOT EXISTS run (id INTEGER PRIMARY KEY CHECK(id=1), run_id TEXT NOT NULL, plan_json TEXT NOT NULL, next_step INTEGER NOT NULL DEFAULT 0, arm_turn INTEGER NOT NULL DEFAULT 0)',
   'CREATE TABLE IF NOT EXISTS arms (id TEXT PRIMARY KEY, ordinal INTEGER NOT NULL UNIQUE, spec_json TEXT NOT NULL, offset INTEGER NOT NULL DEFAULT 0, pages_read INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT \'ready\', total INTEGER, window_size INTEGER, error_json TEXT)',
   'CREATE TABLE IF NOT EXISTS candidates (sequence INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL UNIQUE, item_json TEXT NOT NULL, assessment_json TEXT, fusion_score REAL NOT NULL DEFAULT 0, returned_step INTEGER)',
@@ -54,6 +56,8 @@ const schema = [
   'CREATE TABLE IF NOT EXISTS reference_chunks (file_id TEXT NOT NULL, ordinal INTEGER NOT NULL, bytes BLOB NOT NULL, PRIMARY KEY(file_id,ordinal))',
   'CREATE TABLE IF NOT EXISTS presentations (id TEXT PRIMARY KEY, value_json TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS bookmarks (sequence INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL UNIQUE, value_json TEXT NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS item_observations (sequence INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL, snapshot_json TEXT NOT NULL)',
+  'CREATE INDEX IF NOT EXISTS item_observation_history ON item_observations(item_id,sequence)',
 ];
 
 function stable(value: unknown): string {
@@ -100,7 +104,16 @@ export class SearchStore {
   }
 
   private rows<T extends Record<string, SqlValue>>(query: string, ...bindings: unknown[]): T[] {
+    this.assertActive();
     return this.sql.exec<T>(query, ...bindings).toArray();
+  }
+
+  isForgotten(): boolean {
+    return this.sql.exec<{ deleted: number }>('SELECT deleted FROM lifecycle WHERE id=1').toArray()[0]?.deleted === 1;
+  }
+
+  assertActive(): void {
+    if (this.isForgotten()) throw new ToolError('search_forgotten', 'This search and its retained references were deleted.', { next_action: 'Start a new search. Deleted search identifiers cannot be reused.' });
   }
 
   private run(): RunRow {
@@ -178,6 +191,18 @@ export class SearchStore {
     return { items: rows.slice(0, limit).map(row => this.candidate(row)), next_offset: rows.length > limit ? offset + limit : null };
   }
 
+  snapshotCohort(): { max_sequence: number; total: number } {
+    this.run();
+    return this.rows<{ max_sequence: number; total: number }>('SELECT COALESCE(MAX(sequence),0) AS max_sequence,COUNT(*) AS total FROM candidates')[0]!;
+  }
+
+  scanCandidates(after: number, maximum: number, limit: number): { sequence: number; candidate: Candidate }[] {
+    safeCount(after, 'after'); safeCount(maximum, 'maximum');
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) throw new ToolError('invalid_batch_size', 'Scan 1 to 500 candidates per call.');
+    return this.rows<CandidateRow>('SELECT * FROM candidates WHERE sequence>? AND sequence<=? ORDER BY sequence LIMIT ?', after, maximum, limit)
+      .map(row => ({ sequence: row.sequence, candidate: this.candidate(row) }));
+  }
+
   private validateObservation(item: ItemObservation, plan: SearchPlan): void {
     if (!item.id || item.market.toUpperCase() !== plan.market.toUpperCase() || !Number.isFinite(Date.parse(item.observed_at))) {
       throw new ToolError('provider_contract', 'A product observation has an invalid identity, market or observation time.', { retryable: true });
@@ -187,22 +212,45 @@ export class SearchStore {
     }
   }
 
-  private putObservation(item: ItemObservation): void {
+  private putObservation(item: ItemObservation): ObservedItemChange | null {
     const row = this.rows<CandidateRow>('SELECT * FROM candidates WHERE item_id=?', item.id)[0];
     if (!row) {
       this.sql.exec('INSERT INTO candidates(item_id,item_json) VALUES(?,?)', item.id, JSON.stringify(item));
-      return;
+      this.sql.exec('INSERT INTO item_observations(item_id,snapshot_json) VALUES(?,?)', item.id, JSON.stringify(itemSnapshot(item)));
+      return null;
     }
     const current = this.candidate(row);
-    if (!preferObservation(current.item, item)) return;
+    if (!preferObservation(current.item, item)) return null;
+    const changes = observationChanges(itemSnapshot(current.item), itemSnapshot(item));
+    this.ensureHistoryBaseline(current.item);
     this.sql.exec('UPDATE candidates SET item_json=?,assessment_json=? WHERE item_id=?', JSON.stringify(item),
       assessmentStillApplies(current, item) ? row.assessment_json : null, item.id);
+    if (changes || current.item.source !== item.source) {
+      this.sql.exec('INSERT INTO item_observations(item_id,snapshot_json) VALUES(?,?)', item.id, JSON.stringify(itemSnapshot(item)));
+    }
+    return changes;
   }
 
-  updateItems(items: ItemObservation[]): void {
+  private ensureHistoryBaseline(item: ItemObservation): void {
+    if (!this.rows<{ sequence: number }>('SELECT sequence FROM item_observations WHERE item_id=? LIMIT 1', item.id).length) {
+      this.sql.exec('INSERT INTO item_observations(item_id,snapshot_json) VALUES(?,?)', item.id, JSON.stringify(itemSnapshot(item)));
+    }
+  }
+
+  updateItems(items: ItemObservation[]): ObservedItemChange[] {
     const plan = JSON.parse(this.run().plan_json) as SearchPlan;
     for (const item of items) this.validateObservation(item, plan);
-    this.atomic(() => { for (const item of items) this.putObservation(item); });
+    return this.atomic(() => items.flatMap(item => { const changes = this.putObservation(item); return changes ? [changes] : []; }));
+  }
+
+  itemHistory(itemId: string, after: number, limit: number): { observations: (ItemSnapshot & { sequence: number })[]; next_after: number | null } {
+    this.run(); safeCount(after, 'after');
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) throw new ToolError('invalid_batch_size', 'Use 1 to 200 observations per call.');
+    const current = this.getCandidates([itemId])[0];
+    if (current) this.ensureHistoryBaseline(current.item);
+    const rows = this.rows<{ sequence: number; snapshot_json: string }>('SELECT sequence,snapshot_json FROM item_observations WHERE item_id=? AND sequence>? ORDER BY sequence LIMIT ?', itemId, after, limit + 1);
+    return { observations: rows.slice(0, limit).map(row => ({ ...JSON.parse(row.snapshot_json) as ItemSnapshot, sequence: row.sequence })),
+      next_after: rows.length > limit ? rows[limit - 1]!.sequence : null };
   }
 
   markImagesDelivered(itemId: string, imageIds: string[]): void {
@@ -277,6 +325,7 @@ export class SearchStore {
   }
 
   saveBookmark(value: Bookmark): void {
+    this.assertActive();
     if (!value.run_id || !Number.isFinite(Date.parse(value.saved_at))) throw new ToolError('invalid_bookmark', 'A bookmark requires a run ID and valid save time.');
     this.sql.exec('INSERT INTO bookmarks(run_id,value_json) VALUES(?,?) ON CONFLICT(run_id) DO UPDATE SET value_json=excluded.value_json', value.run_id, JSON.stringify(value));
   }
@@ -286,6 +335,15 @@ export class SearchStore {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) throw new ToolError('invalid_batch_size', 'Use 1 to 500 bookmarks per call and follow next_offset.');
     const rows = this.rows<{ value_json: string }>('SELECT value_json FROM bookmarks ORDER BY sequence LIMIT ? OFFSET ?', limit + 1, offset);
     return { items: rows.slice(0, limit).map(row => JSON.parse(row.value_json) as Bookmark), next_offset: rows.length > limit ? offset + limit : null };
+  }
+
+  removeBookmark(runId: string): void { this.sql.exec('DELETE FROM bookmarks WHERE run_id=?', runId); }
+
+  erase(): void {
+    for (const table of ['run', 'arms', 'candidates', 'retrieval_paths', 'operations', 'warnings', 'image_evidence', 'reference_files', 'reference_chunks', 'presentations', 'bookmarks', 'item_observations']) {
+      this.sql.exec(`DELETE FROM ${table}`);
+    }
+    this.sql.exec('INSERT INTO lifecycle(id,deleted) VALUES(1,1) ON CONFLICT(id) DO UPDATE SET deleted=1');
   }
 
   private begin(step: number): { receipt: SearchPage } | { lease: Lease } {

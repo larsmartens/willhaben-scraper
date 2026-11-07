@@ -83,6 +83,7 @@ export interface SearchPlan {
   intent: SearchIntent;
   arms: SearchArm[];
   page_size: number;
+  refresh_of?: string;
 }
 
 export interface ProviderPageRequest {
@@ -206,12 +207,20 @@ export interface SelectionEntry {
   cautions?: string[];
 }
 
+export interface ItemFeedback {
+  item_id: string;
+  decision: 'shortlist' | 'reject' | 'neutral';
+  reason?: string;
+  updated_at: string;
+}
+
 export interface GalleryCard {
   item: ItemObservation;
   reason: string;
   cautions: string[];
   assessment: VisualAssessment | null;
   paths: RetrievalPath[];
+  feedback?: ItemFeedback;
 }
 
 export interface GalleryData {

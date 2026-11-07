@@ -1,0 +1,42 @@
+{
+  "kind": "synthetic_local_cpu_probe",
+  "node": "v24.22.1",
+  "date": "2026-11-07T00:22:11.701Z",
+  "source": "scripts/benchmark-refinement.mjs",
+  "network_requests": 0,
+  "measurements": [
+    {
+      "name": "streamed_evaluation_500",
+      "count": 500,
+      "samples": 7,
+      "median_elapsed_ms": 6.575,
+      "maximum_elapsed_ms": 8.476,
+      "median_process_cpu_ms": 9.034,
+      "maximum_process_cpu_ms": 17.429
+    },
+    {
+      "name": "streamed_evaluation_10000",
+      "count": 10000,
+      "samples": 7,
+      "median_elapsed_ms": 116.753,
+      "maximum_elapsed_ms": 239.813,
+      "median_process_cpu_ms": 198.554,
+      "maximum_process_cpu_ms": 306.016
+    },
+    {
+      "name": "mmr_window_500_page_20",
+      "count": 20,
+      "samples": 7,
+      "median_elapsed_ms": 17.811,
+      "maximum_elapsed_ms": 26.599,
+      "median_process_cpu_ms": 19.387,
+      "maximum_process_cpu_ms": 60.071
+    }
+  ],
+  "limitations": [
+    "One shared runtime and a deterministic synthetic fixture; elapsed time can vary with host contention.",
+    "Process CPU includes the Node process threads and is not hosted Worker CPU time.",
+    "Does not measure Sellpy recall, real user preferences or network latency.",
+    "Source image URLs are inert fixture identifiers; no original photos are accessed or assessed."
+  ]
+}

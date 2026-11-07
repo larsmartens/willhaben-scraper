@@ -7,6 +7,20 @@ const optionalText = z.string().trim().max(4000).optional();
 const cursor = z.string().min(1).max(32000);
 const ids = z.array(itemId).min(1);
 const imageId = z.string().min(1).max(250);
+const profileName = z.string().trim().min(1).max(100);
+const labels = z.array(z.string().trim().min(1).max(300));
+export const rankingPreferencesSchema = z.strictObject({
+  mode: z.enum(['balanced', 'relevance', 'price_low', 'diverse']).optional(),
+  diversity: z.number().finite().min(0).max(1).optional(),
+  price_min: z.number().finite().nonnegative().optional(), price_max: z.number().finite().nonnegative().optional(),
+  currency: z.string().regex(/^[A-Z]{3}$/).optional(), sizes: labels.optional(),
+  source_facets: z.record(z.string().min(1).max(200), labels).optional(),
+  excluded_brands: labels.optional(), preferred_brands: labels.optional(), required_materials: labels.optional(),
+  excluded_materials: labels.optional(), preferred_materials: labels.optional(),
+  measurements: z.record(z.string().min(1).max(200), z.strictObject({ min: z.number().finite().nonnegative().optional(), max: z.number().finite().nonnegative().optional() })).optional(),
+  requirements: z.array(z.strictObject({ requirement: text, priority: z.enum(['require', 'avoid', 'prefer']) })).optional(),
+  unknown_policy: z.enum(['keep', 'exclude']).optional(), include_reserved: z.boolean().optional()
+});
 export const filtersSchema = z.strictObject({
   facets: z.record(z.string().min(1).max(200), z.array(z.string().max(300)).min(1)).optional(),
   price_min: z.number().finite().nonnegative().optional(),
@@ -55,7 +69,15 @@ export const inputSchemas = {
     selection: z.array(z.strictObject({ item_id: itemId, reason: z.string().max(2000), cautions: z.array(text).optional() })).min(1).optional(),
     cursor: cursor.optional(), page_size: z.number().int().min(1).max(20).default(6) }),
   save_search: z.strictObject({ run_id: runId, label: z.string().min(1).max(200), note: z.string().max(4000).default('') }),
-  list_saved_searches: z.strictObject({ offset: z.number().int().nonnegative().default(0), page_size: z.number().int().min(1).max(100).default(20) })
+  list_saved_searches: z.strictObject({ offset: z.number().int().nonnegative().default(0), page_size: z.number().int().min(1).max(100).default(20) }),
+  get_preferences: z.strictObject({ profile: profileName.default('default') }),
+  set_preferences: z.strictObject({ profile: profileName.default('default'), preferences: rankingPreferencesSchema }),
+  set_item_feedback: z.strictObject({ run_id: runId, item_id: itemId, decision: z.enum(['shortlist', 'reject', 'neutral']), reason: z.string().max(2000).optional() }),
+  list_item_feedback: z.strictObject({ run_id: runId, decision: z.enum(['shortlist', 'reject', 'neutral', 'all']).default('shortlist'), after: z.number().int().nonnegative().default(0), page_size: common.page_size }),
+  refine_search: z.strictObject({ run_id: runId, preferences: rankingPreferencesSchema.optional(), profile: profileName.optional(), use_profile: z.boolean().default(true), cursor: cursor.optional(), page_size: common.page_size }),
+  get_item_history: z.strictObject({ run_id: runId, item_id: itemId, after: z.number().int().nonnegative().default(0), page_size: common.page_size }),
+  refresh_search: z.strictObject({ run_id: runId, page_size: z.number().int().min(1).max(200).optional() }),
+  forget_search: z.strictObject({ run_id: runId })
 };
 
 export type ToolName = keyof typeof inputSchemas;
@@ -76,5 +98,13 @@ export const toolDescriptions: Record<ToolName,string> = {
   record_visual_assessment: 'Record an assistant visual assessment only after actual image content was fetched for the model. Preserve source categories, include examined image IDs, concrete evidence and uncertainty; do not invent material or dimensions.',
   present_items: 'Show every individually recommended item with its own original image, canonical facts, reasons and uncertainties in an interactive gallery. Supply ranked selection or a presentation cursor. The model summary also supports illustrated Markdown fallback.',
   save_search: 'Save an existing search under a user-requested label for later reuse. The search remains private to this connection; no automatic expiry.',
-  list_saved_searches: 'List this connection’s saved searches with pagination. Follow offsets for all saved entries.'
+  list_saved_searches: 'List this connection’s saved searches with pagination. Follow offsets for all saved entries.',
+  get_preferences: 'Read a named private preference profile. The default profile is applied by refine_search unless use_profile is false. This does not infer body measurements or clothing fit.',
+  set_preferences: 'Replace a named private preference profile only when the user asks to remember these criteria. Use exact source size/material labels and measurement keys; prices need currency. An empty preferences object clears its criteria.',
+  set_item_feedback: 'Set an explicit user decision for a known item: shortlist to favor it, reject to hide it from future refinements, neutral to clear. This is user preference, never visual evidence. Existing refinement cursors stay immutable; start a new refinement for the changed decision.',
+  list_item_feedback: 'List this search’s shortlist or other explicit user decisions with current stored item facts. Follow next_after for all entries. It does not refresh source prices.',
+  refine_search: 'Rerank all discovered candidates using hard constraints, soft preferences, recorded image evidence and explicit user feedback. Unknown is distinct from confirmed or contradicted. The default saved profile applies unless disabled; supplied preference fields override it. Visual requirements match exact recorded requirement text. Uses a bounded metadata-diversity window and durable immutable continuation without a total candidate cap. Follow this tool’s next_cursor with refine_search, not continue_search.',
+  get_item_history: 'Read this run’s actually observed price, availability and attribute snapshots with pagination. No historical prices before observation, retail value, future discounts or continuous monitoring are inferred.',
+  refresh_search: 'Start a fresh inventory search from an existing run’s exact criteria, retaining the old run. Reuses privately stored reference images and identifies newly encountered IDs versus that old run on each returned page. It does not schedule background monitoring.',
+  forget_search: 'Permanently delete the specified private search, its retained reference images, candidates, assessments, feedback, histories and saved bookmark. Use only when the user explicitly requests deletion. Other searches and preference profiles remain separate.'
 };

@@ -1,6 +1,9 @@
 import { App } from '@modelcontextprotocol/ext-apps';
-import type { GalleryCard, GalleryData, ItemImage, ItemObservation } from '../src/domain.js';
-import { errorMessage, formatMoney, galleryFromResult, hydrationFromResult, parseItem, record, retryTime, safeItemUrl } from './data.js';
+import type { GalleryCard, GalleryData, ItemFeedback, ItemImage, ItemObservation } from '../src/domain.js';
+import { requirementLabels } from '../src/evidence.js';
+import { assessmentStillApplies } from '../src/ranking.js';
+import { errorMessage, feedbackFromResult, formatMoney, galleryFromResult, hydrationFromResult, mergeAppendedCard, parseItem, record, retryTime, safeItemUrl } from './data.js';
+import { comparisonRows, filterCards, requirementCell, selectedCards, type GalleryFilter } from './comparison.js';
 
 const language = {
   de: {
@@ -27,6 +30,15 @@ const language = {
     footer: 'Preise und Verfügbarkeit können sich ändern. Originalangaben und eigene Einschätzungen sind getrennt dargestellt.',
     unavailableLink: 'Angebotslink nicht verfügbar', warnings: 'Hinweise zur Auswahl', photoCount: 'von',
     confirmed: 'bestätigt', contradicted: 'widersprochen',
+    filter: 'Anzeigen', all: 'Alle geladenen', shortlistFilter: 'Gemerkt', reviewedFilter: 'Fotos geprüft', availableFilter: 'Verfügbar', rejectedFilter: 'Passt nicht',
+    shortlist: 'Merken', shortlisted: 'Gemerkt', reject: 'Passt nicht', feedbackSaved: 'Deine Auswahl wurde gespeichert.',
+    feedbackFailed: 'Die Auswahl konnte nicht gespeichert werden. Der bisherige Stand bleibt erhalten.',
+    compare: 'Vergleichen', comparing: 'Vergleich', selected: 'ausgewählt', clearSelection: 'Vergleichsauswahl leeren', backToCards: 'Zur Auswahl',
+    comparisonHint: 'Shop-Angaben und geprüfte Bildmerkmale. Fehlende Angaben bleiben offen. Seitlich wischen für weitere Artikel.',
+    compareRemove: 'Aus Vergleich entfernen', compareAttribute: 'Merkmal', noFiltered: 'Keine geladenen Artikel entsprechen diesem Filter.',
+    evidenceChecked: 'Fotos geprüft', evidenceUnchecked: 'Fotos ungeprüft', discuss: 'Im Chat besprechen',
+    discussDone: 'Die Auswahl wurde an diesen Chat übergeben.', discussFailed: 'Die Auswahl konnte nicht an den Chat übergeben werden.',
+    discussPrompt: 'Vergleiche meine ausgewählten Sellpy-Artikel. Prüfe die aktuellen Angaben und die Originalfotos, berücksichtige meine bisherigen Kriterien und erkläre die wichtigsten Unterschiede und offenen Fragen.',
   },
   en: {
     eyebrow: 'Sellpy selection', title: 'Pieces to compare', count: 'items in this selection',
@@ -52,6 +64,15 @@ const language = {
     footer: 'Prices and availability can change. Original shop information is separate from the assistant’s assessment.',
     unavailableLink: 'Listing link unavailable', warnings: 'Selection notes', photoCount: 'of',
     confirmed: 'confirmed', contradicted: 'contradicted',
+    filter: 'Show', all: 'All loaded', shortlistFilter: 'Shortlisted', reviewedFilter: 'Photos examined', availableFilter: 'Available', rejectedFilter: 'Not for me',
+    shortlist: 'Shortlist', shortlisted: 'Shortlisted', reject: 'Not for me', feedbackSaved: 'Your selection has been saved.',
+    feedbackFailed: 'Your selection could not be saved. The previous decision is unchanged.',
+    compare: 'Compare', comparing: 'Comparison', selected: 'selected', clearSelection: 'Clear comparison selection', backToCards: 'Back to selection',
+    comparisonHint: 'Shop facts and examined visual features. Missing information stays unknown. Scroll sideways for more items.',
+    compareRemove: 'Remove from comparison', compareAttribute: 'Attribute', noFiltered: 'No loaded items match this filter.',
+    evidenceChecked: 'Photos examined', evidenceUnchecked: 'Photos unexamined', discuss: 'Discuss in chat',
+    discussDone: 'The selection was sent to this chat.', discussFailed: 'The selection could not be sent to this chat.',
+    discussPrompt: 'Compare my selected Sellpy items. Check current details and original photographs, consider my earlier criteria, and explain the main differences and remaining uncertainties.',
   },
 };
 type Label = keyof typeof language.de;
@@ -65,10 +86,12 @@ const state = {
   cardMessages: new Map<string, { text: string; error: boolean }>(),
   coverAttempts: new Set<string>(),
   sort: 'recommended', connected: false, busyMore: false,
+  filter: 'all' as GalleryFilter,
+  selected: new Set<string>(), view: 'cards' as 'cards' | 'comparison', busyChat: false,
   viewerId: null as string | null, viewerPosition: 0,
   status: '', statusError: false,
 };
-const app = new App({ name: 'Sellpy selection', version: '1.0.0' }, { availableDisplayModes: ['inline', 'fullscreen'] });
+const app = new App({ name: 'Sellpy selection', version: '1.1.0' }, { availableDisplayModes: ['inline', 'fullscreen'] });
 const root = document.getElementById('app')!;
 const dialog = document.createElement('dialog');
 dialog.className = 'viewer';
@@ -204,8 +227,8 @@ function detailsView(card: GalleryCard): HTMLElement {
       const list = detailList(label, values);
       if (list) assessment.append(list);
     }
-    for (const result of card.assessment.requirement_results) {
-      assessment.append(element('p', 'evidence', `${result.requirement}: ${result.verdict === 'unknown' ? t('uncertain') : t(result.verdict)} · ${result.evidence}`));
+    for (const requirement of requirementLabels([card.assessment])) {
+      assessment.append(element('p', 'evidence', `${requirement}: ${requirementCell(card, requirement, state.gallery?.language ?? 'de').text}`));
     }
     const checked = card.assessment.checked_image_ids.map(id => item.images.find(image => image.id === id)?.index)
       .filter((index): index is number => index !== undefined).map(index => index + 1);
@@ -233,11 +256,45 @@ function itemLink(item: ItemObservation, className: string, label: string): HTML
   return link;
 }
 
+function evidenceBadge(card: GalleryCard): HTMLElement {
+  const checked = card.assessment?.checked_image_ids.length ?? 0;
+  return element('span', `inspection ${checked ? 'checked' : 'unchecked'}`, checked
+    ? `${t('evidenceChecked')} · ${checked}/${card.item.images.length}` : t('evidenceUnchecked'));
+}
+
+function selectionControls(card: GalleryCard): HTMLElement {
+  const controls = element('div', 'selection-controls'), decision = card.feedback?.decision ?? 'neutral';
+  const shortlist = button(t(decision === 'shortlist' ? 'shortlisted' : 'shortlist'), 'shortlist-button');
+  shortlist.dataset.action = 'shortlist';
+  shortlist.setAttribute('aria-pressed', String(decision === 'shortlist'));
+  shortlist.disabled = !canCallTools() || state.pending.has(pendingKey('feedback', card.item.id));
+  shortlist.onclick = () => { void setFeedback(card.item.id, decision === 'shortlist' ? 'neutral' : 'shortlist'); };
+  const reject = button(t('reject'), 'reject-button');
+  reject.dataset.action = 'reject';
+  reject.setAttribute('aria-pressed', String(decision === 'reject'));
+  reject.disabled = shortlist.disabled;
+  reject.onclick = () => { void setFeedback(card.item.id, decision === 'reject' ? 'neutral' : 'reject'); };
+  const label = element('label', 'compare-toggle'), input = element('input');
+  input.type = 'checkbox';
+  input.dataset.action = 'compare';
+  input.checked = state.selected.has(card.item.id);
+  input.setAttribute('aria-label', `${t('compare')}: ${card.item.title}`);
+  input.onchange = () => {
+    if (input.checked) state.selected.add(card.item.id); else state.selected.delete(card.item.id);
+    renderSelectionBar();
+  };
+  label.append(input, element('span', '', t('compare')));
+  controls.append(shortlist, reject, label);
+  return controls;
+}
+
 function cardView(card: GalleryCard, rank: number): HTMLElement {
   const item = card.item, article = element('article', 'card');
   article.dataset.itemId = item.id;
+  article.dataset.decision = card.feedback?.decision ?? 'neutral';
   const cover = button('', 'photo-open', `${item.title} · ${item.images.length} ${t('photographs')}`);
   cover.dataset.itemId = item.id;
+  cover.dataset.action = 'photo';
   cover.append(photoView(item, item.images[0]), element('span', 'rank', `#${rank}`));
   if (item.images.length) cover.append(element('span', 'photo-count', `${item.images.length} ${t('photographs')}`));
   cover.onclick = () => openViewer(item.id);
@@ -254,16 +311,17 @@ function cardView(card: GalleryCard, rank: number): HTMLElement {
   body.append(priceLine);
   const facts = element('div', 'facts');
   facts.append(element('span', 'fact', `${t('size')} ${item.size ?? '?'}`), element('span', 'fact', item.condition ?? t('condition')));
-  body.append(facts, element('p', 'reason', card.reason || t('reasonMissing')));
+  body.append(facts, evidenceBadge(card), element('p', 'reason', card.reason || t('reasonMissing')));
   if (card.cautions.length) {
     const list = element('ul', 'cautions');
     card.cautions.forEach(caution => list.append(element('li', '', caution)));
     body.append(list);
   }
-  body.append(detailsView(card));
+  body.append(selectionControls(card), detailsView(card));
   const message = state.cardMessages.get(item.id);
   if (message) body.append(element('p', message.error ? 'status error' : 'status', message.text));
   const actions = element('div', 'actions'), refresh = button('↻', 'refresh', t('refresh'));
+  refresh.dataset.action = 'refresh';
   refresh.disabled = !canCallTools() || state.pending.has(pendingKey('refresh', item.id));
   refresh.onclick = () => { void refreshItem(item.id); };
   actions.append(itemLink(item, 'item-link', t('open')), refresh);
@@ -273,7 +331,7 @@ function cardView(card: GalleryCard, rank: number): HTMLElement {
 }
 
 function orderedCards(): GalleryCard[] {
-  const cards = [...(state.gallery?.cards ?? [])];
+  const cards = filterCards(state.gallery?.cards ?? [], state.filter);
   if (state.sort === 'recommended') return cards;
   const direction = state.sort === 'ascending' ? 1 : -1;
   return cards.sort((a, b) => {
@@ -282,6 +340,87 @@ function orderedCards(): GalleryCard[] {
     if (a.item.price.currency !== b.item.price.currency) return a.item.price.currency.localeCompare(b.item.price.currency);
     return direction * (a.item.price.amount_minor - b.item.price.amount_minor);
   });
+}
+
+function comparisonHeader(card: GalleryCard): HTMLElement {
+  const header = element('th', 'compare-item');
+  header.scope = 'col';
+  header.dataset.comparisonItemId = card.item.id;
+  const photo = button('', 'photo-open', `${card.item.title} · ${card.item.images.length} ${t('photographs')}`);
+  photo.dataset.itemId = card.item.id;
+  photo.dataset.action = 'photo';
+  photo.append(photoView(card.item, card.item.images[0]));
+  photo.onclick = () => openViewer(card.item.id);
+  const title = element('h3', '', card.item.title), remove = button(t('compareRemove'), 'compare-remove');
+  remove.dataset.action = 'remove';
+  remove.onclick = () => {
+    state.selected.delete(card.item.id);
+    if (state.selected.size < 2) state.view = 'cards';
+    render();
+  };
+  header.append(photo, title, itemLink(card.item, 'comparison-link', t('open')), remove);
+  return header;
+}
+
+function comparisonView(): HTMLElement {
+  const cards = selectedCards(state.gallery?.cards ?? [], state.selected);
+  const section = element('section', 'comparison');
+  section.append(element('p', 'comparison-hint', t('comparisonHint')));
+  const scroll = element('div', 'comparison-scroll'), table = element('table', 'comparison-table');
+  scroll.tabIndex = 0;
+  scroll.setAttribute('role', 'region');
+  scroll.setAttribute('aria-label', `${t('comparing')} · ${cards.length} ${t('count')}`);
+  const caption = element('caption', 'visually-hidden', `${t('comparing')} · ${cards.length} ${t('count')}`);
+  const head = element('thead'), headings = element('tr'), first = element('th', 'comparison-label', t('compareAttribute'));
+  first.scope = 'col';
+  headings.append(first, ...cards.map(comparisonHeader));
+  head.append(headings);
+  const body = element('tbody');
+  for (const row of comparisonRows(cards, state.gallery?.language ?? 'de')) {
+    const line = element('tr'), label = element('th', 'comparison-label', row.label);
+    label.scope = 'row';
+    line.append(label);
+    for (const value of row.cells) line.append(element('td', value.tone ?? '', value.text));
+    body.append(line);
+  }
+  table.append(caption, head, body);
+  scroll.append(table);
+  section.append(scroll);
+  return section;
+}
+
+function renderSelectionBar(): void {
+  const target = document.getElementById('selection-bar');
+  if (!target) return;
+  const count = state.selected.size;
+  const chosen = element('span', 'selection-count', `${count} ${t('selected')}`);
+  const compare = button(state.view === 'comparison' ? t('backToCards') : `${t('compare')} (${count})`, 'compare-button');
+  compare.disabled = state.view !== 'comparison' && count < 2;
+  compare.onclick = () => { state.view = state.view === 'comparison' ? 'cards' : 'comparison'; render(); document.getElementById('selection-bar')?.querySelector<HTMLButtonElement>('.compare-button')?.focus(); };
+  const clear = button(t('clearSelection'), 'clear-selection');
+  clear.disabled = !count;
+  clear.onclick = () => { state.selected.clear(); state.view = 'cards'; render(); };
+  target.replaceChildren(chosen, compare, clear);
+  if (app.getHostCapabilities()?.message?.text) {
+    const discuss = button(state.busyChat ? t('loading') : t('discuss'), 'discuss-selection');
+    const saved = state.gallery?.cards.some(card => card.feedback?.decision === 'shortlist');
+    discuss.disabled = !state.connected || state.busyChat || (!count && !saved);
+    discuss.onclick = () => { void discussSelection(); };
+    target.append(discuss);
+  }
+}
+
+function renderAffectedItem(id: string): void {
+  const card = cardById(id);
+  if (!card || !state.gallery) return;
+  const existing = [...root.querySelectorAll<HTMLElement>('[data-item-id]')].find(node => node.classList.contains('card') && node.dataset.itemId === id);
+  const comparison = [...root.querySelectorAll<HTMLTableCellElement>('[data-comparison-item-id]')].find(node => node.dataset.comparisonItemId === id);
+  const container = existing ?? comparison;
+  if (!container) return;
+  const focused = container.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.action : undefined;
+  const replacement = existing ? cardView(card, state.gallery.cards.indexOf(card) + 1) : comparisonHeader(card);
+  container.replaceWith(replacement);
+  if (focused) [...replacement.querySelectorAll<HTMLElement>('[data-action]')].find(node => node.dataset.action === focused)?.focus();
 }
 
 function render(): void {
@@ -314,13 +453,30 @@ function render(): void {
   select.value = state.sort;
   select.onchange = () => { state.sort = select.value; render(); document.getElementById('sort')?.focus(); };
   sorting.append(select);
+  const filtering = element('label', 'sorting', t('filter')), filter = element('select');
+  filter.id = 'filter';
+  filter.setAttribute('aria-label', t('filter'));
+  const filters: [GalleryFilter, Label][] = [['all', 'all'], ['shortlist', 'shortlistFilter'], ['reviewed', 'reviewedFilter'],
+    ['available', 'availableFilter'], ['rejected', 'rejectedFilter']];
+  for (const [value, label] of filters) {
+    const option = element('option', '', t(label));
+    option.value = value;
+    filter.append(option);
+  }
+  filter.value = state.filter;
+  filter.onchange = () => { state.filter = filter.value as GalleryFilter; render(); document.getElementById('filter')?.focus(); };
+  filtering.append(filter);
   const nav = element('div', 'nav'), previous = button('‹', 'icon-button', t('previous')), next = button('›', 'icon-button', t('next'));
   for (const [node, direction] of [[previous, -1], [next, 1]] as const) node.onclick = () => {
     const track = document.getElementById('cards');
     track?.scrollBy({ left: direction * track.clientWidth * 0.85, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   };
   nav.append(previous, next);
-  toolbar.append(sorting, nav);
+  toolbar.append(sorting, filtering, nav);
+  toolbar.hidden = state.view === 'comparison';
+  const selection = element('div', 'selection-bar');
+  selection.id = 'selection-bar';
+  selection.setAttribute('aria-label', t('comparing'));
   const status = element('p', `status${state.statusError ? ' error' : ''}`, state.status);
   status.id = 'page-status';
   status.setAttribute('role', 'status');
@@ -329,8 +485,9 @@ function render(): void {
   cards.id = 'cards';
   cards.setAttribute('aria-label', data.title || t('title'));
   const ranks = new Map(data.cards.map((card, index) => [card.item.id, index + 1]));
-  orderedCards().forEach(card => cards.append(cardView(card, ranks.get(card.item.id)!)));
-  if (!data.cards.length) cards.append(element('p', 'empty', t('noCards')));
+  const visibleCards = orderedCards();
+  visibleCards.forEach(card => cards.append(cardView(card, ranks.get(card.item.id)!)));
+  if (!visibleCards.length) cards.append(element('p', 'empty', t(data.cards.length ? 'noFiltered' : 'noCards')));
   const footer = element('footer', 'footer');
   footer.append(element('p', 'footnote', t('footer')));
   if (data.next_cursor) {
@@ -339,7 +496,7 @@ function render(): void {
     more.onclick = () => { void loadMore(); };
     footer.append(more);
   }
-  shell.append(header, toolbar, status, cards);
+  shell.append(header, toolbar, selection, status, state.view === 'comparison' ? comparisonView() : cards);
   if (data.warnings.length) {
     const note = element('details', 'notice'), list = element('ul');
     note.append(element('summary', '', t('warnings')), list);
@@ -352,6 +509,7 @@ function render(): void {
   cards.scrollLeft = priorScroll;
   previous.disabled = cards.scrollWidth <= cards.clientWidth;
   next.disabled = previous.disabled;
+  renderSelectionBar();
   setHostTheme();
 }
 
@@ -359,10 +517,13 @@ function acceptGallery(result: unknown, append = false): boolean {
   const next = galleryFromResult(result);
   if (!next) return false;
   const sameRun = state.gallery?.run_id === next.run_id;
-  if (!append) { state.generation++; state.busyMore = false; state.pending.clear(); state.cardMessages.clear(); }
+  if (!append) {
+    state.generation++; state.busyMore = false; state.busyChat = false;
+    state.pending.clear(); state.cardMessages.clear(); state.coverAttempts.clear();
+  }
   if (!sameRun) {
     state.photos.clear(); state.cardMessages.clear(); state.nextImage.clear(); state.coverAttempts.clear();
-    state.sort = 'recommended'; state.busyMore = false;
+    state.sort = 'recommended'; state.filter = 'all'; state.busyMore = false; state.selected.clear(); state.view = 'cards';
   }
   const hydration = hydrationFromResult(result, next.cards);
   for (const card of next.cards) for (const image of card.item.images) {
@@ -371,11 +532,16 @@ function acceptGallery(result: unknown, append = false): boolean {
   }
   if (append && sameRun && state.gallery) {
     const combined = new Map(state.gallery.cards.map(card => [card.item.id, card]));
-    next.cards.forEach(card => combined.set(card.item.id, card));
+    next.cards.forEach(card => combined.set(card.item.id, mergeAppendedCard(combined.get(card.item.id), card)));
     next.cards = [...combined.values()];
     next.warnings = [...new Set([...state.gallery.warnings, ...next.warnings])];
   }
   state.gallery = next;
+  const currentPhotos = new Set(next.cards.flatMap(card => card.item.images.map(image => photoKey(card.item, image))));
+  for (const key of state.photos.keys()) if (!currentPhotos.has(key)) state.photos.delete(key);
+  for (const id of state.nextImage.keys()) if (!next.cards.some(card => card.item.id === id)) state.nextImage.delete(id);
+  state.selected = new Set([...state.selected].filter(id => next.cards.some(card => card.item.id === id)));
+  if (state.selected.size < 2) state.view = 'cards';
   state.status = '';
   state.statusError = false;
   render();
@@ -408,7 +574,7 @@ async function refreshItem(id: string): Promise<void> {
   const data = state.gallery, key = pendingKey('refresh', id), generation = state.generation;
   if (!data || state.pending.has(key)) return;
   state.pending.add(key);
-  render();
+  renderAffectedItem(id);
   try {
     const result = await callTool('get_items', { run_id: data.run_id, ids: [id] });
     if (state.gallery?.run_id !== data.run_id || state.generation !== generation) return;
@@ -417,14 +583,69 @@ async function refreshItem(id: string): Promise<void> {
     const card = cardById(id);
     if (!refreshed || !card || record(result)?.isError) throw new Error(t('refreshFailed'));
     if (Date.parse(refreshed.observed_at) < Date.parse(card.item.observed_at)) throw new Error(t('refreshFailed'));
+    if (!assessmentStillApplies(card, refreshed)) card.assessment = null;
     card.item = refreshed;
-    if (card.assessment?.checked_image_ids.some(imageId => !refreshed.images.some(image => image.id === imageId))) card.assessment = null;
     state.cardMessages.set(id, { text: t('refreshed'), error: false });
     if (state.viewerId === id) state.viewerPosition = Math.min(state.viewerPosition, Math.max(0, refreshed.images.length - 1));
   } catch { if (state.gallery?.run_id === data.run_id && state.generation === generation) state.cardMessages.set(id, { text: t('refreshFailed'), error: true }); }
   finally {
     state.pending.delete(key);
-    if (state.gallery?.run_id === data.run_id && state.generation === generation) { render(); if (dialog.open) renderViewer(); }
+    if (state.gallery?.run_id === data.run_id && state.generation === generation) {
+      if (state.sort !== 'recommended' || state.filter !== 'all' || state.view === 'comparison') render(); else renderAffectedItem(id);
+      if (dialog.open) renderViewer();
+    }
+  }
+}
+
+async function setFeedback(id: string, decision: ItemFeedback['decision']): Promise<void> {
+  const data = state.gallery, key = pendingKey('feedback', id), generation = state.generation;
+  if (!data || !cardById(id) || state.pending.has(key)) return;
+  state.pending.add(key);
+  renderAffectedItem(id);
+  try {
+    const result = await callTool('set_item_feedback', { run_id: data.run_id, item_id: id, decision });
+    if (state.gallery?.run_id !== data.run_id || state.generation !== generation) return;
+    const feedback = feedbackFromResult(result, data.run_id, id), card = cardById(id);
+    if (!feedback || !card || feedback.decision !== decision) throw new Error(t('feedbackFailed'));
+    card.feedback = feedback;
+    state.cardMessages.set(id, { text: t('feedbackSaved'), error: false });
+  } catch {
+    if (state.gallery?.run_id === data.run_id && state.generation === generation) {
+      state.cardMessages.set(id, { text: t('feedbackFailed'), error: true });
+    }
+  } finally {
+    state.pending.delete(key);
+    if (state.gallery?.run_id === data.run_id && state.generation === generation) {
+      if (state.filter !== 'all') render(); else { renderAffectedItem(id); renderSelectionBar(); }
+    }
+  }
+}
+
+async function discussSelection(): Promise<void> {
+  const data = state.gallery, capabilities = app.getHostCapabilities(), generation = state.generation;
+  if (!data || !state.connected || !capabilities?.message?.text || state.busyChat) return;
+  const cards = state.selected.size ? selectedCards(data.cards, state.selected) : data.cards.filter(card => card.feedback?.decision === 'shortlist');
+  if (!cards.length) return;
+  const context = { run_id: data.run_id, item_ids: cards.map(card => card.item.id),
+    decisions: cards.flatMap(card => card.feedback ? [{ item_id: card.item.id, decision: card.feedback.decision }] : []) };
+  state.busyChat = true;
+  renderSelectionBar();
+  try {
+    if (capabilities.updateModelContext?.structuredContent || capabilities.updateModelContext?.text) {
+      try {
+        await app.updateModelContext(capabilities.updateModelContext.structuredContent ? { structuredContent: context }
+          : { content: [{ type: 'text', text: JSON.stringify(context) }] });
+      } catch { /* The explicit message carries the same exact run/item identities. */ }
+    }
+    if (state.gallery?.run_id !== data.run_id || state.generation !== generation) return;
+    const response = await app.sendMessage({ role: 'user', content: [{ type: 'text', text: `${t('discussPrompt')}\n${JSON.stringify(context)}` }] });
+    if (state.gallery?.run_id !== data.run_id || state.generation !== generation) return;
+    if (response.isError) throw new Error(t('discussFailed'));
+    setStatus(t('discussDone'));
+  } catch {
+    if (state.gallery?.run_id === data.run_id && state.generation === generation) setStatus(t('discussFailed'), true);
+  } finally {
+    if (state.gallery?.run_id === data.run_id && state.generation === generation) { state.busyChat = false; renderSelectionBar(); }
   }
 }
 
@@ -592,7 +813,10 @@ async function loadPhotos(card: GalleryCard, startIndex: number, batchSize = 4):
     }
   } finally {
     state.pending.delete(key);
-    if (state.gallery?.run_id === data.run_id && state.generation === generation) { render(); if (dialog.open) renderViewer(); }
+    if (state.gallery?.run_id === data.run_id && state.generation === generation) {
+      renderAffectedItem(card.item.id);
+      if (dialog.open) renderViewer();
+    }
   }
 }
 

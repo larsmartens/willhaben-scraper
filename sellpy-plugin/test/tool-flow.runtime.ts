@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ItemObservation } from '../src/domain.js';
 
 const calls=vi.hoisted(()=>({ attempted:[] as string[], received:[] as string[][], enriched:null as ItemObservation|null }));
-vi.mock('../src/sellpy/client.js',()=>({
-  createSellpyProvider:()=>({
+vi.mock('../src/sellpy/client.js',()=>{
+  const provider = {
     details:async(ids:string[])=>{
       calls.received.push([...ids]);
       const unique=[...new Set(ids)];
@@ -12,8 +12,9 @@ vi.mock('../src/sellpy/client.js',()=>({
       calls.attempted.push(...done);
       return {items:calls.enriched && done.includes(calls.enriched.id)?[calls.enriched]:[],failures:[],remaining_ids:unique.slice(10)};
     },
-  }),
-}));
+  };
+  return { createSellpyProvider:()=>provider, sharedSellpyProvider:provider };
+});
 import { invokeTool } from '../src/tools.js';
 
 function context() { return {env:env as Env,principal:'review-user',deadline:Date.now()+30000}; }

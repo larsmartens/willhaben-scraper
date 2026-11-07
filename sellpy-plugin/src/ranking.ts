@@ -19,7 +19,7 @@ export function preferObservation(current: ItemObservation, incoming: ItemObserv
   return difference > 0 || (difference === 0 && incoming.source === 'detail' && current.source !== 'detail');
 }
 
-export function assessmentStillApplies(current: Candidate, incoming: ItemObservation): boolean {
+export function assessmentStillApplies(current: Pick<Candidate, 'item' | 'assessment'>, incoming: ItemObservation): boolean {
   if (!current.assessment) return false;
   const imageIds = new Set(incoming.images.map(image => image.id));
   if (current.assessment.checked_image_ids.some(id => !imageIds.has(id))) return false;

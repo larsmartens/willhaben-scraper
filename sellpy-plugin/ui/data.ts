@@ -1,4 +1,5 @@
-import type { GalleryCard, GalleryData, ItemImage, ItemObservation, Money, RetrievalPath, VisualAssessment } from '../src/domain.js';
+import type { GalleryCard, GalleryData, ItemFeedback, ItemImage, ItemObservation, Money, RetrievalPath, VisualAssessment } from '../src/domain.js';
+import { assessmentStillApplies, preferObservation } from '../src/ranking.js';
 
 const ITEM_HOST = /^(?:www\.)?sellpy\.(?:com|at|de|se|nl|fi|dk|fr|be|pl|cz|it|es|ee|lt|lu|sk|hr|hu|si|pt|ie|ro|bg|gr)$/;
 const IMAGE_HOSTS = new Set(['prod.images.sellpy.net', 'images.sellpy.net', 'sellpy-parse-prod-files.s3.amazonaws.com', 'sellpy-parse-prod-files.s3.eu-west-1.amazonaws.com']);
@@ -109,6 +110,33 @@ function parsePaths(value: unknown): RetrievalPath[] {
   return paths;
 }
 
+export function parseFeedback(value: unknown, itemId: string): ItemFeedback | null {
+  const data = record(value);
+  if (!data || data.item_id !== itemId || !['shortlist', 'reject', 'neutral'].includes(String(data.decision)) ||
+    typeof data.updated_at !== 'string' || !Number.isFinite(Date.parse(data.updated_at))) return null;
+  return { item_id: itemId, decision: data.decision as ItemFeedback['decision'], updated_at: data.updated_at,
+    ...(typeof data.reason === 'string' ? { reason: data.reason } : {}) };
+}
+
+export function feedbackFromResult(value: unknown, runId: string, itemId: string): ItemFeedback | null {
+  const result = record(value), data = record(result?.structuredContent);
+  if (result?.isError || data?.run_id !== runId || data?.item_id !== itemId) return null;
+  return parseFeedback(data.feedback, itemId);
+}
+
+/** Overlapping pages may have been captured before an acknowledged refresh or feedback write. */
+export function mergeAppendedCard(current: GalleryCard | undefined, incoming: GalleryCard): GalleryCard {
+  if (!current || current.item.id !== incoming.item.id) return incoming;
+  const item = preferObservation(current.item, incoming.item) ? incoming.item : current.item;
+  const previousAssessment = assessmentStillApplies(current, item) ? current.assessment : null;
+  const receivedAssessment = assessmentStillApplies(incoming, item) ? incoming.assessment : null;
+  const assessment = receivedAssessment && (!previousAssessment
+    || Date.parse(receivedAssessment.assessed_at) > Date.parse(previousAssessment.assessed_at)) ? receivedAssessment : previousAssessment;
+  const feedback = incoming.feedback && (!current.feedback
+    || Date.parse(incoming.feedback.updated_at) > Date.parse(current.feedback.updated_at)) ? incoming.feedback : current.feedback;
+  return { ...incoming, item, assessment, ...(feedback ? { feedback } : {}) };
+}
+
 export function parseGallery(value: unknown): GalleryData | null {
   const data = record(value);
   if (!data || typeof data.run_id !== 'string' || !Array.isArray(data.cards)) return null;
@@ -118,8 +146,9 @@ export function parseGallery(value: unknown): GalleryData | null {
     const card = record(entry), item = parseItem(card?.item);
     if (!card || !item || seen.has(item.id)) continue;
     seen.add(item.id);
+    const feedback = parseFeedback(card.feedback, item.id);
     cards.push({ item, reason: string(card.reason) ?? '', cautions: strings(card.cautions),
-      assessment: parseAssessment(card.assessment, item), paths: parsePaths(card.paths) });
+      assessment: parseAssessment(card.assessment, item), paths: parsePaths(card.paths), ...(feedback ? { feedback } : {}) });
   }
   return { run_id: data.run_id, cards, language: string(data.language) ?? 'de', title: string(data.title) ?? '',
     next_cursor: string(data.next_cursor), warnings: strings(data.warnings) };
