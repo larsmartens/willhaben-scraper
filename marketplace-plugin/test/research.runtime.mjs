@@ -192,6 +192,42 @@ try {
   assert.equal(third.listings[0].id, "3");
   console.log("PASS description projection, UI photos, model photo delivery and recorded visual findings remain distinct");
 
+  const coverageSession = await call("ensureResearch", { source: "live" });
+  const sourceTime = "2026-11-07T10:00:00.000Z";
+  const newerSourceTime = "2026-11-07T10:01:00.000Z";
+  const recordDescription = (deliveredChars, totalChars, observedAt = sourceTime) => call("recordResearch", {
+    researchId: coverageSession.researchId,
+    event: { type: "details", audience: "model", records: [{ id: "1", fields: ["description"], observedAt,
+      description: { deliveredChars, totalChars, truncated: deliveredChars < totalChars } }] },
+  });
+  const checkDescription = async (deliveredChars, totalChars, observedAt = sourceTime) => {
+    const audit = await call("getResearch", { researchId: coverageSession.researchId, section: "listings", ids: ["1"] });
+    assert.deepEqual(audit.listings[0].description, { deliveredChars, totalChars,
+      truncated: deliveredChars < totalChars, observedAt });
+    const coverage = await call("getResearch", { researchId: coverageSession.researchId });
+    assert.equal(coverage.counts.descriptionsFull, Number(deliveredChars === totalChars));
+    assert.equal(coverage.counts.descriptionsTruncated, Number(deliveredChars < totalChars));
+  };
+  await recordDescription(1500, 2400);
+  await checkDescription(1500, 2400);
+  await recordDescription(799, 799);
+  await checkDescription(799, 799);
+  await recordDescription(1600, 2400);
+  await recordDescription(100, 799);
+  await checkDescription(799, 799);
+  await recordDescription(20, 100, newerSourceTime);
+  await checkDescription(20, 100, newerSourceTime);
+  await recordDescription(2400, 2400);
+  await checkDescription(20, 100, newerSourceTime);
+  await recordDescription(40, 100, newerSourceTime);
+  await recordDescription(10, 100, newerSourceTime);
+  await checkDescription(40, 100, newerSourceTime);
+  await recordDescription(100, 100, newerSourceTime);
+  await recordDescription(90, 90, newerSourceTime);
+  await recordDescription(95, 100, newerSourceTime);
+  await checkDescription(100, 100, newerSourceTime);
+  console.log("PASS complete description coverage survives normalization and delayed partial deliveries for the same source time");
+
   const overlap = await call("ensureResearch", { source: "live" });
   const overlapAppend = event => call("recordResearch", { researchId: overlap.researchId, event });
   const overlapA = await overlapAppend({ eventId: "overlap-a", type: "search", query: "Bankerlampe", page: 1, pageSize: 50, ids: ["1", "2", "3"] });

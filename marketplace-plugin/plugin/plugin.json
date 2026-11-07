@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "willhaben",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Durchsuche willhaben mit Text oder Referenzfotos. Prüfe Originalbilder, verfeinere gefundene Angebote nach belegten Anforderungen, merke Favoriten und vergleiche sie in blätterbaren Karten. Sieh Suchanfragen, Trefferzahlen und geprüfte Inhalte.",
   "extensions": {
     "com.openai": {

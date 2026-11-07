@@ -14,7 +14,7 @@ export const PRESENTATION_RESOURCE_META = {
 function mountPresentation() {
   const words = {
     de: {
-      queryMore: "Weitere Suchanfragen", detailCount: "Detailseiten abgerufen", coverage: "Rechercheumfang", queries: "Suchanfragen", fetched: "geladene Inserate", descriptions: "Beschreibungen an ChatGPT", modelPhotos: "Fotos an ChatGPT", reviews: "Fotoprüfungen dokumentiert", uiPhotos: "Fotos für die Ansicht", found: "gefunden", loaded: "geladen", pages: "Seiten", details: "Details lesen", closeDetails: "Details schließen", detailLoading: "Details werden geladen", pageNext: "Weitere Angebote", pagePrevious: "Vorherige Seite", pageLoading: "Angebote werden geladen", audit: "Einzelnachweise", auditMore: "Weitere Nachweise", coverRetry: "Foto laden", emptyAudit: "Bisher wurden Suchtreffer abgerufen.", fields: "Übergebene Felder", chars: "Zeichen", modelIndices: "Fotoindizes an ChatGPT", agentReview: "Dokumentierter Modellbefund",
+      queryMore: "Weitere Suchanfragen", detailCount: "Detailseiten abgerufen", coverage: "Rechercheumfang", queries: "Suchanfragen", fetched: "geladene Suchtreffer", descriptions: "Beschreibungen an ChatGPT", modelPhotos: "Fotos an ChatGPT", reviews: "Fotoprüfungen dokumentiert", uiPhotos: "Fotos für die Ansicht", found: "gefunden", loaded: "geladen", pages: "Seiten", details: "Details lesen", closeDetails: "Details schließen", detailLoading: "Details werden geladen", pageNext: "Weitere Angebote", pagePrevious: "Vorherige Seite", pageLoading: "Angebote werden geladen", audit: "Einzelnachweise", auditMore: "Weitere Nachweise", coverRetry: "Foto laden", emptyAudit: "Bisher wurden Suchtreffer abgerufen.", fields: "Übergebene Felder", chars: "Zeichen", modelIndices: "Fotoindizes an ChatGPT", agentReview: "Dokumentierter Modellbefund",
       title: "Angebotsübersicht", waiting: "Angebote werden geladen", source: { live: "willhaben", provided: "Bereitgestellte Angebote", demo: "Synthetische Demoangebote" },
       sort: "Sortieren", recommendation: "Empfehlung", priceUp: "Preis aufsteigend", priceDown: "Preis absteigend", fullscreen: "Größere Ansicht", inline: "Zurück zum Chat",
       compare: "Vergleichen", selected: "zum Vergleich ausgewählt", clearSelection: "Auswahl leeren", closeComparison: "Vergleich schließen", compareAttribute: "Merkmal", removeSelection: "Aus Vergleich entfernen",
@@ -46,7 +46,7 @@ function mountPresentation() {
       selectionError: "Die Auswahl konnte nicht aktualisiert werden.", booleanTrue: "Ja", booleanFalse: "Nein",
     },
     en: {
-      queryMore: "More queries", detailCount: "detail pages retrieved", coverage: "Research coverage", queries: "queries", fetched: "retrieved listings", descriptions: "descriptions sent to ChatGPT", modelPhotos: "photos sent to ChatGPT", reviews: "documented photo reviews", uiPhotos: "photos for this view", found: "found", loaded: "retrieved", pages: "pages", details: "Read details", closeDetails: "Close details", detailLoading: "Loading details", pageNext: "More offers", pagePrevious: "Previous page", pageLoading: "Loading offers", audit: "Individual records", auditMore: "More records", coverRetry: "Load photo", emptyAudit: "Search summaries have been retrieved so far.", fields: "Delivered fields", chars: "characters", modelIndices: "Photo indices sent to ChatGPT", agentReview: "Agent-reported finding",
+      queryMore: "More queries", detailCount: "detail pages retrieved", coverage: "Research coverage", queries: "queries", fetched: "retrieved search results", descriptions: "descriptions sent to ChatGPT", modelPhotos: "photos sent to ChatGPT", reviews: "documented photo reviews", uiPhotos: "photos for this view", found: "found", loaded: "retrieved", pages: "pages", details: "Read details", closeDetails: "Close details", detailLoading: "Loading details", pageNext: "More offers", pagePrevious: "Previous page", pageLoading: "Loading offers", audit: "Individual records", auditMore: "More records", coverRetry: "Load photo", emptyAudit: "Search summaries have been retrieved so far.", fields: "Delivered fields", chars: "characters", modelIndices: "Photo indices sent to ChatGPT", agentReview: "Agent-reported finding",
       title: "Offer overview", waiting: "Loading listings", source: { live: "willhaben", provided: "Provided listings", demo: "Synthetic demo listings" },
       sort: "Sort", recommendation: "Recommended order", priceUp: "Price low to high", priceDown: "Price high to low", fullscreen: "Larger view", inline: "Back to chat",
       compare: "Compare", selected: "selected for comparison", clearSelection: "Clear selection", closeComparison: "Close comparison", compareAttribute: "Attribute", removeSelection: "Remove from comparison",
@@ -109,7 +109,7 @@ function mountPresentation() {
   let comparisonOpen = false;
   let selectionRevision = 0;
   let discussion = null;
-  const app = new window.WillhabenMcpApps.App({ name: "willhaben", version: "1.5.0" }, {}, { autoResize: false });
+  const app = new window.WillhabenMcpApps.App({ name: "willhaben", version: "1.5.1" }, {}, { autoResize: false });
 
   const t = key => words[language][key];
   const object = value => value !== null && typeof value === "object" && !Array.isArray(value);

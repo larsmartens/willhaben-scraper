@@ -44,6 +44,17 @@ const itemFields = {
 };
 export const LISTING_SCHEMA = {type:"object",required:["id","title","price"],additionalProperties:false,properties:itemFields};
 const textFrom = (v, limit) => typeof v === "string" ? v.trim().slice(0,limit) : "";
+const DESCRIPTION_FORMAT = "line-breaks-v1";
+const descriptionBreak = /<br\s*\/?\s*>/gi;
+const descriptionText = value => textFrom(typeof value === "string" ? value.replace(descriptionBreak, "\n") : value, Infinity);
+const needsDescriptionRefresh = value => value?.descriptionTruncated === true && value.descriptionFormat !== DESCRIPTION_FORMAT;
+
+function cachedDescription(value) {
+  if (typeof value?.description !== "string" || value.descriptionTruncated) return value;
+  const description = descriptionText(value.description);
+  return description === value.description ? value
+    : { ...value, description, descriptionLength: description.length, descriptionTruncated: false, descriptionFormat: DESCRIPTION_FORMAT };
+}
 function validateValue(v, def, key) {
   if (def.anyOf) { if (v !== null) validateValue(v, money, key); return; }
   if (def.enum && !def.enum.includes(v)) invalid("Invalid " + key + "; expected " + def.enum.join(", "));
@@ -386,13 +397,13 @@ function liveListing(raw, detailed = false){
   const shippingCost=normalizeMoney(explicit.versandkosten??attr("SHIPPING_COST"));
   const when=raw.publishedDate??attr("PUBLISHED_String")??tms.publish_date;
   const descriptionValue = attr("DESCRIPTION") ?? attr("BODY_DYN");
-  const description = typeof descriptionValue === "string" ? descriptionValue.trim() : "";
+  const description = descriptionText(descriptionValue);
   const profile = raw.sellerProfileUserData;
   const memberSince = typeof profile?.registerDate === "string" && Number.isFinite(Date.parse(profile.registerDate))
     ? new Date(profile.registerDate).toISOString() : null;
   const activeListingCount = Number.isSafeInteger(profile?.activeAdCount) && profile.activeAdCount >= 0 ? profile.activeAdCount : null;
   const seller = { ...(memberSince ? {memberSince} : {}), ...(activeListingCount !== null ? {activeListingCount} : {}) };
-  return {id:String(raw.id),title,price,url,description:description.slice(0,6000),descriptionLength:description.length,
+  return {id:String(raw.id),title,price,url,description:description.slice(0,6000),descriptionLength:description.length,descriptionFormat:DESCRIPTION_FORMAT,
     descriptionTruncated:description.length>6000,attributes,...photos,status,
     ...(price!==null?{priceType:isFree&&price===0?"free":/verhand|\bvb\b/.test(priceLabel)?"negotiable":"asking"}:/anfrage/.test(priceLabel)?{priceType:"on_request"}:{}),
     ...(qty && qty<=100000?{quantity:qty}:{}),...(shippingCost!==null?{shippingCost}:{}),
@@ -566,7 +577,7 @@ function liveProvider(env) {
       await cacheCall("putCached",[entries.slice(offset,offset+101)],deadline);
   }
   function observation(value, observedAt, cacheHit) {
-    return {...value, observedAt, cacheAgeSeconds:cacheHit ? Math.max(0,Math.floor((Date.now()-Date.parse(observedAt))/1000)) : 0, cacheHit};
+    return {...cachedDescription(value), observedAt, cacheAgeSeconds:cacheHit ? Math.max(0,Math.floor((Date.now()-Date.parse(observedAt))/1000)) : 0, cacheHit};
   }
   function checkFresh(fresh) {
     if (typeof fresh !== "boolean") invalid("fresh must be a boolean");
@@ -695,7 +706,7 @@ function liveProvider(env) {
       const entry = newerDetail ? detail : summary;
       if (!entry?.value) return null;
       return { id, kind: entry.value.gone ? "gone" : newerDetail ? "detail" : "search", observedAt: entry.observedAt,
-        ...(!entry.value.gone ? { listing: entry.value } : {}) };
+        ...(!entry.value.gone ? { listing: cachedDescription(entry.value) } : {}) };
     },
     async summary(id,options) {
       const entry = await this.summaryObservation(id,options);
@@ -706,8 +717,11 @@ function liveProvider(env) {
       checkFresh(fresh);
       const key = "detail:"+id;
       const prior = await readCache(key,deadline);
+      fresh ||= needsDescriptionRefresh(prior?.value);
       if (prior && !fresh) return prior.value && (!prior.value.gone || includeGone) ? observation(prior.value,prior.observedAt,true) : null;
-      const lease = await claimObservation(key,fresh,deadline);
+      const repairDeadline = Math.min(Number.isFinite(deadline) ? deadline : Infinity, Date.now()+35000);
+      let lease = await claimObservation(key,fresh,deadline);
+      while (lease.entry && needsDescriptionRefresh(lease.entry.value)) lease = await claimObservation(key,true,repairDeadline);
       if (lease.entry) return lease.entry.value.gone && !includeGone ? null : observation(lease.entry.value,lease.entry.observedAt,true);
       try {
         const hint = prior?.value ?? (await readCache("summary:"+id,deadline))?.value;

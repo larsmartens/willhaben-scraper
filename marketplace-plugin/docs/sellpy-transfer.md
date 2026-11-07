@@ -48,7 +48,7 @@ The pstack review uses independent GPT agents and actual Workers and browser beh
 
 ## Verification
 
-On 2026-11-07, the release checks passed 155 Node tests, six workerd and SQLite suites, and 40 Chromium behavior groups. The repository commands are `npm test`, `npm run test:runtime` and `npm run test:browser` with the configured Chromium executable.
+On 2026-11-07, the release checks passed 156 Node tests, six workerd and SQLite suites, and 40 Chromium behavior groups. The repository commands are `npm test`, `npm run test:runtime` and `npm run test:browser` with the configured Chromium executable.
 
 The refinement suite checks 650 retained candidates, bounded steps, frozen feedback, cursor replay, strict photo requirements, unknown authenticity, older overlapping reviews and permanent evidence invalidation. The tool suite exercises the actual photo-to-review-to-refinement-to-gallery calls. It also covers three directly inspected lamp IDs with zero search queries, partial image success and a fully failed image batch.
 
@@ -59,3 +59,9 @@ The UI regression reproduces partially stale evidence. Before the correction, th
 Independent review also reproduced a detail refresh that left outdated price, availability and quantity in the comparison. The Workers regression changes an offer from 120 euros and two pieces to a sold 75-euro offer with one piece. It checks current criteria, 10-euro shipping and the 85-euro total. A subsequent observation removes quantity and shipping fields so their derived values become unknown. Browser checks exercise the same complete-card contract and protect newer observations against older responses. Matching original-photo identities preserve the existing image element. A changed photo clears its previous gallery and discards in-flight responses for the old image.
 
 The bundled skill passes frontmatter validation and all ten internal reference checks across its eight Markdown files.
+
+## Live-client follow-through
+
+The actual ChatGPT chat-mode check retrieved the three original lamp IDs and six original photos. Two green shades were confirmed and one light shade contradicted. A natural follow-up applied the mandatory green-shade requirement to the same research and opened exactly the two matching offers. The live widget saved a shortlist decision, displayed the comparison and handed the exact selection back to the chat. ChatGPT reused the saved evidence and the decision in its response.
+
+The final detail-view check exposed literal `<br/>` separators in a live description. Version 1.5.1 normalizes those line breaks for readable descriptions and preserves the corresponding length and truncation contract. Complete legacy cache values preserve their original observation times. Truncated legacy values are refreshed once when their full normalized length must be recovered. The audit prefers a complete delivery over an earlier partial delivery of the same observation, including when normalization produces fewer characters. The coverage header labels retrieved search results explicitly, so a direct-ID review can show zero searches alongside its detail and photo counts.

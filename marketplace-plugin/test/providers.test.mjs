@@ -23,6 +23,91 @@ function cacheEnv() {
   };
   return {entries,batches,gate,env:{LIVE_ACCESS:'personal_test',ORIGIN_GATE:{getByName(origin){assert.equal(origin,'https://www.willhaben.at');return gate;}}}};
 }
+test('description line breaks normalize before length accounting and repair legacy detail caches', async t => {
+  const storage = cacheEnv();
+  const markup = ' Schirm<br/>grün<BR />Elektrik<br>unbekannt<br />Preis <100 € & Maße >10 cm ';
+  const expected = 'Schirm\ngrün\nElektrik\nunbekannt\nPreis <100 € & Maße >10 cm';
+  let rawDescription = markup;
+  let descriptionField = 'DESCRIPTION';
+  const fetcher = t.mock.method(globalThis, 'fetch', async () => {
+    const row = rawRow(73);
+    row.attributes.attribute.push({ name: descriptionField, values: [rawDescription] });
+    return embed({ advertDetails: row });
+  });
+  const provider = getProvider('live', storage.env);
+  const fresh = await provider.detail('73');
+  assert.equal(fresh.description, expected);
+  assert.equal(fresh.descriptionLength, expected.length);
+  assert.equal(fresh.descriptionTruncated, false);
+  const originalTime = new Date(Date.now() - 300000).toISOString();
+  const legacy = { ...storage.entries.get('detail:73'), observedAt: originalTime,
+    expiresAt: new Date(Date.now() + 600000).toISOString(),
+    value: { ...storage.entries.get('detail:73').value, description: markup.trim(),
+      descriptionLength: markup.trim().length, descriptionTruncated: false, descriptionFormat: undefined } };
+  storage.entries.set('detail:73', structuredClone(legacy));
+  const cached = await provider.detail('73');
+  assert.equal(cached.description, expected);
+  assert.equal(cached.descriptionLength, expected.length);
+  assert.equal(cached.descriptionTruncated, false);
+  assert.equal(cached.observedAt, originalTime);
+  assert.equal(cached.cacheHit, true);
+  assert.equal(fetcher.mock.callCount(), 1, 'A complete legacy cache hit needs no network refresh');
+  assert.equal((await provider.summary('73')).description, expected);
+  assert.equal((await provider.summaryObservation('73')).listing.description, expected);
+
+  const getCached = storage.gate.getCached;
+  storage.gate.getCached = async () => null;
+  storage.gate.claimObservation = async (key, owner, { minObservedAt }) => {
+    const entry = storage.entries.get(key);
+    return entry && Date.parse(entry.observedAt) >= minObservedAt
+      ? { state: 'cached', entry: structuredClone(entry) } : { state: 'owner' };
+  };
+  storage.gate.commitObservation = async (key, owner, entries) => storage.gate.putCached(entries);
+  storage.gate.releaseObservation = async () => {};
+  const claimed = await provider.detail('73');
+  assert.equal(claimed.description, expected);
+  assert.equal(claimed.descriptionLength, expected.length);
+  assert.equal(claimed.observedAt, originalTime);
+  assert.equal(fetcher.mock.callCount(), 1);
+
+  rawDescription = 'Zeile<br/>'.repeat(2000);
+  descriptionField = 'BODY_DYN';
+  const fullText = 'Zeile\n'.repeat(2000).trim();
+  storage.entries.set('detail:73', { ...legacy, value: { ...legacy.value,
+    description: rawDescription.slice(0, 6000), descriptionLength: rawDescription.length, descriptionTruncated: true } });
+  const refreshed = await provider.detail('73');
+  assert.equal(refreshed.description, fullText.slice(0, 6000));
+  assert.equal(refreshed.descriptionLength, fullText.length);
+  assert.equal(refreshed.descriptionTruncated, true);
+  assert.equal(refreshed.cacheHit, false);
+  assert.notEqual(refreshed.observedAt, originalTime);
+  assert.equal(fetcher.mock.callCount(), 2, 'A truncated legacy markup cache cannot supply the full normalized length');
+  storage.gate.getCached = getCached;
+  const repeated = await provider.detail('73');
+  assert.equal(repeated.descriptionLength, fullText.length);
+  assert.equal(repeated.observedAt, refreshed.observedAt);
+  assert.equal(repeated.cacheHit, true);
+  assert.equal(fetcher.mock.callCount(), 2);
+  for (const prefixLength of [6000, 5997]) {
+    rawDescription = 'x'.repeat(prefixLength) + '<br/>Ende';
+    const expectedText = 'x'.repeat(prefixLength) + '\nEnde';
+    storage.entries.set('detail:73', { ...legacy, value: { ...legacy.value,
+      description: rawDescription.slice(0, 6000), descriptionLength: rawDescription.length, descriptionTruncated: true } });
+    const beforeRefresh = fetcher.mock.callCount();
+    const directRefresh = await provider.detail('73');
+    assert.equal(directRefresh.description, expectedText.slice(0, 6000));
+    assert.equal(directRefresh.descriptionLength, expectedText.length);
+    assert.equal(directRefresh.descriptionTruncated, true);
+    assert.equal(directRefresh.cacheHit, false);
+    assert.equal(fetcher.mock.callCount(), beforeRefresh + 1);
+    const normalizedCache = await provider.detail('73');
+    assert.equal(normalizedCache.description, directRefresh.description);
+    assert.equal(normalizedCache.descriptionLength, expectedText.length);
+    assert.equal(normalizedCache.observedAt, directRefresh.observedAt);
+    assert.equal(normalizedCache.cacheHit, true);
+    assert.equal(fetcher.mock.callCount(), beforeRefresh + 1);
+  }
+});
 test('native search links encode user input and scope filters without fetching',()=>{
   const q='Lampen+Glas &Set', u=new URL(buildSearchLink(q,{areaId:900,priceMax:30,condition:'as_new',attributeIds:[725],categoryId:123,paylivery:true}));
   assert.equal(u.origin,'https://www.willhaben.at');

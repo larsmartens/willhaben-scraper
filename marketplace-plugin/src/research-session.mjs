@@ -205,8 +205,11 @@ export class ResearchSession extends DurableObject {
       const old = this.#sql("SELECT * FROM details WHERE listing_id = ? AND audience = ?", record.id, event.audience).toArray()[0];
       const fields = [...new Set([...(old ? JSON.parse(old.fields) : []), ...record.fields])].sort();
       let description = old?.description ? JSON.parse(old.description) : null;
+      // A complete normalized description can be shorter than a previously delivered raw prefix.
       if (record.description && (!description || record.description.observedAt > description.observedAt ||
-          (record.description.observedAt === description.observedAt && record.description.deliveredChars >= description.deliveredChars))) {
+          (record.description.observedAt === description.observedAt &&
+            ((description.truncated && !record.description.truncated) ||
+             (description.truncated === record.description.truncated && record.description.deliveredChars >= description.deliveredChars))))) {
         description = record.description;
       }
       this.#sql(`INSERT INTO details VALUES (?, ?, ?, ?, ?) ON CONFLICT (listing_id, audience) DO UPDATE SET
