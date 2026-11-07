@@ -6,6 +6,8 @@ For an overview or display request, present the available search summaries as so
 
 Use the observed IDs in recommendation order, a short title and a concise summary when it adds context. An overview normally starts with twelve relevant offers when available. A single-listing question needs one card. For all observed offers, pass `researchId` and omit `selections`. Use `queryIds` to select search scopes, or explicit `selections` for a ranked set. The app pages through the saved collection with twelve or twenty-four cards per page.
 
+For a completed refinement, open its `collectionId` with the returned `presentation` arguments. The collection retains every eligible ID and its order. Its cards show current, stale or pending visual findings and the saved user decision.
+
 Write each `reason` around the user's actual requirements. Put material unanswered questions in `cautions`. Include the user's explicit `criteria` for evidence-based requirement checks. Use `photoIndex` when an already inspected gallery photo shows the relevant feature better than the cover.
 
 The tool supplies canonical facts and the original observation time from the latest available search or detail observation. When `missingIds` are returned, keep the available cards and the missing observations visible. Refresh the relevant search pages with their original scope, `fresh=true` and the same `researchId`, then repeat `present_listings` with the same selection or query scope. Use `inspect_listings` for targeted verification when an individual offer's specifications or current availability matter.
@@ -17,6 +19,12 @@ The component displays the selected photos, facts and assessments. Its photo but
 Use the component's rendered cards as the visual presentation. For a display request, finish with one plain-text sentence pointing to the app cards. For requested advice or a study, add the decision analysis, material trade-offs and research coverage. Keep each offer's photo, facts, reasoning and original link together in its card. When a photo is unavailable, retain that status on the offer and leave appearance-dependent requirements open.
 
 State quantity and the price's unit explicitly when supported by the listing. Keep unknown quantity or shipping costs visible as open questions. Describe manufacturer, age and authenticity according to the available evidence. For market-price comparisons, name the comparable cohort and sample size.
+
+## Continue a comparison from the gallery
+
+The user can select offers across pages and compare their facts and recorded criteria in the app. **Merken** and **Passt nicht** save an explicit research-scoped decision. **Im Chat besprechen** sends the chosen listing IDs, `researchId` and `collectionId` to the chat.
+
+Use those exact IDs for the requested follow-up. Read their saved findings through targeted `get_research`, inspect any additional evidence needed for the question, and save new visual judgments. Present the updated selection after the comparison. Use `set_listing_feedback` when the user explicitly asks to remember, reject or clear a decision. Read [refining a selection](refinement.md) when feedback or new requirements should change the result set.
 
 ## Recover when the host cannot display cards
 

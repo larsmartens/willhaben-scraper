@@ -14,6 +14,7 @@ let rejectVisual = false;
 let oversizedPhotoId = null;
 let unavailablePhotoId = null;
 let deletedListingId = null;
+let detailReplacement = null;
 const photo = (id, index) => `https://cache.willhaben.at/mmo/fixture-${id}-${index}.png`;
 const thumbnail = (id, index) => `https://cache.willhaben.at/mmo/fixture-${id}-${index}_thumb.png`;
 function listing(id, detailed = false) {
@@ -84,7 +85,7 @@ const runtimeOptions = { modules: true, script: bundle.outputFiles[0].text, comp
     const id = url.pathname === "/iad/object" ? url.searchParams.get("adId") : url.pathname.match(/-(\d+)\/?$/)?.[1];
     assert.ok(id, "Expected a fixture detail ID");
     if (id === deletedListingId) return new Response("deleted", { status: 404 });
-    return html({ advertDetails: listing(Number(id), true) });
+    return html({ advertDetails: detailReplacement?.id === id ? detailReplacement : listing(Number(id), true) });
   },
 };
 let mf = new Miniflare(runtimeOptions);
@@ -165,6 +166,57 @@ try {
   assert.equal(audit.listings[0].modelPhotos.length, 2);
   assert.equal(audit.listings[0].findings[0].evidenceType, "agent-reported");
   console.log("PASS projected descriptions, model photos, app photos and declared findings have distinct audit records");
+
+  const context = modelPhotos.reviewContexts[0];
+  assert.equal(context.id, "1001");
+  assert.equal(context.researchId, researchId);
+  assert.deepEqual(context.photos.map(photo => photo.index), [0, 1]);
+  assert.ok(context.photos.every(photo => /^wp_[a-f0-9]{64}$/.test(photo.photoId)));
+  await call("record_review", { researchId, id: context.id, evidenceId: context.evidenceId,
+    photoIndices: context.photos.map(photo => photo.index), photoIds: context.photos.map(photo => photo.photoId),
+    findings: "Synthetic fixture requirement evidence.", requirements: [{ requirement: "Grüner Lampenschirm",
+      verdict: "confirmed", evidence: "Explicit synthetic test judgment bound to these delivered photos." }] });
+  const beforeRefinement = outbound.length;
+  const refined = await call("refine_research", { researchId, unknownPolicy: "exclude",
+    requirements: [{ requirement: "Grüner Lampenschirm", mode: "require" }] });
+  assert.equal(refined.eligibleCount, 1);
+  assert.deepEqual(refined.preview.map(item => item.id), ["1001"]);
+  assert.equal(outbound.length, beforeRefinement);
+  const refinedCards = await call("present_listings", { source: "live", researchId, collectionId: refined.collectionId });
+  assert.deepEqual(refinedCards.cards.map(card => card.id), ["1001"]);
+  assert.equal(refinedCards.cards[0].review.status, "current");
+  assert.equal(refinedCards.cards[0].review.checkedPhotoIds, undefined);
+  assert.equal(refinedCards.cards[0].review.requirements[0].photoIds, undefined);
+  assert.deepEqual(refinedCards.cards[0].review.checkedPhotoIndices, [0, 1]);
+  const focused = await call("get_research", { researchId, section: "listings", ids: ["1001"] });
+  assert.deepEqual(focused.listings[0].review.checkedPhotoIds, context.photos.map(photo => photo.photoId));
+  unavailablePhotoId = "1004";
+  const partialPhotos = await call("inspect_listing_images", { researchId, id: "1004", indices: [0, 1] });
+  assert.equal(partialPhotos._images.length, 1);
+  assert.deepEqual(partialPhotos.reviewContexts[0].photos.map(photo => photo.index), [1]);
+  assert.equal(partialPhotos.reviewContexts[0].requirements[0].requirement, "Grüner Lampenschirm");
+  const failedPhotos = await call("inspect_listing_images", { researchId, id: "1004", indices: [0] });
+  assert.equal(failedPhotos._images.length, 0);
+  assert.deepEqual(failedPhotos.reviewContexts[0].photos, []);
+  assert.equal(failedPhotos.reviewContexts[0].nextTool, "inspect_listing_images");
+  unavailablePhotoId = null;
+  console.log("PASS actual photo responses hand off only successful identities, strict refinement reuses them and full evidence stays directly retrievable");
+
+  const known = await call("inspect_listings", { source: "live", ids: ["2001", "2003", "2005"], limit: 3 });
+  assert.equal(known.research.queryCount, 0);
+  const knownPhotos = await call("inspect_listing_images", { researchId: known.researchId, id: "2001", count: 1 });
+  const knownContext = knownPhotos.reviewContexts[0];
+  await call("record_review", { researchId: known.researchId, id: "2001", evidenceId: knownContext.evidenceId,
+    photoIndices: knownContext.photos.map(photo => photo.index), photoIds: knownContext.photos.map(photo => photo.photoId),
+    findings: "Synthetic fixture green shade.", requirements: [{ requirement: "Grüner Lampenschirm",
+      verdict: "confirmed", evidence: "Explicit fixture judgment on delivered original image." }] });
+  const knownBefore = outbound.length;
+  const knownRefinement = await call("refine_research", { researchId: known.researchId, unknownPolicy: "exclude",
+    requirements: [{ requirement: "Grüner Lampenschirm", mode: "require" }] });
+  assert.equal(knownRefinement.totalCandidates, 3);
+  assert.deepEqual(knownRefinement.preview.map(item => item.id), ["2001"]);
+  assert.equal(outbound.length, knownBefore);
+  console.log("PASS direct detail inspection of three known IDs supports strict follow-up without any search event or new provider request");
 
   const visual = await call("search_by_image", { researchId, listingId: "1001", photoIndex: 1 });
   assert.equal(visual.items.length, 50);
@@ -272,12 +324,64 @@ try {
   assert.equal(repaired.research.counts.detailRecordsRetrieved, 0);
   console.log("PASS legacy pages disclose missing observations and retain positive cache repairs without invented detail evidence");
 
+  detailReplacement = listing(3001, true);
+  detailReplacement.attributes.attribute = [
+    { name: "PRICE", values: ["120"] }, { name: "Stückzahl", values: ["2"] },
+    { name: "Übergabe", values: ["Versand und Abholung"] }, { name: "Versandkosten", values: ["5"] },
+    { name: "Zustand", values: ["Gebraucht"] }, { name: "LOCATION", values: ["Wien"] },
+    { name: "ISPRIVATE", values: ["1"] }, { name: "DESCRIPTION", values: ["Original detail snapshot."] },
+  ];
+  const refreshSource = await call("inspect_listings", { source: "live", ids: ["3001"], fresh: true });
+  assert.equal(refreshSource.results[0]?.listing?.price, 120, JSON.stringify(refreshSource));
+  const refreshOverview = await call("present_listings", { source: "live", researchId: refreshSource.researchId,
+    selections: [{ id: "3001" }], criteria: [{ key: "price", value: { max: 100 } }, { key: "quantity", value: { min: 2 } }] });
+  assert.equal(refreshOverview.cards[0].price, 120);
+  assert.equal(refreshOverview.cards[0].unitPrice, 60);
+  assert.equal(refreshOverview.cards[0].totalPrice, 125);
+  assert.equal(refreshOverview.cards[0].location, "Wien");
+  detailReplacement.advertStatus.id = "sold";
+  detailReplacement.attributes.attribute = [
+    { name: "PRICE", values: ["75"] }, { name: "Stückzahl", values: ["1"] },
+    { name: "Übergabe", values: ["Versand"] }, { name: "Versandkosten", values: ["10"] },
+    { name: "Zustand", values: ["Defekt"] }, { name: "ISPRIVATE", values: ["0"] },
+    { name: "DESCRIPTION", values: ["Updated detail snapshot."] },
+  ];
+  detailReplacement.advertImageList.advertImage[0].mainImageUrl = photo("3001-replaced", 0);
+  await call("__test_expire_cache");
+  const refreshed = (await call("browse_collection", { researchId: refreshSource.researchId,
+    collectionId: refreshOverview.collectionId, action: "details", id: "3001" })).results[0];
+  assert.deepEqual(refreshed.evaluation.criteria.map(item => [item.key, item.status]),
+    [["price", "confirmed"], ["quantity", "contradicted"]], "Detail refresh must evaluate the collection's actual criteria");
+  assert.equal(refreshed.card.price, 75);
+  assert.equal(refreshed.card.status, "sold");
+  assert.equal(refreshed.card.quantity, 1);
+  assert.equal(refreshed.card.unitPrice, 75);
+  assert.equal(refreshed.card.shippingCost, 10);
+  assert.equal(refreshed.card.totalPrice, 85);
+  assert.equal(refreshed.card.sellerType, "dealer");
+  assert.equal(Object.hasOwn(refreshed.card, "location"), false);
+  assert.equal(refreshed.card.galleryComplete, true);
+  assert.equal(refreshed.card.image.url, photo("3001-replaced", 0));
+  assert.equal(refreshed.card.image.status, "pending");
+  assert.equal(refreshed.card.observedAt, refreshed.observedAt);
+  assert.ok(refreshed.card.observedAt > refreshOverview.cards[0].observedAt);
+  assert.deepEqual(refreshed.card.assessment.evaluation, refreshed.evaluation);
+  detailReplacement.attributes.attribute = detailReplacement.attributes.attribute.filter(attribute => !["Stückzahl", "Versandkosten"].includes(attribute.name));
+  await call("__test_expire_cache");
+  const missingFacts = (await call("browse_collection", { researchId: refreshSource.researchId,
+    collectionId: refreshOverview.collectionId, action: "details", id: "3001" })).results[0];
+  for (const field of ["quantity", "unitPrice", "shippingCost", "totalPrice"]) assert.equal(Object.hasOwn(missingFacts.card, field), false);
+  assert.equal(missingFacts.card.assessment.evaluation.status, "unknown");
+  assert.equal(missingFacts.card.observedAt, missingFacts.observedAt);
+  console.log("PASS detail refresh returns one complete current card with original source time, updated prices/criteria and absent unknown facts");
+
   rejectVisual = true;
   await assert.rejects(call("search_by_image", { researchId: sourcePhoto.researchId, listingId: "1198" }), { code: "upstream_forbidden" });
   const afterFailure = await call("get_research", { researchId: sourcePhoto.researchId });
   assert.equal(afterFailure.counts.detailRecordsRetrieved, 2);
   assert.equal(afterFailure.counts.detailRecordsDeliveredToModel, 0);
   console.log("PASS successful source-detail retrieval stays audited when the following visual search fails");
+
 } finally {
   await mf.dispose();
   await rm(state, { recursive: true, force: true });

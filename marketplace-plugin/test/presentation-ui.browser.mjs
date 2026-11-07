@@ -106,7 +106,7 @@ try {
   await page.waitForFunction(() => window.calls.some(call => call.method === "ui/notifications/initialized"));
   const initialization = await page.evaluate(() => window.calls.find(call => call.method === "ui/initialize"));
   assert.equal(initialization.params.protocolVersion, "2026-01-26");
-  assert.equal(initialization.params.appInfo.version, "1.4.2");
+  assert.equal(initialization.params.appInfo.version, "1.5.0");
   assert.equal(await frame.locator(".offer").count(), 3);
   assert.equal(await frame.locator('.brand-title img[alt="willhaben"]').evaluate(image => image.naturalWidth), 192);
   pass("MCP Apps initializes before receiving the presentation");
@@ -230,7 +230,8 @@ try {
 
   await frame.getByRole("button", { name: "Larger view", exact: true }).click();
   await page.waitForFunction(() => document.getElementById("widget").contentDocument.documentElement.dataset.mode === "fullscreen");
-  assert.equal(await frame.locator("#fullscreen").isVisible(), false);
+  assert.equal(await frame.locator("#fullscreen").isVisible(), true);
+  assert.equal(await frame.locator("#fullscreen").textContent(), "Back to chat");
   assert.equal(await frame.locator("#pager").isVisible(), false);
   await page.setViewportSize({ width: 1040, height: 1000 });
   assert.equal(await frame.locator("body").evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

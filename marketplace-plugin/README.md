@@ -1,10 +1,10 @@
 # willhaben
 
-Ein MCP-Plugin für die Recherche auf willhaben Marktplatz in ChatGPT. Version 1.4.2 unterstützt Text- und Bildsuche, gezielte Detailprüfungen, echte Inseratfotos, vergleichbare Angebotspreise, blätterbare Angebotskarten und einen nachvollziehbaren Rechercheumfang.
+Ein MCP-Plugin für die Recherche auf willhaben Marktplatz in ChatGPT. Version 1.5.0 unterstützt Text- und Bildsuche, gespeicherte Fotoanforderungen, nachträgliche Suchverfeinerung, Merken und Ablehnen sowie den direkten Vergleich von Angeboten in blätterbaren Karten.
 
 ## Verbindung
 
-Die persönliche Live-Verbindung verwendet die separat bereitgestellte Installations-URL. Sie ist bis zur ausdrücklichen Deaktivierung gültig. Nach einem Update der Tool-Schemata und UI-Metadaten die Verbindung in ChatGPT öffnen und die Werkzeuge aktualisieren. Der Server stellt 16 Tools bereit. `browse_collection` ist für die interaktive Oberfläche vorgesehen. 15 Tools stehen für die Modellsteuerung zur Verfügung. Die aktuelle OpenAI-Anleitung beschreibt den Refresh auf der Detailseite des Plugins. [Verbindung und Tests](https://developers.openai.com/plugins/deploy/connect-chatgpt)
+Die persönliche Live-Verbindung verwendet die separat bereitgestellte Installations-URL. Sie ist bis zur ausdrücklichen Deaktivierung gültig. Nach einem Update der Tool-Schemata und UI-Metadaten die Verbindung in ChatGPT öffnen und die Werkzeuge aktualisieren. Der Server stellt 18 Tools bereit. `browse_collection` ist für die interaktive Oberfläche vorgesehen. 17 Tools stehen für die Modellsteuerung zur Verfügung. Die aktuelle OpenAI-Anleitung beschreibt den Refresh auf der Detailseite des Plugins. [Verbindung und Tests](https://developers.openai.com/plugins/deploy/connect-chatgpt)
 
 Der öffentliche Endpunkt für Demo- und bereitgestellte Daten lautet `https://marktplatz-studie.lars-e82.workers.dev/mcp`. Das portable Plugin-Paket unter `plugin/` enthält diesen öffentlichen Endpunkt und den Forschungs-Skill. Für Live-Recherche die persönliche Verbindung verwenden.
 
@@ -18,7 +18,9 @@ Der öffentliche Endpunkt für Demo- und bereitgestellte Daten lautet `https://m
 | `search_listings` | Eine kompakte Suchseite mit Fortsetzung, Feldwahl und optionalen Titelbildern lesen |
 | `search_by_image` | Native Ähnlichkeitssuche mit ChatGPT-Anhang, öffentlicher Bild-URL oder Inseratfoto und fortsetzbaren Ergebnisseiten |
 | `get_research` | Rechercheumfang, Suchanfragen und präzise Inseratnachweise paginiert lesen |
-| `record_review` | Tatsächliche Bildbefunde zu zuvor an ChatGPT gelieferten Fotos dokumentieren |
+| `record_review` | Konkrete Anforderungen als bestätigt, widersprochen oder unbekannt an tatsächlich gelieferte Originalfotos binden |
+| `refine_research` | Gespeicherte Kandidaten nach Pflichtanforderungen, Präferenzen und Nutzerentscheidungen fortsetzbar auswerten |
+| `set_listing_feedback` | Ein Angebot innerhalb der Recherche merken, ablehnen oder die Entscheidung zurücknehmen |
 | `browse_collection` | App-interne Seiten, Hauptbilder, Galerien und Detailansichten laden |
 | `inspect_listings` | Ausgewählte Inserate, Beschreibungen, Attribute und Kriterienbelege prüfen |
 | `inspect_listing_images` | Einzelne Fotoindizes oder fortsetzbare Galeriepakete als Bildinhalt oder Links lesen |
@@ -34,6 +36,7 @@ Der öffentliche Endpunkt für Demo- und bereitgestellte Daten lautet `https://m
 | Bereich | Standard | Explizite Auswahl und Fortsetzung |
 | --- | --- | --- |
 | Treffer pro Suchseite | 50 | 1–100 mit `pageSize` |
+| Nachträgliche Verfeinerung | Bis zu 256 gespeicherte Kandidaten pro Schritt | Fortsetzung bis zum vollständigen Bestand, dann die fertige Sammlung öffnen |
 | Suchseiten | Eine pro `search_listings`-Aufruf | `nextCursor` so oft wiederholen, wie die Recherche weitere Seiten braucht |
 | Suchfelder | ID, Titel, URL, Preis, Ort, Status, Fotoanzahl und Galerie-Vollständigkeit, soweit verfügbar | `fields` wählt zusätzliche oder weniger Felder |
 | Detailabrufe | Fünf pro Aufruf | Bis zu zehn pro Paket, bis zu 100 ausgewählte IDs, weitere Pakete über `nextCursor` |
@@ -79,6 +82,12 @@ Suchseiten, Facetten und Kurzbeobachtungen werden fünf Minuten, Details 15 Minu
 ## Aussagekraft
 
 Kriterien werden als bestätigt, widersprochen oder unbekannt ausgewiesen. Preisvergleiche berücksichtigen Kategorie, Modell, Zustand, Menge und bekannte Versandkosten. Ein vergleichbarer Median erfordert mindestens fünf geeignete Beobachtungen. `priceContext` ordnet einen Kandidaten innerhalb dieser beobachteten Kohorte ein.
+
+Gespeicherte visuelle Anforderungen verweisen auf die tatsächlich an ChatGPT gelieferten Originalfotos und die zugehörigen Inseratfakten. Neue Befunde ergänzen unabhängige Kriterien. Eine relevante Faktenänderung oder ein ausgetauschtes Foto macht betroffene Befunde veraltet. Die Karten zeigen den Prüfstatus und einen kompakten Auszug. `get_research` mit `section=listings` und gezielten `ids` liefert die vollständigen Nachweise.
+
+`refine_research` wertet den gespeicherten Bestand ohne weitere Marketplace-Anfragen aus. Der Auftrag fixiert Kandidatenumfang, Kriterien und Nutzerentscheidungen. Jeder Schritt verwendet die dann gespeicherte Beobachtung mit ihrem ursprünglichen Zeitpunkt. Wiederholte Cursor liefern die gespeicherte Antwort. `unknownPolicy=exclude` beschränkt Pflichtanforderungen auf ausreichend belegte Kandidaten. Die fertige Sammlung erhält alle passenden IDs in ihrer Bewertungsreihenfolge.
+
+Die Oberfläche unterstützt eine Vergleichsauswahl über mehrere Seiten, persistentes Merken und Ablehnen sowie **Im Chat besprechen**. Diese Aktion übergibt die ausgewählten Inserat-IDs mit ihrer Recherche. Die Übernahme aus Sellpy und die geprüften Alternativen sind dokumentiert. [Sellpy-Transfer](docs/sellpy-transfer.md)
 
 Eine Studie umfasst ihren eigenen Abruflauf. Die Recherchebilanz verbindet mehrere Suchen, Fortsetzungen, Detail- und Fotoaufrufe über die ausdrücklich weitergegebene `researchId`. Sie zeigt je Suche native Gesamtzahl, abgerufene Seiten und eindeutige Inserate sowie zugehörige Details und Fotos. Einzelnachweise enthalten Felder, Beschreibungslängen, Fotoindizes und dokumentierte Modellbefunde. Eine ausgelieferte Bilddatei wird als Lieferung erfasst. Ein visueller Befund erfordert `record_review` nach der Bildprüfung. Die Oberfläche weist ihre eigenen Fotoabrufe gesondert aus. Für eine gemeinsame spätere Auswertung können deduplizierte Daten als `source=provided` mit bis zu 300 Datensätzen eingebracht werden. Der Studienbericht benennt Abdeckung, offene Detailprüfungen und verbleibende Suchpositionen.
 

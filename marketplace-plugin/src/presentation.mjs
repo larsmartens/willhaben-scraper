@@ -7,7 +7,7 @@ function sourceUrl(value, kind) {
   return url && !new URL(url).hash ? url : null;
 }
 
-function listingCard(row, selection, rank, source, criteria) {
+export function listingCard(row, selection, rank, source, criteria) {
   const gallery = galleryOf(row);
   const index = selection.photoIndex ?? 0;
   const photo = gallery[index];

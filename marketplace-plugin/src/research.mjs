@@ -1,4 +1,5 @@
 import { validateCriteria } from "./engine.mjs";
+import { normalizeRequirements, normalizePhotoIds, validateEvidenceId } from "./review.mjs";
 
 export const RESEARCH_INACTIVITY_DAYS = 7;
 export const RESEARCH_INACTIVITY_MS = RESEARCH_INACTIVITY_DAYS * 86400000;
@@ -143,11 +144,17 @@ export async function normalizeResearchEvent(input) {
   }
   if (type === "photos") {
     event.audience = oneOf(input.audience, ["model", "app"], "photo audience");
-    event.photos = list(input.photos, "delivered photos", 1000, photo => ({
-      id: listingId(photo?.id), index: integer(photo?.index, "photo index"),
-      size: oneOf(photo?.size, ["thumbnail", "full"], "photo size"),
-      observedAt: observedTime(photo.observedAt ?? event.observedAt),
-    }));
+    event.photos = list(input.photos, "delivered photos", 1000, photo => {
+      const delivered = { id: listingId(photo?.id), index: integer(photo?.index, "photo index"),
+        size: oneOf(photo?.size, ["thumbnail", "full"], "photo size"),
+        observedAt: observedTime(photo.observedAt ?? event.observedAt) };
+      if (photo.evidenceId !== undefined || photo.photoId !== undefined) {
+        delivered.evidenceId = validateEvidenceId(photo.evidenceId);
+        delivered.photoId = normalizePhotoIds([photo.photoId])[0];
+        delivered.listingObservedAt = observedTime(photo.listingObservedAt);
+      }
+      return delivered;
+    });
   }
   if (type === "review") {
     event.id = listingId(input.id);
@@ -155,6 +162,18 @@ export async function normalizeResearchEvent(input) {
       index => integer(index, "reviewed photo index"), 1))].sort((a, b) => a - b);
     event.findings = text(input.findings, "visual findings", 2000);
     event.evidenceType = "agent-reported";
+    if (input.requirements !== undefined) {
+      event.requirements = normalizeRequirements(input.requirements, true);
+      if (!event.requirements.length) invalid("A structured review requires at least one requirement");
+      event.photoIds = normalizePhotoIds(input.photoIds);
+      event.evidenceId = validateEvidenceId(input.evidenceId);
+      for (const requirement of event.requirements) {
+        requirement.photoIds ??= event.photoIds;
+        if (requirement.photoIds.some(id => !event.photoIds.includes(id))) invalid("Requirement photoIds must be part of this review");
+      }
+    } else if (input.evidenceId !== undefined || input.photoIds !== undefined) {
+      invalid("Evidence receipts require structured requirement findings");
+    }
   }
   if (type === "presentation") event.ids = [...new Set(list(input.ids, "presented IDs", 1000, listingId))];
   if (encoder.encode(JSON.stringify(event)).length > 256 * 1024) invalid("Research event exceeds its metadata budget");
@@ -245,8 +264,13 @@ export function normalizeObservationIds(ids) {
 }
 
 export function normalizeResearchRead(args = {}) {
-  return { section: oneOf(args.section ?? "summary", ["summary", "queries", "listings"], "research section"),
+  const result = { section: oneOf(args.section ?? "summary", ["summary", "queries", "listings"], "research section"),
     limit: integer(args.limit ?? 24, "research page limit", 1, 100), cursor: args.cursor };
+  if (args.ids !== undefined) {
+    if (result.section !== "listings" || args.cursor !== undefined) invalid("Select exact IDs with section=listings and omit cursor");
+    result.ids = [...new Set(list(args.ids, "research listing IDs", 24, listingId, 1))];
+  }
+  return result;
 }
 
 export function normalizeCollection(args) {
@@ -351,4 +375,16 @@ export async function saveCollection(env, { researchId, ...args }) {
 
 export async function readCollection(env, { researchId, ...args }) {
   return rpc(await researchStub(env, researchId), "readCollection", args);
+}
+
+export async function readListingState(env, { researchId, ...args }) {
+  return rpc(await researchStub(env, researchId), "readListingState", args);
+}
+
+export async function setListingFeedback(env, { researchId, ...args }) {
+  return rpc(await researchStub(env, researchId), "setListingFeedback", args);
+}
+
+export async function refineResearch(env, { researchId, ...args }) {
+  return rpc(await researchStub(env, researchId), "refine", args);
 }

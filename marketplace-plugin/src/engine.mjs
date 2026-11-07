@@ -198,23 +198,25 @@ async function collect(provider, queries, filters, budget, pageSize, fresh, dead
         if (s.reported !== null && page.total !== s.reported) s.changed = true;
         s.reported = page.total;
       }
-      const previous = s.ids.size;
       for (const item of page.items) {
         s.raw++;
         s.ids.add(item.id);
-        if (!listings.has(item.id)) listings.set(item.id, {
+        const observation = {
           ...item,
           observedAt:item.observedAt ?? page.observedAt,
           cacheAgeSeconds:item.cacheAgeSeconds ?? page.cacheAgeSeconds ?? 0,
           cacheHit:item.cacheHit ?? page.cacheHit ?? false,
-        });
+        };
+        const current = listings.get(item.id);
+        if (!current || (Date.parse(observation.observedAt) || 0) > (Date.parse(current.observedAt) || 0)) {
+          listings.set(item.id, observation);
+        }
       }
       if (page.end) {
         if (s.changed) s.stop = 'total_changed';
-        else if (s.reported !== null && s.reported !== s.ids.size) s.stop = 'total_mismatch';
+        else if (page.totalScope !== 'upstream_before_local_filters' && s.reported !== null && s.reported !== s.ids.size) s.stop = 'total_mismatch';
         else s.stop = 'exhausted';
       } else if (s.seenCursors.has(page.nextCursor)) s.stop = 'repeated_cursor';
-      else if (previous === s.ids.size) s.stop = 'no_progress';
       else { s.seenCursors.add(page.nextCursor); s.cursor = page.nextCursor; }
     }
   }
@@ -315,10 +317,11 @@ export async function runStudy(provider, spec, {deadline = Date.now() + 35000} =
     try {
       const detail = await provider.detail(r.l.id, {fresh:spec.fresh === true});
       if (!detail || detail.id !== r.l.id || !validateListing(detail)) throw Object.assign(new Error(), {code: detail ? 'upstream_schema' : 'detail_unavailable'});
-      // Missing keys leave list-only fields intact; an explicit null from detail supersedes a stale price.
-      r.l = {...r.l, ...detail, attributes:{...r.l.attributes, ...detail.attributes}};
-      r.evaluation = observe(r.l, criteria, filters);
-      r.detailed = true;
+      if ((Date.parse(detail.observedAt) || 0) >= (Date.parse(r.l.observedAt) || 0)) {
+        r.l = detail;
+        r.evaluation = observe(r.l, criteria, filters);
+        r.detailed = true;
+      }
     } catch (error) {
       const code = errorCode(error);
       r.detailError = code;
@@ -361,13 +364,13 @@ export async function runStudy(provider, spec, {deadline = Date.now() + 35000} =
     (a.unitEUR ?? a.askingEUR ?? Infinity) - (b.unitEUR ?? b.askingEUR ?? Infinity) || a.id.localeCompare(b.id));
   const searchExhausted = reports.every(r => r.stopReason === 'exhausted');
   const observations = records.map(r => r.l.observedAt).filter(value => typeof value === 'string' && Number.isFinite(Date.parse(value))).sort();
+  const remainingDetailIds = pending.filter(r => !r.detailed).map(r => r.l.id);
   return {source:provider.kind, startedAt, observedAt:new Date().toISOString(), request:{queries,filters,criteria,maxPages,maxDetails,pageSize},
     ...(observations.length ? {dataFreshness:{oldestObservationAt:observations[0],newestObservationAt:observations.at(-1),cachedRecords:records.filter(r => r.l.cacheHit === true || r.l.cacheAgeSeconds > 0).length}} : {}),
     coverage:{status:searchExhausted ? 'exhausted' : 'partial', scope:SOURCE_SCOPE[provider.kind],
       ...(reports.some(r => r.continuation) ? {continuationScope:'A later search_listings call is a separate observation; it does not extend this snapshot.'} : {}),
-      searchExhausted, detailsComplete:counts.detailsFetched === pending.length, queries:reports, detailErrors, detailStop, ...detailRetry,
-      remainingDetailIds:pending.filter(r => !r.detailed).map(r => r.l.id),
-      detailsUnexamined:pending.length-counts.detailsFetched},
+      searchExhausted, detailsComplete:remainingDetailIds.length === 0, queries:reports, detailErrors, detailStop, ...detailRetry,
+      remainingDetailIds, detailsUnexamined:remainingDetailIds.length},
     counts, pricing:{currency:'EUR', kind:'asking', minimumComparable:MIN_COMPARABLE, excluded:exceptions, cohortsTotal:cohorts.length},
     cohorts:cohorts.slice(0,32), shortlist:byStatus.confirmed.slice(0,24), unknown:byStatus.unknown.slice(0,16), excluded:byStatus.contradicted.slice(0,12) };
 }

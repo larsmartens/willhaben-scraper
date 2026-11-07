@@ -18,6 +18,14 @@ Choose `mode=links` when only gallery URLs are needed. `galleryTotal` counts ava
 
 If `stopReason=response_budget`, continue from the returned position. If one image is too large, request its thumbnail or link. If a response contains `retryAt`, resume at that time. Successful image results remain usable when later images fail.
 
-After inspecting image blocks, record actual visible findings with `record_review`, the same research ID and exact photo indices.
+## Save findings for later decisions
+
+After inspecting the successful image blocks, copy the matching `reviewContexts` entry into `record_review`. Carry its `researchId`, listing `id` and `evidenceId`. Set `photoIds` and `photoIndices` from the entry's `photos`. These identities refer to the actual delivered original photos.
+
+Record a concise `findings` summary and `requirements` with the exact requirement label, `verdict` and concrete `evidence`. Use `confirmed`, `contradicted` or `unknown` according to the visible evidence. Copy applicable labels from the photo context or the current refinement. Preserve negations when matching labels. A new judgment updates that requirement and retains independent valid findings.
+
+Use the successfully delivered photos from the current batch. Fetch another view when the requirement remains unresolved. If the context names `inspect_listing_images` as its next tool, retrieve current photos before saving structured requirements. A changed original photo or relevant listing fact makes the earlier evidence stale.
+
+After saving the findings, start a new `refine_research` when the selection depends on them. Present the completed collection so its cards carry the stored findings. For a direct comparison, present the selected IDs again after recording the evidence. Read [refining a selection](refinement.md) for strict follow-up criteria.
 
 Read numerical dimensions from listing attributes or explicit text. Keep inferred appearance and documented specifications distinct in the answer.

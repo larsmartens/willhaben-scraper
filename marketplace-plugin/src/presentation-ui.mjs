@@ -16,7 +16,12 @@ function mountPresentation() {
     de: {
       queryMore: "Weitere Suchanfragen", detailCount: "Detailseiten abgerufen", coverage: "Rechercheumfang", queries: "Suchanfragen", fetched: "geladene Inserate", descriptions: "Beschreibungen an ChatGPT", modelPhotos: "Fotos an ChatGPT", reviews: "Fotoprüfungen dokumentiert", uiPhotos: "Fotos für die Ansicht", found: "gefunden", loaded: "geladen", pages: "Seiten", details: "Details lesen", closeDetails: "Details schließen", detailLoading: "Details werden geladen", pageNext: "Weitere Angebote", pagePrevious: "Vorherige Seite", pageLoading: "Angebote werden geladen", audit: "Einzelnachweise", auditMore: "Weitere Nachweise", coverRetry: "Foto laden", emptyAudit: "Bisher wurden Suchtreffer abgerufen.", fields: "Übergebene Felder", chars: "Zeichen", modelIndices: "Fotoindizes an ChatGPT", agentReview: "Dokumentierter Modellbefund",
       title: "Angebotsübersicht", waiting: "Angebote werden geladen", source: { live: "willhaben", provided: "Bereitgestellte Angebote", demo: "Synthetische Demoangebote" },
-      sort: "Sortieren", recommendation: "Empfehlung", priceUp: "Preis aufsteigend", priceDown: "Preis absteigend", fullscreen: "Größere Ansicht",
+      sort: "Sortieren", recommendation: "Empfehlung", priceUp: "Preis aufsteigend", priceDown: "Preis absteigend", fullscreen: "Größere Ansicht", inline: "Zurück zum Chat",
+      compare: "Vergleichen", selected: "zum Vergleich ausgewählt", clearSelection: "Auswahl leeren", closeComparison: "Vergleich schließen", compareAttribute: "Merkmal", removeSelection: "Aus Vergleich entfernen",
+      shortlist: "Merken", shortlisted: "Gemerkt", reject: "Ablehnen", rejected: "Abgelehnt", neutral: "Keine Entscheidung", feedbackSaved: "Entscheidung gespeichert.", feedbackError: "Die Entscheidung konnte nicht gespeichert werden.",
+      reviewCurrent: "Bildprüfung dokumentiert", reviewStale: "Bildprüfung erneuern", reviewOpen: "Bildbewertung offen", reviewStaleHint: "Neue Fotos oder Inseratangaben erfordern eine erneute Prüfung.", reviewedPhotos: "Geprüfte Fotos", reviewRecorded: "Befund gespeichert", reviewExcerpt: "Befundauszug", moreRequirements: "weitere Befunde im Rechercheprotokoll", noRecord: "Keine Angabe",
+      discuss: "Im Chat besprechen", discussing: "Auswahl wird übergeben", discussPrompt: "Besprich diese ausgewählten willhaben-Angebote anhand der gespeicherten Recherche und Bildbefunde. Prüfe offene Anforderungen gezielt.", discussDone: "Auswahl an den Chat übergeben.", discussError: "Die Auswahl konnte nicht an den Chat übergeben werden.",
+      price: "Angebotspreis", unitPrice: "Stückpreis", totalPrice: "Gesamtpreis mit Versand", quantity: "Stückzahl", location: "Ort", condition: "Zustand", availability: "Verfügbarkeit", active: "Aktiv", both: "Versand und Abholung", selectionDecision: "Deine Entscheidung",
       previous: "Vorheriges Angebot", next: "Nächstes Angebot", of: "von", open: "Inserat öffnen", photos: "Fotos ansehen", closePhotos: "Fotos schließen",
       photo: "Foto", more: "Weitere Fotos", retry: "Erneut versuchen", loading: "Fotos werden geladen", gallery: "Inseratgalerie", photoCount: "Fotos", knownPhotos: "bekannte Fotos",
       noPhoto: "Kein Inseratfoto vorhanden", photoUnavailable: "Foto derzeit nicht verfügbar", photoPending: "Fotoabruf noch offen", photoDisabled: "Foto als Link verfügbar",
@@ -43,7 +48,12 @@ function mountPresentation() {
     en: {
       queryMore: "More queries", detailCount: "detail pages retrieved", coverage: "Research coverage", queries: "queries", fetched: "retrieved listings", descriptions: "descriptions sent to ChatGPT", modelPhotos: "photos sent to ChatGPT", reviews: "documented photo reviews", uiPhotos: "photos for this view", found: "found", loaded: "retrieved", pages: "pages", details: "Read details", closeDetails: "Close details", detailLoading: "Loading details", pageNext: "More offers", pagePrevious: "Previous page", pageLoading: "Loading offers", audit: "Individual records", auditMore: "More records", coverRetry: "Load photo", emptyAudit: "Search summaries have been retrieved so far.", fields: "Delivered fields", chars: "characters", modelIndices: "Photo indices sent to ChatGPT", agentReview: "Agent-reported finding",
       title: "Offer overview", waiting: "Loading listings", source: { live: "willhaben", provided: "Provided listings", demo: "Synthetic demo listings" },
-      sort: "Sort", recommendation: "Recommended order", priceUp: "Price low to high", priceDown: "Price high to low", fullscreen: "Larger view",
+      sort: "Sort", recommendation: "Recommended order", priceUp: "Price low to high", priceDown: "Price high to low", fullscreen: "Larger view", inline: "Back to chat",
+      compare: "Compare", selected: "selected for comparison", clearSelection: "Clear selection", closeComparison: "Close comparison", compareAttribute: "Attribute", removeSelection: "Remove from comparison",
+      shortlist: "Shortlist", shortlisted: "Shortlisted", reject: "Reject", rejected: "Rejected", neutral: "No decision", feedbackSaved: "Decision saved.", feedbackError: "The decision could not be saved.",
+      reviewCurrent: "Photo review recorded", reviewStale: "Review photos again", reviewOpen: "Photo review pending", reviewStaleHint: "Updated photos or listing facts need a fresh review.", reviewedPhotos: "Reviewed photos", reviewRecorded: "Review saved", reviewExcerpt: "Finding excerpt", moreRequirements: "more findings in the research audit", noRecord: "Not stated",
+      discuss: "Discuss in chat", discussing: "Sending selection", discussPrompt: "Discuss these selected willhaben offers using the saved research and photo findings. Check open requirements precisely.", discussDone: "Selection sent to the chat.", discussError: "The selection could not be sent to the chat.",
+      price: "Asking price", unitPrice: "Unit price", totalPrice: "Total including shipping", quantity: "Quantity", location: "Location", condition: "Condition", availability: "Availability", active: "Active", both: "Shipping and collection", selectionDecision: "Your decision",
       previous: "Previous listing", next: "Next listing", of: "of", open: "Open listing", photos: "View photos", closePhotos: "Close photos",
       photo: "Photo", more: "More photos", retry: "Try again", loading: "Loading photos", gallery: "Listing gallery", photoCount: "photos", knownPhotos: "known photos",
       noPhoto: "No listing photo available", photoUnavailable: "Photo currently unavailable", photoPending: "Photo retrieval pending", photoDisabled: "Photo available as a link",
@@ -68,7 +78,7 @@ function mountPresentation() {
       selectionError: "The selection could not be updated.", booleanTrue: "Yes", booleanFalse: "No",
     },
   };
-  const elements = Object.fromEntries(["title", "summary", "source", "notice", "toolbar", "sort-label", "sort", "fullscreen", "cards", "pager", "previous", "position", "next", "coverage", "coverage-label", "coverage-counts", "coverage-queries", "queries-more", "audit", "audit-records", "audit-more", "page-nav", "page-previous", "page-label", "page-next"]
+  const elements = Object.fromEntries(["title", "summary", "source", "notice", "toolbar", "sort-label", "sort", "fullscreen", "cards", "pager", "previous", "position", "next", "coverage", "coverage-label", "coverage-counts", "coverage-queries", "queries-more", "audit", "audit-records", "audit-more", "page-nav", "page-previous", "page-label", "page-next", "selection-bar", "selection-count", "compare-selection", "clear-selection", "discuss-selection", "selection-status", "comparison"]
     .map(id => [id, document.getElementById(id)]));
   const views = new Map();
   let generation = 0;
@@ -91,7 +101,15 @@ function mountPresentation() {
   let queryCursor;
   let queryVersion;
   const coverQueue = new Set();
-  const app = new window.WillhabenMcpApps.App({ name: "willhaben", version: "1.4.2" }, {}, { autoResize: false });
+  const selectedCards = new Map();
+  const savedFeedback = new Map();
+  const refreshedReviews = new Map();
+  const refreshedCards = new Map();
+  const pendingFeedback = new Map();
+  let comparisonOpen = false;
+  let selectionRevision = 0;
+  let discussion = null;
+  const app = new window.WillhabenMcpApps.App({ name: "willhaben", version: "1.5.0" }, {}, { autoResize: false });
 
   const t = key => words[language][key];
   const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -112,12 +130,302 @@ function mountPresentation() {
     throw new Error(t("connection"));
   }
 
-  function shareSelection(view) {
-    const state = { researchId: payload?.researchId, collectionId: payload?.collectionId,
-      offset: payload?.offset ?? 0, visibleIds: [...views.keys()],
-      ...(view ? { selectedId: view.card.id, photoIndex: view.gallery.selected } : {}) };
-    if (connection === "ready" && hostCapabilities.updateModelContext) {
-      app.updateModelContext({ content: [{ type: "text", text: JSON.stringify(state) }] }).catch(() => {});
+  function feedbackValue(value) {
+    if (!object(value) || !["shortlist", "reject", "neutral"].includes(value.decision) ||
+        !Number.isSafeInteger(value.revision) || value.revision < 0 ||
+        (value.updatedAt !== null && !Number.isFinite(Date.parse(value.updatedAt)))) return null;
+    return { decision: value.decision, revision: value.revision, updatedAt: value.updatedAt,
+      ...(typeof value.reason === "string" ? { reason: value.reason } : {}) };
+  }
+
+  function feedbackFor(card) {
+    const incoming = feedbackValue(card.feedback) ?? { decision: "neutral", revision: 0, updatedAt: null };
+    const saved = savedFeedback.get(card.id);
+    if (saved && saved.revision >= incoming.revision) return saved;
+    if (incoming.revision > 0) savedFeedback.set(card.id, incoming);
+    return incoming;
+  }
+
+  function latestReview(current, incoming) {
+    if (!object(current)) return incoming;
+    if (!object(incoming)) return current;
+    const currentObservation = Date.parse(current.observedAt) || 0;
+    const incomingObservation = Date.parse(incoming.observedAt) || 0;
+    if (currentObservation !== incomingObservation) return incomingObservation > currentObservation ? incoming : current;
+    const currentReview = Date.parse(current.reviewedAt) || 0;
+    const incomingReview = Date.parse(incoming.reviewedAt) || 0;
+    if (currentReview !== incomingReview) return incomingReview > currentReview ? incoming : current;
+    return current.status === "stale" ? current : incoming;
+  }
+
+  function reconcileCard(card) {
+    const review = latestReview(refreshedReviews.get(card.id), card.review);
+    if (["current", "stale"].includes(review?.status) || refreshedReviews.has(card.id)) refreshedReviews.set(card.id, review);
+    const refreshed = refreshedCards.get(card.id);
+    const latest = refreshed && Date.parse(refreshed.observedAt) >= (Date.parse(card.observedAt) || 0) ? refreshed : card;
+    if (refreshed && latest === card) {
+      const image = { ...card.image };
+      if (image.status === "ready") image.status = "pending";
+      refreshedCards.set(card.id, { ...card, image });
+    }
+    return { ...latest, rank: card.rank, image: { ...latest.image }, feedback: feedbackFor(card), review };
+  }
+
+  const samePhoto = (first, second) => first?.index === second?.index && first?.url === second?.url;
+
+  function rememberSelected(card) {
+    if (!selectedCards.has(card.id)) return;
+    const previous = selectedCards.get(card.id);
+    const latest = Date.parse(previous.observedAt) > Date.parse(card.observedAt) ? previous : card;
+    selectedCards.set(card.id, { ...latest, feedback: feedbackFor(card), review: latestReview(previous.review, card.review) });
+  }
+
+  function reviewLabel(card) {
+    if (card.review?.status === "stale") return t("reviewStale");
+    if (card.review?.status !== "current") return t("reviewOpen");
+    const count = new Set(card.review.checkedPhotoIds ?? card.review.checkedPhotoIndices ?? []).size;
+    return t("reviewCurrent") + " · " + count + (Number.isSafeInteger(card.imageCount) ? "/" + card.imageCount : "") + " " + t("photoCount");
+  }
+
+  function hasApplicableReview(review) {
+    return review?.status === "current" || review?.status === "stale" && Array.isArray(review.staleRequirements);
+  }
+
+  function applicableRequirements(review) {
+    if (!hasApplicableReview(review)) return [];
+    const stale = new Set((review.staleRequirements ?? []).map(requirementKey));
+    return (review.requirements ?? []).filter(requirement => !stale.has(requirementKey(requirement.requirement)));
+  }
+
+  function drawReview(view) {
+    const details = view.reviewSection;
+    const wasOpen = details.open;
+    const review = view.card.review;
+    details.replaceChildren(node("summary", "review-badge", reviewLabel(view.card)));
+    details.dataset.status = ["current", "stale"].includes(review?.status) ? review.status : "unreviewed";
+    if (hasApplicableReview(review)) {
+      details.append(node("p", "section-label", t("agentReview")));
+      for (const finding of review.findings ?? []) details.append(node("p", "review-finding", String(finding)));
+      if (review.findingsTruncated) details.append(node("p", "review-time", t("reviewExcerpt")));
+      const list = node("ul", "criterion-list");
+      for (const requirement of applicableRequirements(review)) {
+        if (!["confirmed", "contradicted", "unknown"].includes(requirement.verdict)) continue;
+        const item = node("li", "", requirement.requirement + " · " + t(requirement.verdict));
+        if (requirement.evidence) item.append(node("p", "", requirement.evidence + (requirement.evidenceTruncated ? " …" : "")));
+        if (requirement.photoIndices?.length) item.append(node("p", "review-photos", t("reviewedPhotos") + " " + requirement.photoIndices.map(index => index + 1).join(", ")));
+        list.append(item);
+      }
+      if (list.children.length) details.append(list);
+      const omitted = (review.requirementsTotal ?? 0) - (review.requirements?.length ?? 0);
+      if (review.requirementsTruncated && omitted > 0) details.append(node("p", "review-finding", "+" + omitted + " " + t("moreRequirements")));
+      const reviewedAt = time(review.reviewedAt);
+      if (reviewedAt) details.append(node("p", "review-time", t("reviewRecorded") + " " + reviewedAt));
+    }
+    if (review?.status === "stale") details.append(node("p", "review-finding", t("reviewStaleHint")));
+    if (review?.staleRequirements?.length) details.append(node("p", "review-finding", t("reviewStale") + " · " + review.staleRequirements.join(" · ")));
+    details.open = wasOpen;
+  }
+
+  function updateFeedbackControls(view) {
+    const decision = feedbackFor(view.card).decision;
+    view.card.feedback = feedbackFor(view.card);
+    view.element.dataset.decision = decision;
+    view.shortlistButton.textContent = t(decision === "shortlist" ? "shortlisted" : "shortlist");
+    view.rejectButton.textContent = t(decision === "reject" ? "rejected" : "reject");
+    view.shortlistButton.setAttribute("aria-pressed", String(decision === "shortlist"));
+    view.rejectButton.setAttribute("aria-pressed", String(decision === "reject"));
+    const unavailable = !payload?.researchId || pendingFeedback.has(view.card.id) ||
+      !(connection === "ready" && hostCapabilities.serverTools || typeof window.openai?.callTool === "function");
+    view.shortlistButton.disabled = unavailable;
+    view.rejectButton.disabled = unavailable;
+    view.shortlistButton.hidden = !payload?.researchId;
+    view.rejectButton.hidden = !payload?.researchId;
+    view.compareInput.checked = selectedCards.has(view.card.id);
+  }
+
+  function updateResearchState(view, state) {
+    if (!object(state)) return;
+    if (object(state.review)) {
+      const review = latestReview(refreshedReviews.get(view.card.id), state.review);
+      refreshedReviews.set(view.card.id, review);
+      view.card.review = latestReview(view.card.review, review);
+    }
+    drawReview(view);
+    if (state.feedback) view.card.feedback = feedbackFor({ ...view.card, feedback: state.feedback });
+    updateFeedbackControls(view);
+    rememberSelected(view.card);
+    renderSelection();
+  }
+
+  async function setFeedback(view, decision) {
+    const researchId = payload?.researchId, id = view.card.id;
+    if (!researchId || pendingFeedback.has(id)) return;
+    const operation = { researchId, id, decision };
+    pendingFeedback.set(id, operation);
+    view.actionStatus.textContent = "";
+    updateFeedbackControls(view);
+    try {
+      const response = await callTool("set_listing_feedback", operation);
+      if (payload?.researchId !== researchId || pendingFeedback.get(id) !== operation) return;
+      const data = response?.structuredContent;
+      const feedback = feedbackValue(data?.feedback);
+      if (response?.isError || data?.researchId !== researchId || data?.id !== id || !feedback ||
+          feedback.decision !== decision || feedback.revision < 1) throw new Error(t("feedbackError"));
+      const previous = savedFeedback.get(id);
+      if (!previous || feedback.revision >= previous.revision) savedFeedback.set(id, feedback);
+      const current = views.get(id);
+      if (current) {
+        current.card.feedback = feedbackFor(current.card);
+        current.actionStatus.textContent = t("feedbackSaved");
+        rememberSelected(current.card);
+      } else if (selectedCards.has(id)) rememberSelected({ ...selectedCards.get(id), feedback });
+    } catch {
+      if (payload?.researchId === researchId && pendingFeedback.get(id) === operation) {
+        const current = views.get(id);
+        if (current) current.actionStatus.textContent = t("feedbackError");
+        else elements["selection-status"].textContent = t("feedbackError");
+      }
+    } finally {
+      if (pendingFeedback.get(id) === operation) {
+        pendingFeedback.delete(id);
+        const current = views.get(id);
+        if (current) updateFeedbackControls(current);
+        renderSelection();
+        reportSize();
+      }
+    }
+  }
+
+  function changeSelection(card, selected) {
+    if (selected) selectedCards.set(card.id, { ...card, feedback: feedbackFor(card) });
+    else selectedCards.delete(card.id);
+    selectionRevision++;
+    if (selectedCards.size < 2) comparisonOpen = false;
+    for (const view of views.values()) view.compareInput.checked = selectedCards.has(view.card.id);
+    elements["selection-status"].textContent = "";
+    renderSelection();
+  }
+
+  function requirementKey(value) {
+    return String(value).normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+  }
+
+  function requirementText(card, label) {
+    const matches = applicableRequirements(card.review).filter(entry => requirementKey(entry.requirement) === requirementKey(label));
+    if (!matches.length) return t("unknown");
+    const verdicts = new Set(matches.map(entry => entry.verdict));
+    const verdict = verdicts.size === 1 && ["confirmed", "contradicted"].includes(matches[0].verdict) ? matches[0].verdict : "unknown";
+    const evidence = [...new Set(matches.filter(entry => entry.evidence).map(entry => entry.evidence + (entry.evidenceTruncated ? " …" : "")))].join(" · ");
+    return t(verdict) + (evidence ? " · " + evidence : "");
+  }
+
+  function renderComparison() {
+    elements.comparison.hidden = !comparisonOpen || selectedCards.size < 2;
+    elements.comparison.replaceChildren();
+    if (elements.comparison.hidden) return;
+    const cards = [...selectedCards.values()];
+    const scroll = node("div", "comparison-scroll");
+    scroll.tabIndex = 0;
+    scroll.setAttribute("role", "region");
+    scroll.setAttribute("aria-label", t("compare") + " · " + cards.length);
+    const table = node("table", "comparison-table");
+    const caption = node("caption", "section-label", t("compare") + " · " + cards.length);
+    const head = node("thead"), headings = node("tr");
+    const first = node("th", "comparison-label", t("compareAttribute"));
+    first.scope = "col";
+    headings.append(first);
+    for (const card of cards) {
+      const header = node("th", "comparison-offer");
+      header.scope = "col";
+      const openButton = node("button", "comparison-link", card.title);
+      openButton.type = "button";
+      openButton.disabled = !listingUrl(card.url) || !canOpenLinks();
+      openButton.addEventListener("click", () => openListing({ card, openButton, actionStatus: elements["selection-status"] }));
+      const remove = node("button", "button comparison-remove", t("removeSelection"));
+      remove.type = "button";
+      remove.setAttribute("aria-label", t("removeSelection") + " · " + card.title);
+      remove.addEventListener("click", () => changeSelection(card, false));
+      header.append(openButton, node("p", "comparison-id", card.id), remove);
+      headings.append(header);
+    }
+    head.append(headings);
+    const body = node("tbody");
+    const unknown = value => value == null || value === "" ? t("noRecord") : String(value);
+    const currency = value => Number.isFinite(value) ? money(value) : t("noRecord");
+    const rows = [
+      [t("price"), priceLabel], [t("unitPrice"), card => currency(card.unitPrice)],
+      [t("quantity"), card => unknown(card.quantity)],
+      [t("shipping"), card => card.shipping === "both" ? t("both") : ["pickup", "shipping"].includes(card.shipping) ? t(card.shipping) : t("noRecord")],
+      [words[language].fieldLabels.shippingCost, card => currency(card.shippingCost)],
+      [t("totalPrice"), card => currency(card.totalPrice)],
+      [t("location"), card => unknown(card.location)],
+      [t("condition"), card => words[language].conditions[card.condition] ?? unknown(card.condition)],
+      [t("availability"), card => card.status === "active" ? t("active") : words[language].statuses[card.status] ?? t("unknown")],
+      [t("selectionDecision"), card => t({ shortlist: "shortlisted", reject: "rejected", neutral: "neutral" }[feedbackFor(card).decision])],
+      [t("assessment"), card => unknown(card.assessment?.reason)],
+      [t("questions"), card => card.assessment?.cautions?.join(" · ") || t("noRecord")],
+      [t("reviewedPhotos"), reviewLabel],
+    ];
+    const requirements = new Map();
+    for (const card of cards) {
+      const labels = [...(card.review?.requirements ?? []).map(requirement => requirement.requirement), ...(card.review?.staleRequirements ?? [])];
+      for (const label of labels) if (typeof label === "string") requirements.set(requirementKey(label), label);
+    }
+    for (const label of requirements.values()) rows.push([label, card => requirementText(card, label)]);
+    rows.push([t("observed"), card => time(card.observedAt) || t("unknownObservation")]);
+    for (const [label, value] of rows) {
+      const row = node("tr"), name = node("th", "comparison-label", label);
+      name.scope = "row";
+      row.append(name, ...cards.map(card => node("td", "", value(card))));
+      body.append(row);
+    }
+    table.append(caption, head, body);
+    scroll.append(table);
+    elements.comparison.append(scroll);
+  }
+
+  function renderSelection() {
+    const count = selectedCards.size;
+    elements["selection-bar"].hidden = !count;
+    elements["selection-count"].textContent = count + " " + t("selected");
+    elements["compare-selection"].textContent = comparisonOpen ? t("closeComparison") : t("compare") + " (" + count + ")";
+    elements["compare-selection"].disabled = count < 2;
+    elements["compare-selection"].setAttribute("aria-expanded", String(comparisonOpen));
+    elements["clear-selection"].textContent = t("clearSelection");
+    const canDiscuss = connection === "ready" && object(hostCapabilities.message?.text) && Boolean(payload?.researchId);
+    elements["discuss-selection"].hidden = !canDiscuss;
+    elements["discuss-selection"].disabled = !count || Boolean(discussion);
+    elements["discuss-selection"].textContent = t(discussion ? "discussing" : "discuss");
+    renderComparison();
+    reportSize();
+  }
+
+  async function discussSelection() {
+    if (discussion || connection !== "ready" || !hostCapabilities.message?.text || !payload?.researchId || !selectedCards.size) return;
+    const context = { researchId: payload.researchId, collectionId: payload.collectionId,
+      ids: [...selectedCards.keys()], decisions: [...selectedCards.values()].map(card => ({ id: card.id, decision: feedbackFor(card).decision })) };
+    const operation = { researchId: context.researchId, collectionId: context.collectionId, revision: selectionRevision };
+    discussion = operation;
+    const current = () => discussion === operation && payload?.researchId === operation.researchId &&
+      payload?.collectionId === operation.collectionId && selectionRevision === operation.revision;
+    elements["selection-status"].textContent = "";
+    renderSelection();
+    try {
+      if (hostCapabilities.updateModelContext?.structuredContent || hostCapabilities.updateModelContext?.text) {
+        try {
+          await app.updateModelContext(hostCapabilities.updateModelContext.structuredContent ? { structuredContent: context }
+            : { content: [{ type: "text", text: JSON.stringify(context) }] });
+        } catch { /* The explicit message also carries every selected identity. */ }
+      }
+      if (!current()) return;
+      const response = await app.sendMessage({ role: "user", content: [{ type: "text", text: t("discussPrompt") + "\n" + JSON.stringify(context) }] });
+      if (!current()) return;
+      if (response?.isError) throw new Error(t("discussError"));
+      elements["selection-status"].textContent = t("discussDone");
+    } catch {
+      if (current()) elements["selection-status"].textContent = t("discussError");
+    } finally {
+      if (discussion === operation) { discussion = null; renderSelection(); }
     }
   }
 
@@ -173,7 +481,7 @@ function mountPresentation() {
     elements.sort.options[0].textContent = t("recommendation");
     elements.sort.options[1].textContent = t("priceUp");
     elements.sort.options[2].textContent = t("priceDown");
-    elements.fullscreen.textContent = t("fullscreen");
+    elements.fullscreen.textContent = t(hostContext.displayMode === "fullscreen" ? "inline" : "fullscreen");
     elements.previous.setAttribute("aria-label", t("previous"));
     elements.next.setAttribute("aria-label", t("next"));
     elements.cards.setAttribute("aria-label", payload?.title || t("title"));
@@ -193,10 +501,12 @@ function mountPresentation() {
       locale = Intl.getCanonicalLocales(requested)[0] || "de-AT";
     } catch { locale = "de-AT"; }
     language = locale.toLowerCase().startsWith("de") ? "de" : "en";
-    elements.fullscreen.hidden = !hostContext.availableDisplayModes?.includes("fullscreen") || hostContext.displayMode === "fullscreen";
+    const targetMode = hostContext.displayMode === "fullscreen" ? "inline" : "fullscreen";
+    elements.fullscreen.hidden = !hostContext.availableDisplayModes?.includes(targetMode);
     updateLabels();
     if (lastEnvelope && (language !== previousLanguage || locale !== previousLocale)) render(lastEnvelope);
     if (hostContext.displayMode !== previousMode) observeCovers();
+    renderSelection();
     updatePosition();
     reportSize();
   }
@@ -218,7 +528,8 @@ function mountPresentation() {
     elements.pager.dataset.position = String(current);
   }
 
-  function sortCards() {
+  function sortCards(resetScroll = true) {
+    const scrollLeft = elements.cards.scrollLeft;
     const direction = elements.sort.value === "price_desc" ? -1 : 1;
     const ordered = [...views.values()].sort((a, b) => {
       if (elements.sort.value === "rank") return a.card.rank - b.card.rank;
@@ -228,7 +539,7 @@ function mountPresentation() {
       return aKnown && a.card.price !== b.card.price ? direction * (a.card.price - b.card.price) : a.card.rank - b.card.rank;
     });
     elements.cards.append(...ordered.map(view => view.element));
-    elements.cards.scrollLeft = 0;
+    elements.cards.scrollLeft = resetScroll ? 0 : scrollLeft;
     updatePosition();
     reportSize();
   }
@@ -376,7 +687,7 @@ function mountPresentation() {
       button.setAttribute("aria-label", t("photo") + " " + (index + 1));
       button.setAttribute("aria-pressed", String(index === gallery.selected));
       button.append(makePhoto(dataUrl, view.card.title, index, () => button.replaceChildren(node("span", "", String(index + 1)))));
-      button.addEventListener("click", () => { gallery.selected = index; drawGallery(view); shareSelection(view); });
+      button.addEventListener("click", () => { gallery.selected = index; drawGallery(view); });
       view.thumbnails.append(button);
     }
     const wait = gallery.retryAt && Date.parse(gallery.retryAt) > Date.now();
@@ -408,8 +719,10 @@ function mountPresentation() {
         ? await callTool("browse_collection", { researchId: payload.researchId, collectionId: payload.collectionId,
           action: "photos", id: view.card.id, ...selection })
         : await callTool("inspect_listing_images", { ...args, ...(payload.researchId ? { researchId: payload.researchId } : {}) });
-      if (generation !== callGeneration) return;
+      if (generation !== callGeneration || view.gallery !== gallery) return;
       const { data, images } = galleryResult(response, view.card.id);
+      if (payload.collectionId && (data.researchId !== payload.researchId || data.collectionId !== payload.collectionId)) throw new Error(t("formatError"));
+      updateResearchState(view, data);
       if (data.research) renderCoverage(data.research);
       for (const image of images) gallery.images.set(image.index, image.dataUrl);
       gallery.total = data.galleryTotal;
@@ -428,25 +741,19 @@ function mountPresentation() {
         gallery.nextIndex = start;
       }
     } catch (error) {
-      if (generation !== callGeneration) return;
+      if (generation !== callGeneration || view.gallery !== gallery) return;
       gallery.error = error.message || t("loadError");
       gallery.nextIndex = start;
       gallery.retryAt = Number.isFinite(Date.parse(error.retryAt)) ? error.retryAt : null;
     } finally {
-      if (generation === callGeneration) { gallery.loading = false; drawGallery(view); shareSelection(view); }
+      if (generation === callGeneration && view.gallery === gallery) { gallery.loading = false; drawGallery(view); }
     }
   }
 
-  function createCard(card, hydration) {
-    const element = node("li", "offer");
-    element.dataset.id = card.id;
-    const figure = node("div", "cover");
-    const body = node("div", "offer-body");
-    const dataUrl = imageData(hydration);
-    if (card.image?.status === "ready" && dataUrl) {
-      figure.append(makePhoto(dataUrl, card.title, card.image.index, () => figure.replaceChildren(imagePlaceholder({ image: { status: "failed" } }))));
-    } else figure.append(imagePlaceholder(card));
-    if (Number.isSafeInteger(card.imageCount) && card.imageCount > 0) figure.append(node("span", "photo-count", card.imageCount + " " + t(card.galleryComplete === false ? "knownPhotos" : "photoCount")));
+  function drawFacts(view) {
+    const { card, factsSection: body } = view;
+    const requirementsOpen = body.querySelector(".requirements")?.open;
+    body.replaceChildren();
     body.append(node("p", "price", priceLabel(card)), node("h3", "offer-title", card.title));
     const facts = node("div", "facts");
     addFact(facts, card.location || t("unknownLocation"));
@@ -465,8 +772,26 @@ function mountPresentation() {
     if (Number.isFinite(card.totalPrice) && Number.isFinite(card.shippingCost)) costs.append(node("p", "total", money(card.totalPrice) + " " + t("inclShipping")));
     if (costs.children.length) body.append(costs);
     assessment(card, body);
+    if (requirementsOpen && body.querySelector(".requirements")) body.querySelector(".requirements").open = true;
     const observed = time(card.observedAt);
-    body.append(node("p", "observed", observed ? t("observed") + " " + observed : t("unknownObservation")));
+    view.observed.textContent = observed ? t("observed") + " " + observed : t("unknownObservation");
+  }
+
+  function createCard(card, hydration) {
+    const element = node("li", "offer");
+    element.dataset.id = card.id;
+    const figure = node("div", "cover");
+    const body = node("div", "offer-body");
+    const dataUrl = imageData(hydration);
+    if (card.image?.status === "ready" && dataUrl) {
+      figure.append(makePhoto(dataUrl, card.title, card.image.index, () => figure.replaceChildren(imagePlaceholder({ image: { status: "failed" } }))));
+    } else figure.append(imagePlaceholder(card));
+    if (Number.isSafeInteger(card.imageCount) && card.imageCount > 0) figure.append(node("span", "photo-count", card.imageCount + " " + t(card.galleryComplete === false ? "knownPhotos" : "photoCount")));
+    const factsSection = node("div", "offer-facts");
+    const reviewSection = node("details", "visual-review");
+    reviewSection.addEventListener("toggle", reportSize);
+    const observed = node("p", "observed");
+    body.append(factsSection, reviewSection, observed);
     const actions = node("div", "actions");
     const openButton = node("button", "button primary", t("open"));
     openButton.type = "button";
@@ -493,10 +818,27 @@ function mountPresentation() {
     const moreButton = node("button", "button more", t("more"));
     moreButton.type = "button";
     gallerySection.append(galleryMain, galleryCaption, thumbnails, galleryStatus, moreButton);
-    body.append(actions, actionStatus, gallerySection);
+    const selectionControls = node("div", "selection-controls");
+    const shortlistButton = node("button", "button shortlist-button", t("shortlist"));
+    const rejectButton = node("button", "button reject-button", t("reject"));
+    shortlistButton.type = rejectButton.type = "button";
+    const compareLabel = node("label", "compare-toggle");
+    const compareInput = node("input");
+    compareInput.type = "checkbox";
+    compareInput.setAttribute("aria-label", t("compare") + " · " + card.title);
+    compareLabel.append(compareInput, node("span", "", t("compare")));
+    selectionControls.append(shortlistButton, rejectButton, compareLabel);
+    body.append(selectionControls, actions, actionStatus, gallerySection);
     element.append(figure, body);
     const view = { card, element, figure, openButton, photoButton, actionStatus, gallerySection, galleryMain, galleryCaption, thumbnails, galleryStatus, moreButton,
+      factsSection, observed, reviewSection, shortlistButton, rejectButton, compareInput,
       gallery: { open: false, loading: false, initialized: false, images: new Map(), selected: null, total: card.imageCount, complete: card.galleryComplete, nextIndex: 0, remainingIndices: [], retryAt: card.image?.error?.retryAt ?? null, error: "", retryTimer: null } };
+    drawFacts(view);
+    drawReview(view);
+    updateFeedbackControls(view);
+    shortlistButton.addEventListener("click", () => setFeedback(view, feedbackFor(view.card).decision === "shortlist" ? "neutral" : "shortlist"));
+    rejectButton.addEventListener("click", () => setFeedback(view, feedbackFor(view.card).decision === "reject" ? "neutral" : "reject"));
+    compareInput.addEventListener("change", () => changeSelection(view.card, compareInput.checked));
     openButton.addEventListener("click", () => openListing(view));
     photoButton.addEventListener("click", () => {
       view.gallery.open = !view.gallery.open;
@@ -532,6 +874,21 @@ function mountPresentation() {
       notice(t("selectionError"));
       return;
     }
+    const sameResearch = payload?.researchId && payload.researchId === data.researchId;
+    const sameCollection = sameResearch && payload.collectionId === data.collectionId;
+    if (!sameResearch) {
+      savedFeedback.clear();
+      refreshedReviews.clear();
+      pendingFeedback.clear();
+    }
+    if (!sameCollection) {
+      refreshedCards.clear();
+      selectedCards.clear();
+      comparisonOpen = false;
+      selectionRevision++;
+      discussion = null;
+      elements["selection-status"].textContent = "";
+    }
     generation++;
     pageBusy = false;
     elements["queries-more"].disabled = false;
@@ -548,8 +905,12 @@ function mountPresentation() {
     elements.cards.replaceChildren();
     const images = Array.isArray(envelope._meta?.listingImages) ? envelope._meta.listingImages : [];
     data.cards.forEach((card, index) => {
-      const hydration = images.find(image => image.id === card.id && image.index === card.image?.index);
-      const view = createCard({ ...card, rank: Number.isFinite(card.rank) ? card.rank : index + 1 }, hydration);
+      const current = reconcileCard({ ...card, rank: Number.isFinite(card.rank) ? card.rank : index + 1 });
+      const hydration = card.image?.status === "ready" && samePhoto(card.image, current.image)
+        ? images.find(image => image.id === card.id && image.index === current.image?.index) : undefined;
+      if (hydration && imageData(hydration)) current.image.status = "ready";
+      rememberSelected(current);
+      const view = createCard(current, hydration);
       views.set(card.id, view);
     });
     elements.title.textContent = data.title || t("title");
@@ -576,7 +937,7 @@ function mountPresentation() {
     elements["audit-more"].hidden = true;
     auditCursor = undefined;
     observeCovers();
-    shareSelection();
+    renderSelection();
   }
 
   function observeCovers() {
@@ -679,6 +1040,45 @@ function mountPresentation() {
     finally { if (generation === callGeneration) { elements.audit.disabled = false; elements["audit-more"].disabled = false; reportSize(); } }
   }
 
+  function applyDetailCard(view, result) {
+    const card = result.card;
+    if (card === undefined) return;
+    if (!object(card) || card.id !== view.card.id || typeof card.title !== "string" ||
+        !Number.isFinite(Date.parse(card.observedAt)) || card.observedAt !== result.observedAt) throw new Error(t("formatError"));
+    if (Date.parse(card.observedAt) < Date.parse(view.card.observedAt)) return;
+    const previous = view.card;
+    const photoUnchanged = samePhoto(previous.image, card.image);
+    refreshedCards.set(card.id, { ...card, image: { ...card.image } });
+    view.card = reconcileCard({ ...card, rank: previous.rank, feedback: result.feedback ?? previous.feedback,
+      review: result.review ?? { status: "unreviewed", observedAt: card.observedAt } });
+    if (photoUnchanged && view.figure.querySelector("img")) {
+      view.card.image.status = "ready";
+      view.figure.querySelector("img").alt = card.title + " · " + t("photo") + " " + (card.image.index + 1);
+    } else {
+      view.figure.replaceChildren(imagePlaceholder(view.card));
+      if (view.card.image.status === "pending") {
+        const retry = node("button", "button cover-retry", t("coverRetry"));
+        retry.addEventListener("click", () => queueCover(card.id));
+        view.figure.append(retry);
+        queueCover(card.id);
+      }
+    }
+    view.figure.querySelector(".photo-count")?.remove();
+    if (Number.isSafeInteger(card.imageCount) && card.imageCount > 0)
+      view.figure.append(node("span", "photo-count", card.imageCount + " " + t(card.galleryComplete === false ? "knownPhotos" : "photoCount")));
+    if (!photoUnchanged || previous.imageCount !== card.imageCount || previous.galleryComplete !== card.galleryComplete) {
+      clearTimeout(view.gallery.retryTimer);
+      view.gallery = { open: view.gallery.open, loading: false, initialized: false, images: new Map(), selected: null,
+        total: card.imageCount, complete: card.galleryComplete, nextIndex: 0, remainingIndices: [], retryAt: null, error: "", retryTimer: null };
+      drawGallery(view);
+    }
+    view.openButton.disabled = !listingUrl(card.url) || !canOpenLinks();
+    view.photoButton.disabled = payload.source !== "live" || !/^\d{1,20}$/.test(card.id) || (card.imageCount === 0 && card.galleryComplete === true);
+    view.compareInput.setAttribute("aria-label", t("compare") + " · " + card.title);
+    drawFacts(view);
+    sortCards(false);
+  }
+
   async function loadDetails(view) {
     if (view.detailLoading) return;
     view.detailSection.hidden = !view.detailSection.hidden;
@@ -691,15 +1091,20 @@ function mountPresentation() {
       const response = await callTool("browse_collection", { researchId: payload.researchId, collectionId: payload.collectionId, action: "details", id: view.card.id });
       if (generation !== callGeneration) return;
       if (response.isError) throw new Error(response.structuredContent?.error?.message || t("loadError"));
-      const record = response.structuredContent?.results?.find(result => result.id === view.card.id)?.listing;
+      const data = response.structuredContent;
+      if (data?.researchId !== payload.researchId || data?.collectionId !== payload.collectionId) throw new Error(t("formatError"));
+      const result = data.results?.find(result => result.id === view.card.id);
+      const record = result?.listing;
       if (!record) throw new Error(t("unavailable"));
+      applyDetailCard(view, result);
       view.detailSection.replaceChildren(node("p", "", record.description || ""));
       for (const [key, value] of Object.entries(record.attributes ?? {})) view.detailSection.append(node("p", "", key + " · " + valueText(value)));
       if (record.seller?.memberSince) view.detailSection.append(node("p", "", t("memberSince") + " · " + record.seller.memberSince));
       if (Number.isFinite(record.seller?.activeListingCount)) view.detailSection.append(node("p", "", t("activeListings") + " · " + record.seller.activeListingCount));
+      if (time(result.observedAt)) view.detailSection.append(node("p", "observed", t("observed") + " " + time(result.observedAt)));
       view.detailLoaded = true;
+      updateResearchState(view, result);
       renderCoverage(response.structuredContent.research);
-      shareSelection(view);
     } catch (error) {
       if (generation === callGeneration) { view.detailSection.textContent = error.message || t("loadError"); view.detailSection.hidden = false; }
     } finally { view.detailLoading = false; reportSize(); }
@@ -717,6 +1122,7 @@ function mountPresentation() {
         collectionId: payload.collectionId, action: "page", cursor, pageSize: payload.pageSize ?? 12 });
       if (generation !== callGeneration) return;
       if (response.isError) throw new Error(response.structuredContent?.error?.message || t("selectionError"));
+      if (response.structuredContent?.researchId !== payload.researchId || response.structuredContent?.collectionId !== payload.collectionId) throw new Error(t("formatError"));
       render(response);
       elements.cards.scrollTop = 0;
     } catch (error) {
@@ -741,6 +1147,7 @@ function mountPresentation() {
     const ids = [...coverQueue].slice(0, 4);
     const callGeneration = generation;
     const researchId = payload.researchId, collectionId = payload.collectionId;
+    const requestedImages = new Map(ids.map(id => [id, { ...views.get(id)?.card.image }]));
     for (const id of ids) { coverQueue.delete(id); const view = views.get(id); if (view) view.coverLoading = true; }
     coverBusy = true;
     try {
@@ -750,7 +1157,7 @@ function mountPresentation() {
       const data = response.structuredContent;
       for (const id of ids) {
         const view = views.get(id);
-        if (!view) continue;
+        if (!view || !samePhoto(requestedImages.get(id), view.card.image)) continue;
         const photo = response._meta?.listingImages?.find(image => image.id === id && image.index === view.card.image.index);
         const dataUrl = imageData(photo);
         const error = data?.errors?.find(error => error.id === id);
@@ -774,10 +1181,15 @@ function mountPresentation() {
     } catch (error) {
       if (generation === callGeneration) for (const id of ids) {
         const view = views.get(id);
-        if (view) view.actionStatus.textContent = error.message || t("loadError");
+        if (view && samePhoto(requestedImages.get(id), view.card.image)) view.actionStatus.textContent = error.message || t("loadError");
       }
     } finally {
-      if (generation === callGeneration) for (const id of ids) { const view = views.get(id); if (view) view.coverLoading = false; }
+      if (generation === callGeneration) for (const id of ids) {
+        const view = views.get(id);
+        if (!view) continue;
+        view.coverLoading = false;
+        if (!samePhoto(requestedImages.get(id), view.card.image)) queueCover(id);
+      }
       coverBusy = false;
       if (!disposed && coverQueue.size) coverTimer = setTimeout(flushCovers, 30);
       reportSize();
@@ -825,7 +1237,9 @@ function mountPresentation() {
   });
   elements.fullscreen.addEventListener("click", async () => {
     try {
-      const result = connection === "ready" ? await app.requestDisplayMode({ mode: "fullscreen" }) : await window.openai?.requestDisplayMode?.({ mode: "fullscreen" });
+      const mode = hostContext.displayMode === "fullscreen" ? "inline" : "fullscreen";
+      if (!hostContext.availableDisplayModes?.includes(mode)) return;
+      const result = connection === "ready" ? await app.requestDisplayMode({ mode }) : await window.openai?.requestDisplayMode?.({ mode });
       if (result?.mode) applyHostContext({ displayMode: result.mode });
     } catch (error) { notice(error.message || t("connection")); }
   });
@@ -835,6 +1249,16 @@ function mountPresentation() {
   elements.audit.addEventListener("click", () => loadAudit());
   elements["audit-more"].addEventListener("click", () => loadAudit(auditCursor));
   elements.coverage.addEventListener("toggle", reportSize);
+  elements["compare-selection"].addEventListener("click", () => { comparisonOpen = !comparisonOpen; renderSelection(); });
+  elements["clear-selection"].addEventListener("click", () => {
+    selectedCards.clear();
+    selectionRevision++;
+    comparisonOpen = false;
+    for (const view of views.values()) view.compareInput.checked = false;
+    elements["selection-status"].textContent = "";
+    renderSelection();
+  });
+  elements["discuss-selection"].addEventListener("click", discussSelection);
   const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(reportSize) : null;
   resizeObserver?.observe(document.body);
   window.addEventListener("resize", () => { updatePosition(); reportSize(); });
@@ -844,11 +1268,14 @@ function mountPresentation() {
     connection = "ready";
     hostCapabilities = app.getHostCapabilities() ?? {};
     applyHostContext(app.getHostContext());
-    for (const view of views.values()) view.openButton.disabled = !listingUrl(view.card.url) || !canOpenLinks();
+    for (const view of views.values()) {
+      view.openButton.disabled = !listingUrl(view.card.url) || !canOpenLinks();
+      updateFeedbackControls(view);
+    }
     lastHeight = 0;
     reportSize();
     flushCovers();
-    shareSelection();
+    renderSelection();
   }).catch(() => {
     connection = "fallback";
     if (!payload) notice(t("connection"));
@@ -873,7 +1300,7 @@ export const PRESENTATION_HTML = `<!doctype html>
   button,select { font: inherit; }
   button { cursor: pointer; }
   button:disabled { cursor: default; opacity: .5; }
-  button:focus-visible,select:focus-visible,summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  button:focus-visible,select:focus-visible,summary:focus-visible,input:focus-visible,.comparison-scroll:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
   p,h2,h3,h4,ol,ul { margin: 0; }
   h2 { font-size: 20px; line-height: 1.3; font-weight: 650; overflow-wrap: anywhere; }
   header { display: grid; gap: 6px; margin-bottom: 14px; }
@@ -911,6 +1338,30 @@ export const PRESENTATION_HTML = `<!doctype html>
   .requirements { margin-top: 12px; font-size: 13px; }
   .requirements summary { cursor: pointer; padding: 4px 0; }
   .criterion-list { color: var(--muted); margin-top: 5px; }
+  .visual-review { margin-top: 13px; font-size: 12px; overflow-wrap: anywhere; }
+  .review-badge { padding: 7px 9px; border-radius: 7px; background: var(--soft); cursor: pointer; color: var(--muted); }
+  .visual-review[data-status="current"] .review-badge { color: var(--ink); }
+  .visual-review[open] .review-badge { margin-bottom: 8px; }
+  .review-finding + .review-finding { margin-top: 6px; }
+  .review-photos,.review-time { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .selection-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 12px; }
+  .selection-controls .button { flex: 1 1 auto; font-size: 12px; padding: 7px 9px; }
+  .selection-controls .button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .compare-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; font-size: 12px; }
+  .compare-toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+  #selection-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); padding: 10px; margin-bottom: 12px; }
+  #selection-count { flex: 1 1 100%; font-size: 12px; color: var(--muted); }
+  #selection-bar .button { font-size: 12px; }
+  #selection-status { flex: 1 1 100%; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  #selection-status:empty { display: none; }
+  .comparison-scroll { max-width: 100%; max-height: 640px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 16px; overscroll-behavior: contain; }
+  .comparison-table { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; }
+  .comparison-table caption { text-align: left; padding: 10px; }
+  .comparison-table th,.comparison-table td { min-width: 220px; max-width: 280px; width: 240px; padding: 10px; text-align: left; vertical-align: top; border-top: 1px solid var(--line); border-right: 1px solid var(--line); overflow-wrap: anywhere; background: var(--card); }
+  .comparison-table .comparison-label { min-width: 120px; max-width: 170px; width: 150px; position: sticky; left: 0; z-index: 1; background: var(--soft); font-weight: 550; }
+  .comparison-link { display: block; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+  .comparison-id { color: var(--muted); font-size: 11px; margin: 5px 0; }
+  .comparison-remove { font-size: 11px; min-height: 38px; padding: 6px 8px; }
   .observed { margin-top: 13px; color: var(--muted); font-size: 12px; }
   .actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
   .actions .button { flex: 1 1 auto; }
@@ -950,6 +1401,8 @@ export const PRESENTATION_HTML = `<!doctype html>
   <details id="coverage" hidden><summary id="coverage-label">Rechercheumfang</summary><p id="coverage-counts"></p><div id="coverage-queries"></div><button id="queries-more" class="button" type="button" hidden>Weitere Suchanfragen</button><button id="audit" class="button" type="button">Einzelnachweise</button><div id="audit-records"></div><button id="audit-more" class="button" type="button" hidden>Weitere Nachweise</button></details>
   <p id="notice" role="status" hidden></p>
   <div id="toolbar" hidden><label class="sort-control"><span id="sort-label">Sortieren</span><select id="sort" aria-labelledby="sort-label"><option value="rank">Empfehlung</option><option value="price_asc">Preis aufsteigend</option><option value="price_desc">Preis absteigend</option></select></label><button id="fullscreen" class="button" type="button" hidden>Größere Ansicht</button></div>
+  <section id="selection-bar" aria-label="Angebotsauswahl" hidden><p id="selection-count" aria-live="polite"></p><button id="compare-selection" class="button" type="button" aria-controls="comparison" aria-expanded="false">Vergleichen</button><button id="clear-selection" class="button" type="button">Auswahl leeren</button><button id="discuss-selection" class="button primary" type="button" hidden>Im Chat besprechen</button><p id="selection-status" role="status"></p></section>
+  <section id="comparison" aria-label="Angebotsvergleich" hidden></section>
   <ol id="cards"></ol>
   <nav id="pager" aria-label="Angebote durchblättern" hidden><button id="previous" class="button" type="button" aria-label="Vorheriges Angebot">‹</button><span id="position" aria-live="polite"></span><button id="next" class="button" type="button" aria-label="Nächstes Angebot">›</button></nav>
   <nav id="page-nav" aria-label="Ergebnisseiten" hidden><button id="page-previous" class="button" type="button">Vorherige Seite</button><span id="page-label" aria-live="polite"></span><button id="page-next" class="button" type="button">Weitere Angebote</button></nav>

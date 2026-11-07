@@ -1,5 +1,6 @@
 import { PERSONAL_TEST } from "./providers.mjs";
 import { fetchPublic } from "./traffic.mjs";
+import { reviewEvidence } from "./review.mjs";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_ENCODED_BYTES = 8 * 1024 * 1024 - 512 * 1024;
@@ -149,7 +150,9 @@ export async function imageBatch(requests, env, { mode = "images", deadline = Da
         encodedBytes += fetched.image.data.length;
         images.push(fetched.image);
         results.push({ id: request.id, index: request.index, url, size,
-          mimeType: fetched.image.mimeType, bytes: fetched.bytes, imageContentIndex: images.length });
+          mimeType: fetched.image.mimeType, bytes: fetched.bytes, imageContentIndex: images.length,
+          ...(request.photoId && request.evidenceId ? { photoId: request.photoId, evidenceId: request.evidenceId,
+            listingObservedAt: request.listingObservedAt } : {}) });
       }
       processed++;
     } catch (cause) {
@@ -176,6 +179,7 @@ export async function readGallery(args, env, provider) {
   const row = await provider.detail(args.id, { fresh: args.fresh ?? false, deadline });
   if (!row) throw failure("listing_unavailable", "This listing is unavailable.");
   const gallery = galleryOf(row);
+  const evidence = await reviewEvidence(row);
   const start = args.start ?? 0;
   const indices = args.indices ?? Array.from(
     { length: Math.min(args.count ?? 4, Math.max(0, gallery.length - start)) },
@@ -185,7 +189,8 @@ export async function readGallery(args, env, provider) {
   const requests = indices.map(index => {
     const photo = gallery[index];
     const thumbnail = size === "thumbnail" && photo?.thumbnailUrl;
-    return { id: row.id, index, url: thumbnail || photo?.url, size: thumbnail ? "thumbnail" : "full" };
+    return { id: row.id, index, url: thumbnail || photo?.url, size: thumbnail ? "thumbnail" : "full",
+      photoId: evidence.photos[index]?.photoId, evidenceId: evidence.evidenceId, listingObservedAt: row.observedAt };
   });
   const batch = await imageBatch(requests, env, { mode: args.mode ?? "images", deadline });
   const nextIndex = args.indices ? null : start + batch.processed < gallery.length ? start + batch.processed : null;

@@ -55,7 +55,7 @@ export default { async fetch(request, env) {
 } };`;
 
 const modules = [{ type: "ESModule", path: runtimeRoot + "/entry.mjs", contents: entry }];
-for (const file of ["research.mjs", "research-session.mjs", "engine.mjs"]) {
+for (const file of ["research.mjs", "research-session.mjs", "engine.mjs", "review.mjs"]) {
   modules.push({ type: "ESModule", path: runtimeRoot + "/" + file, contents: await readFile(sourceRoot + file, "utf8") });
 }
 const options = {

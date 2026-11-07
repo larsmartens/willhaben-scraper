@@ -5,9 +5,11 @@ import {
 import { runStudy, evaluateListing, validateCriteria } from "./engine.mjs";
 import { createCursor, readCursor } from "./cursors.mjs";
 import { galleryOf, imageBatch, pausesBatch, readGallery, toolFailure } from "./images.mjs";
-import { presentListings } from "./presentation.mjs";
+import { presentListings, listingCard } from "./presentation.mjs";
 import { PRESENTATION_URI } from "./presentation-ui.mjs";
-import { ensureResearch, recordResearch, getResearch, saveCollection, readCollection, resolveResearchObservations } from "./research.mjs";
+import { ensureResearch, recordResearch, getResearch, saveCollection, readCollection, resolveResearchObservations,
+  readListingState, setListingFeedback, refineResearch } from "./research.mjs";
+import { reviewEvidence } from "./review.mjs";
 import { VISUAL_IMAGE_SCHEMA } from "./visual-search.mjs";
 
 const string = maxLength => ({ type: "string", minLength: 1, maxLength });
@@ -40,6 +42,11 @@ const spec = { ...data, queries, filters: FILTER_SCHEMA, criteria, pageSize, fre
 const handle = { type: "string", pattern: "^ms_[a-f0-9]{32}$" };
 const photoId = { ...string(20), pattern: "^[0-9]{1,20}$" };
 const photoIndex = integer(0, Number.MAX_SAFE_INTEGER);
+const evidenceId = { type: "string", pattern: "^we_[a-f0-9]{64}$" };
+const evidencePhotoIds = { ...array({ type: "string", pattern: "^wp_[a-f0-9]{64}$" }, 1, 32), uniqueItems: true };
+const requirements = array(object({ requirement: string(160), mode: choice("require", "avoid", "prefer") }, ["requirement", "mode"]), 0, 24);
+const reviewedRequirements = array(object({ requirement: string(160), verdict: choice("confirmed", "contradicted", "unknown"),
+  evidence: string(600), photoIds: evidencePhotoIds }, ["requirement", "verdict", "evidence"]), 1, 24);
 const presentationSelection = object({ id: string(96), reason: string(280),
   cautions: array(string(180), 0, 3), photoIndex }, ["id"]);
 const summaryFields = ["title", "url", "price", "priceType", "location", "condition", "status", "model",
@@ -90,7 +97,7 @@ export const toolDefinitions = [
   {
     ...def("present_listings", "Angebote mit Bildern präsentieren",
       "Show 12 offers initially, optionally 24 per page, with original photos, facts, links and research coverage. Pass researchId for all observed results or queryIds for selected searches. Use selections for a ranked selection with reasons or open questions. The user can page through the collection and open galleries. For missingIds, refresh the relevant search with the same researchId and fresh=true, then repeat the presentation. Keep offer facts and photos in the app cards. Finish a display request with one plain sentence pointing to them. For requested advice, add decision analysis. Inspect actual image blocks before visual claims. Search summaries provide the initial overview, and the app loads its cover photos.",
-      object({ ...data, researchId, selections: array(presentationSelection, 1, 1000),
+      object({ ...data, researchId, collectionId, selections: array(presentationSelection, 1, 1000),
         queryIds: array(string(100), 1, 32), pageSize: overviewPageSize,
         title: string(100), summary: string(400), criteria }, ["source"]), online),
     _meta: {
@@ -129,13 +136,25 @@ toolDefinitions.push(
   },
   def("get_research", "Rechercheumfang anzeigen",
     "Read the current research audit. Summary gives compact counters, queries gives native totals and retrieved pages per query, listings gives delivered fields, description lengths, exact photo indices and documented findings. Counts distinguish server retrieval, delivery to ChatGPT and display in the app. Use section and cursor for precise follow-up.",
-    object({ researchId, section: { ...choice("summary", "queries", "listings"), default: "summary" },
+    object({ researchId, section: { ...choice("summary", "queries", "listings"), default: "summary" }, ids: array(string(96), 1, 24),
       limit: { ...integer(1, 100), default: 24 }, cursor: researchCursor }, ["researchId"])),
   def("record_review", "Fotoprüfung dokumentieren",
-    "Record your actual visual findings after receiving the selected image blocks through inspect_listing_images or search thumbnails. Supply the precise zero-based photoIndices and a concise evidence-grounded finding. The audit labels this as an agent-reported review and rejects photo indices not previously delivered to ChatGPT in this research.",
+    "Save actual findings after inspecting model-visible original photos. Copy evidenceId, photoIds and zero-based photoIndices from successful reviewContexts, and record exact requirement labels with confirmed, contradicted or unknown. A new finding replaces that same requirement while preserving other valid requirements. Call refine_research again to use the findings. Stale facts or photo identities require a fresh photo check. Legacy findings without requirements remain audit text.",
     object({ researchId, id: string(96), photoIndices: { ...array(photoIndex, 1, 32), uniqueItems: true },
-      findings: string(2000) }, ["researchId", "id", "photoIndices", "findings"]),
+      findings: string(2000), evidenceId, photoIds: evidencePhotoIds, requirements: reviewedRequirements }, ["researchId", "id", "photoIndices", "findings"]),
     { ...read, readOnlyHint: false, idempotentHint: false }),
+  def("refine_research", "Recherche verfeinern",
+    "Re-evaluate retained candidates without new marketplace requests. Use criteria for explicit structured facts and requirements for saved visual judgments. require and avoid are hard constraints, prefer changes eligible ordering. Unknown hard facts stay included by default; set unknownPolicy=exclude for verified-only results. Explicit user rejections are excluded and shortlists never override failed constraints. Each call evaluates at most 256 candidates. Repeat continuation until completed, then open collectionId with present_listings. Membership, preferences and feedback are fixed per refinement; start a new one after new findings or changed requirements.",
+    object({ researchId, requirements, criteria,
+      unknownPolicy: { ...choice("include", "exclude"), default: "include" },
+      feedbackFilter: { ...choice("all", "shortlisted"), default: "all" },
+      queryIds: array(string(100), 1, 32), refinementId: { type: "string", pattern: "^wf_[a-f0-9]{32}$" },
+      cursor: researchCursor }, ["researchId"]), { ...read, readOnlyHint: false, idempotentHint: false }),
+  { ...def("set_listing_feedback", "Angebot merken oder ablehnen",
+    "Save an explicit user decision for one observed listing in this research. shortlist prioritizes eligible offers, reject excludes the offer in the next refinement, and neutral clears that decision. Copy the exact researchId and listing ID. Feedback records preference separately from visual evidence.",
+    object({ researchId, id: string(96), decision: choice("shortlist", "reject", "neutral"), reason: string(280) }, ["researchId", "id", "decision"]),
+    { ...read, readOnlyHint: false }),
+    _meta: { ui: { visibility: ["model", "app"] }, "openai/widgetAccessible": true } },
   {
     ...def("browse_collection", "Angebotsübersicht bedienen",
       "Load a saved offer page, visible covers, selected gallery photos or a focused detail view for the app. Photo bytes are app metadata. Every selected ID must belong to this research collection.",
@@ -204,6 +223,9 @@ function checkArgs(name, args) {
   if (name === "present_listings") {
     if (!args.selections && !args.researchId) invalid("Pass selections or an existing researchId to present observed offers");
     if (args.selections && args.queryIds) invalid("Use selections or queryIds in one presentation");
+    if (args.collectionId && (!args.researchId || ["selections", "queryIds", "criteria", "title", "summary"].some(key => args[key] !== undefined))) {
+      invalid("Open an existing collection with researchId, collectionId, source and optional pageSize");
+    }
     if (args.source === "provided" && (!args.selections || args.selections.length > 24)) invalid("Select up to 24 provided offers for one presentation");
   }
   if (args.selections) {
@@ -379,7 +401,11 @@ async function searchListings(args, env, provider) {
       if (!row) invalid("imageIds must identify listings on the current result page");
       return row;
     }) : page.items.filter(row => coverOf(row)).slice(0, args.imageLimit ?? 4);
-    const requests = selected.map(row => ({ id: row.id, index: 0, ...coverOf(row) }));
+    const requests = await Promise.all(selected.map(async row => {
+      const evidence = await reviewEvidence(row);
+      return { id: row.id, index: 0, ...coverOf(row), evidenceId: evidence.evidenceId,
+        photoId: evidence.photos[0]?.photoId, listingObservedAt: page.observedAt };
+    }));
     const batch = await imageBatch(requests, env, { deadline });
     result.coverImages = { results: batch.results, errors: batch.errors, stopReason: batch.stopReason,
       remainingIds: requests.slice(batch.processed).map(request => request.id) };
@@ -388,7 +414,7 @@ async function searchListings(args, env, provider) {
   return result;
 }
 
-async function inspectListings(args, env, provider) {
+async function inspectListings(args, env, provider, presentationSelection) {
   const ids = [...new Set(args.ids)];
   const identity = { ...datasetIdentity(args), ids };
   const offset = await readCursor(args.cursor, "details", identity, 0);
@@ -402,9 +428,13 @@ async function inspectListings(args, env, provider) {
     const id = ids[position];
     try {
       const row = await provider.detail(id, { fresh: args.fresh ?? false, deadline });
-      results.push(row ? { id, observedAt: row.observedAt ?? null, cacheAgeSeconds: row.cacheAgeSeconds ?? 0,
+      const result = row ? { id, observedAt: row.observedAt ?? null, cacheAgeSeconds: row.cacheAgeSeconds ?? 0,
         listing: projectListing(row, args.fields ?? defaultDetails, args), evaluation: evaluateListing(row, args.criteria ?? []) }
-        : { id, status: "unavailable" });
+        : { id, status: "unavailable" };
+      if (row && presentationSelection) {
+        result.card = listingCard(row, presentationSelection, 1, provider.kind, args.criteria ?? []).card;
+      }
+      results.push(result);
       position++;
     } catch (cause) {
       const error = { id, ...toolFailure(cause) };
@@ -493,8 +523,10 @@ async function recordPhotos(env, researchId, result, audience) {
   const records = result.coverImages?.results ?? result.results ?? [];
   const photos = records.filter(row => Number.isSafeInteger(row.imageContentIndex)).map(row => ({
     id: row.id, index: row.index, size: row.size, observedAt: result.observedAt,
+    ...(row.evidenceId && row.photoId ? { evidenceId: row.evidenceId, photoId: row.photoId,
+      listingObservedAt: row.listingObservedAt } : {}),
   }));
-  if (photos.length) await recordResearch(env, { researchId, event: { type: "photos", audience, photos } });
+  if (photos.length) return recordResearch(env, { researchId, event: { type: "photos", audience, photos } });
 }
 
 function trackedProvider(provider, env, researchId, audience = "model", listings) {
@@ -581,18 +613,40 @@ async function presentationProvider(provider, env, researchId, selections) {
 
 async function present(args, env, provider) {
   if (args.researchId && provider.kind !== "provided") {
-    const collection = await saveCollection(env, { researchId: args.researchId,
-      selections: args.selections, queryIds: args.queryIds, title: args.title, summary: args.summary, criteria: args.criteria });
+    const collection = args.collectionId ? { collectionId: args.collectionId }
+      : await saveCollection(env, { researchId: args.researchId,
+        selections: args.selections, queryIds: args.queryIds, title: args.title, summary: args.summary, criteria: args.criteria });
     const page = await readCollection(env, { researchId: args.researchId,
       collectionId: collection.collectionId, pageSize: args.pageSize ?? 12 });
     const observed = await presentationProvider(provider, env, args.researchId, page.selections);
-    const result = await presentListings({ ...args, selections: page.selections }, env, observed);
+    const result = await presentListings({ ...args, selections: page.selections,
+      title: page.title, summary: page.summary, criteria: page.criteria }, env, observed);
+    await attachListingStates(result, env, args.researchId);
     const { selections, ...navigation } = page;
     return { ...result, ...navigation, requestedCount: page.total, shownCount: result.cards.length };
   }
   if (!args.selections) invalid("This connection needs explicit selections for presentation");
   if (args.selections.length > 24) invalid("A saved researchId is required to page through more than 24 offers");
   return presentListings({ ...args, hydrationLimit: args.selections.length }, env, provider);
+}
+
+async function attachListingStates(result, env, researchId) {
+  const entries = result.cards ?? result.results?.filter(item => item.listing) ?? [];
+  if (!entries.length) return;
+  const state = await readListingState(env, { researchId, ids: entries.map(item => item.id) });
+  const byId = new Map(state.listings.map(item => [item.id, item]));
+  for (const entry of entries) {
+    const saved = byId.get(entry.id);
+    entry.review = saved.review;
+    entry.feedback = saved.feedback;
+  }
+  if (result.cards) {
+    const needsReview = entries.filter(item => item.review.status !== "current" || !item.review.requirements.length);
+    result.reviewFollowup = { unreviewedIds: needsReview.map(item => item.id),
+      nextAction: needsReview.length
+        ? "For recommendations based on visible features, inspect the selected original photos and record precise requirement findings before a final visual selection. The overview remains available while evidence is open."
+        : "Saved visual requirement findings are attached to these cards. Check any newly requested criterion explicitly before treating it as confirmed." };
+  }
 }
 
 function appImages(result) {
@@ -615,6 +669,7 @@ async function browseCollection(args, env) {
       summary: page.summary, criteria: page.criteria, hydrationLimit: 0 }, env, provider);
     const { selections, ...navigation } = page;
     result = { ...rendered, ...navigation, requestedCount: page.total };
+    await attachListingStates(result, env, args.researchId);
     await recordResearch(env, { researchId: args.researchId, event: { type: "presentation", ids: rendered.cards.map(card => card.id) } });
   } else if (args.action === "covers") {
     if (!args.ids?.length) invalid("Cover loading requires ids");
@@ -637,11 +692,16 @@ async function browseCollection(args, env) {
       indices: args.indices, mode: "images", size: "full" }, env, provider);
     await recordPhotos(env, args.researchId, gallery, "app");
     result = appImages(gallery);
+    const state = await readListingState(env, { researchId: args.researchId, ids: [args.id] });
+    result.review = state.listings[0].review;
+    result.feedback = state.listings[0].feedback;
   } else {
     if (!args.id) invalid("Detail loading requires id");
-    result = await inspectListings({ source: page.source, ids: [args.id], limit: 1,
-      fields: [...defaultDetails, "seller", "shipping", "shippingCost", "quantity"], descriptionLimit: 6000 }, env, provider);
+    result = await inspectListings({ source: page.source, ids: [args.id], limit: 1, criteria: page.criteria,
+      fields: [...defaultDetails, "seller", "sellerType", "shipping", "shippingCost", "quantity", "galleryComplete"],
+      descriptionLimit: 6000 }, env, provider, page.selections[0]);
     await recordDetails(env, args.researchId, result, "app");
+    await attachListingStates(result, env, args.researchId);
   }
   return { ...result, researchId: args.researchId, collectionId: args.collectionId,
     research: await coverageFor(env, args.researchId) };
@@ -697,7 +757,10 @@ export async function invokeTool(name, args, env = {}) {
   if (name === "compare_studies") return compare(await readSaved(args.before, env), await readSaved(args.after, env));
   if (name === "get_research") return getResearch(env, args);
   if (name === "record_review") return recordResearch(env, { researchId: args.researchId,
-    event: { type: "review", id: args.id, photoIndices: args.photoIndices, findings: args.findings } });
+    event: { type: "review", id: args.id, photoIndices: args.photoIndices, findings: args.findings,
+      evidenceId: args.evidenceId, photoIds: args.photoIds, requirements: args.requirements } });
+  if (name === "refine_research") return refineResearch(env, args);
+  if (name === "set_listing_feedback") return setListingFeedback(env, args);
   if (name === "browse_collection") return browseCollection(args, env);
   const source = ["inspect_listing_images", "inspect_listing_image", "search_by_image"].includes(name) ? "live" : args.source;
   const session = name !== "discover_filters" && (env.REQUEST_LIMIT_KEY || args.researchId)
@@ -707,7 +770,10 @@ export async function invokeTool(name, args, env = {}) {
   const result = await dispatch(name, args, env, provider);
   if (!session) return result;
   const id = session.researchId;
-  if (name === "inspect_listings") await recordDetails(env, id, result, "model");
+  if (name === "inspect_listings") {
+    await recordDetails(env, id, result, "model");
+    await attachListingStates(result, env, id);
+  }
   if (["study_market", "save_study"].includes(name)) {
     const report = result.report ?? result;
     const records = [...report.shortlist, ...report.unknown, ...report.excluded]
@@ -715,7 +781,15 @@ export async function invokeTool(name, args, env = {}) {
         ...(row.observedAt ? { observedAt: row.observedAt } : {}) }));
     if (records.length) await recordResearch(env, { researchId: id, event: { type: "details", audience: "model", records } });
   }
-  if (result._images?.length) await recordPhotos(env, id, result, "model");
+  if (result._images?.length) {
+    const delivered = await recordPhotos(env, id, result, "model");
+    result.reviewContexts = delivered?.reviewContexts ?? [];
+  } else if ((["inspect_listing_images", "inspect_listing_image"].includes(name) && args.mode !== "links") || args.images === "thumbnails") {
+    const failedIds = args.id ? [args.id] : [...new Set((result.coverImages?.errors ?? []).map(error => error.id))];
+    result.reviewContexts = failedIds.map(listingId => ({ researchId: id, id: listingId, evidenceId: null, photos: [],
+      requirements: [], nextTool: "inspect_listing_images",
+      nextAction: "This batch delivered no model-visible photo for this listing. Respect retryAt and inspect successful original images before recording visual requirements." }));
+  }
   if (name === "present_listings") {
     await recordResearch(env, { researchId: id, event: { type: "presentation", ids: result.cards.map(card => card.id) } });
     const photos = (result._meta?.listingImages ?? []).map(photo => ({ id: photo.id, index: photo.index,

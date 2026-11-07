@@ -25,6 +25,36 @@ test('does not use requested rows or missing total as pagination boundary', asyn
   }
 });
 
+test('advances past locally filtered empty pages and reports their source continuation', async () => {
+  const provider = {kind:'live', async search({cursor}) {
+    const end = cursor === '2';
+    return {items:end ? [listing(1)] : [], end, nextCursor:end ? null : '2', total:51,
+      totalScope:'upstream_before_local_filters', scannedCount:end ? 1 : 50, filteredOutCount:end ? 0 : 50};
+  }};
+  const partial = await run(provider,{filters:{excludeTerms:['unrelated']},maxPages:1});
+  assert.equal(partial.counts.unique,0);
+  assert.equal(partial.coverage.queries[0].stopReason,'page_budget');
+  assert.deepEqual(partial.coverage.queries[0].continuation,{cursor:'2',firstPage:false});
+
+  const complete = await run(provider,{filters:{excludeTerms:['unrelated']},maxPages:3});
+  assert.deepEqual(complete.shortlist.map(row => row.id),['1']);
+  assert.equal(complete.coverage.queries[0].pages,2);
+  assert.equal(complete.coverage.queries[0].reportedTotal,51);
+  assert.equal(complete.coverage.searchExhausted,true);
+});
+
+test('advances past duplicate-only pages to reach later listings', async () => {
+  const provider = {kind:'live', async search({cursor}) {
+    const page = Number(cursor ?? 1);
+    return {items:[listing(page === 3 ? 2 : 1)], total:2, end:page === 3,
+      nextCursor:page === 3 ? null : String(page+1)};
+  }};
+  const report = await run(provider,{maxPages:3});
+  assert.deepEqual(report.shortlist.map(row => row.id),['1','2']);
+  assert.equal(report.coverage.queries[0].pages,3);
+  assert.equal(report.coverage.searchExhausted,true);
+});
+
 test('schema failure, empty result, explicit undercount and changed total are distinguishable', async () => {
   const invalidResponses = [{}, {items:[],nextCursor:null,end:true,total:-1}, {items:[],nextCursor:null,end:false,total:null},
     {items:[{id:'1',title:'Candidate',price:'10'}],end:true,total:1,nextCursor:null}];
@@ -64,6 +94,33 @@ test('deduplicates across variants and pages; restating one query does not spend
   assert.equal(r.coverage.status,'exhausted');
 });
 
+test('duplicate queries retain the latest whole listing observation in either order', async () => {
+  const observations = {
+    older:listing(1,{title:'Old lamp',price:100,observedAt:'2026-11-07T10:00:00.000Z',cacheAgeSeconds:300,cacheHit:true,
+      attributes:{opening_mm:24}}),
+    newer:listing(1,{title:'Current lamp',price:80,observedAt:'2026-11-07T10:05:00.000Z',cacheAgeSeconds:0,cacheHit:false}),
+  };
+  const provider = {kind:'live', async search({query}) {
+    return {items:[observations[query]],total:1,end:true,nextCursor:null,
+      observedAt:'2026-11-07T09:00:00.000Z',cacheAgeSeconds:3600,cacheHit:true};
+  }};
+  for (const queries of [['older','newer'],['newer','older']]) {
+    const report = await run(provider,{queries,maxPages:2,criteria:[{key:'opening_mm',value:24}]});
+    assert.equal(report.counts.unique,1);
+    assert.equal(report.counts.raw,2);
+    assert.equal(report.counts.confirmed,0);
+    const row = report.unknown[0];
+    assert.equal(row.title,'Current lamp');
+    assert.equal(row.askingEUR,80);
+    assert.equal(row.observedAt,observations.newer.observedAt);
+    assert.equal(row.cacheAgeSeconds,0);
+    assert.equal(row.evidence[0].actual,null);
+    assert.deepEqual(report.dataFreshness,{
+      oldestObservationAt:observations.newer.observedAt,newestObservationAt:observations.newer.observedAt,cachedRecords:0,
+    });
+  }
+});
+
 test('bounded fair traversal across variants and honest partial results on stalls',async()=>{
   const limited = await run(pages(sample(),{size:5}),{queries:['A','B'],maxPages:2});
   assert.deepEqual(limited.coverage.queries.map(r=>[r.pages,r.stopReason]),[[1,'page_budget'],[1,'page_budget']]);
@@ -73,8 +130,9 @@ test('bounded fair traversal across variants and honest partial results on stall
   const cursorLoop = await run({kind:'live',search:async({cursor})=>({items:[listing(cursor ? 2:1)],end:false,nextCursor:'next',total:null})});
   assert.equal(cursorLoop.coverage.queries[0].stopReason,'repeated_cursor');
   assert.equal(cursorLoop.coverage.queries[0].continuation,undefined);
-  const dupes = await run({kind:'live',search:async({cursor})=>({items:[listing(1)],end:false,nextCursor:String(Number(cursor??0)+1),total:null})});
-  assert.equal(dupes.coverage.queries[0].stopReason,'no_progress');
+  const dupes = await run({kind:'live',search:async({cursor})=>({items:[listing(1)],end:false,nextCursor:String(Number(cursor??0)+1),total:null})},{maxPages:3});
+  assert.equal(dupes.coverage.queries[0].stopReason,'page_budget');
+  assert.deepEqual(dupes.coverage.queries[0].continuation,{cursor:'3',firstPage:false});
 });
 
 test('rate limiting halts the study and secondary detail traffic',async()=>{
@@ -102,6 +160,55 @@ test('detail priority and explicit criteria keep unsupported fitting claims unkn
   assert.equal(r.unknown[0].evidence[2].evidence,null);
   assert.equal(r.shortlist[0].evidence[1].evidence,'attributes.diameter_mm');
   assert.equal(r.coverage.detailsComplete,false);
+});
+
+test('an older detail cannot overwrite newer search facts or claim current detail coverage', async () => {
+  const current = listing(1,{price:80,observedAt:'2026-11-07T10:05:00.000Z',cacheAgeSeconds:0});
+  const provider = pages([current],{detail:async () => listing(1,{
+    price:100,observedAt:'2026-11-07T10:00:00.000Z',cacheAgeSeconds:300,cacheHit:true,attributes:{opening_mm:24},
+  })});
+  const report = await run(provider,{criteria:[{key:'opening_mm',value:24}],maxDetails:1});
+  assert.equal(report.counts.confirmed,0);
+  assert.equal(report.counts.detailsFetched,1);
+  const row = report.unknown[0];
+  assert.equal(row.askingEUR,80);
+  assert.equal(row.observedAt,current.observedAt);
+  assert.equal(row.cacheAgeSeconds,0);
+  assert.equal(row.detailed,false);
+  assert.equal(row.evidence[0].actual,null);
+  assert.equal(report.coverage.detailsComplete,false);
+  assert.equal(report.coverage.detailsUnexamined,1);
+  assert.deepEqual(report.coverage.remainingDetailIds,['1']);
+  assert.deepEqual(report.dataFreshness,{
+    oldestObservationAt:current.observedAt,newestObservationAt:current.observedAt,cachedRecords:0,
+  });
+});
+
+test('equal or newer details replace the whole observation without inheriting old attributes', async () => {
+  const searchTime = '2026-11-07T10:00:00.000Z';
+  for (const observedAt of [searchTime,'2026-11-07T10:05:00.000Z']) {
+    const provider = pages([listing(1,{price:100,observedAt:searchTime,cacheHit:true,cacheAgeSeconds:300,
+      attributes:{opening_mm:24}})],{detail:async () => ({
+      id:'1',title:'Current lamp detail',price:80,observedAt,cacheAgeSeconds:0,cacheHit:false,
+    })});
+    const report = await run(provider,{criteria:[{key:'opening_mm',value:24}],maxDetails:1});
+    assert.equal(report.counts.confirmed,0);
+    const row = report.unknown[0];
+    assert.equal(row.title,'Current lamp detail');
+    assert.equal(row.askingEUR,80);
+    assert.equal(row.quantity,null);
+    assert.equal(row.condition,null);
+    assert.equal(row.evidence[0].actual,null);
+    assert.equal(row.observedAt,observedAt);
+    assert.equal(row.cacheAgeSeconds,0);
+    assert.equal(row.detailed,true);
+    assert.equal(report.coverage.detailsComplete,true);
+    assert.equal(report.coverage.detailsUnexamined,0);
+    assert.deepEqual(report.coverage.remainingDetailIds,[]);
+    assert.deepEqual(report.dataFreshness,{
+      oldestObservationAt:observedAt,newestObservationAt:observedAt,cachedRecords:0,
+    });
+  }
 });
 
 test('a wrong-identity detail cannot change evidence', async()=>{

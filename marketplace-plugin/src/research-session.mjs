@@ -6,6 +6,7 @@ import {
   researchError, researchHash, researchCursor, readResearchCursor,
   validateResearchId, validateResearchSource, validateCollectionId,
 } from "./research.mjs";
+import { requirementKey, reviewEvidence, normalizeRefinement, evaluateRefinement, REFINEMENT_STEP_SIZE } from "./review.mjs";
 
 const iso = value => new Date(value).toISOString();
 
@@ -74,6 +75,38 @@ export class ResearchSession extends DurableObject {
           PRIMARY KEY (collection_id, position)
         );
         CREATE UNIQUE INDEX IF NOT EXISTS collection_members ON collection_items (collection_id, listing_id);
+        CREATE TABLE IF NOT EXISTS photo_receipts (
+          listing_id TEXT NOT NULL, photo_id TEXT NOT NULL, evidence_id TEXT NOT NULL,
+          photo_index INTEGER NOT NULL, source_observed_at TEXT NOT NULL, delivered_at TEXT NOT NULL,
+          valid INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (listing_id, photo_id, evidence_id)
+        );
+        CREATE TABLE IF NOT EXISTS review_requirements (
+          listing_id TEXT NOT NULL, requirement_key TEXT NOT NULL, requirement TEXT NOT NULL,
+          verdict TEXT NOT NULL, evidence TEXT NOT NULL, photo_ids TEXT NOT NULL, evidence_id TEXT NOT NULL,
+          findings TEXT NOT NULL, reviewed_at TEXT NOT NULL, source_observed_at TEXT NOT NULL,
+          valid INTEGER NOT NULL DEFAULT 1, event_sequence INTEGER NOT NULL, PRIMARY KEY (listing_id, requirement_key)
+        );
+        CREATE TABLE IF NOT EXISTS listing_feedback (
+          revision INTEGER PRIMARY KEY AUTOINCREMENT, listing_id TEXT NOT NULL, decision TEXT NOT NULL,
+          reason TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS feedback_listing ON listing_feedback (listing_id, revision DESC);
+        CREATE TABLE IF NOT EXISTS refinements (
+          refinement_id TEXT PRIMARY KEY, cohort_id TEXT NOT NULL, result_collection_id TEXT NOT NULL,
+          preferences TEXT NOT NULL, feedback_watermark INTEGER NOT NULL, candidate_total INTEGER NOT NULL,
+          next_offset INTEGER NOT NULL DEFAULT 0, next_step INTEGER NOT NULL DEFAULT 0,
+          eligible_count INTEGER NOT NULL DEFAULT 0, excluded_count INTEGER NOT NULL DEFAULT 0,
+          unknown_count INTEGER NOT NULL DEFAULT 0, completed INTEGER NOT NULL DEFAULT 0, created_ms INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS refinement_results (
+          refinement_id TEXT NOT NULL, position INTEGER NOT NULL, listing_id TEXT NOT NULL,
+          eligible INTEGER NOT NULL, score INTEGER NOT NULL, evaluation TEXT NOT NULL, selection TEXT NOT NULL,
+          PRIMARY KEY (refinement_id, position)
+        );
+        CREATE TABLE IF NOT EXISTS refinement_steps (
+          refinement_id TEXT NOT NULL, step INTEGER NOT NULL, response TEXT NOT NULL,
+          PRIMARY KEY (refinement_id, step)
+        );
       `);
     });
   }
@@ -189,23 +222,83 @@ export class ResearchSession extends DurableObject {
         ON CONFLICT (listing_id, audience, photo_index, size) DO UPDATE SET
           observed_at = MAX(photos.observed_at, excluded.observed_at), deliveries = photos.deliveries + 1`,
       photo.id, event.audience, photo.index, photo.size, photo.observedAt);
+      if (event.audience === "model" && photo.evidenceId) {
+        const observation = this.#observation(photo.id);
+        if (observation?.listing?.evidenceId !== photo.evidenceId ||
+            !observation.listing.gallery.some(item => item.photoId === photo.photoId)) continue;
+        this.#sql(`INSERT INTO photo_receipts VALUES (?, ?, ?, ?, ?, ?, 1)
+          ON CONFLICT (listing_id, photo_id, evidence_id) DO UPDATE SET
+          photo_index = excluded.photo_index, source_observed_at = excluded.source_observed_at,
+          delivered_at = excluded.delivered_at, valid = 1`,
+        photo.id, photo.photoId, photo.evidenceId, photo.index, photo.listingObservedAt, event.observedAt);
+      }
     }
   }
 
-  #recordReview(event) {
+  #recordReview(event, sequence) {
     for (const index of event.photoIndices) {
       const delivered = this.#sql("SELECT 1 FROM photos WHERE listing_id = ? AND audience = 'model' AND photo_index = ? LIMIT 1", event.id, index).toArray();
       if (!delivered.length) throw researchError("review_photo_not_delivered", "Record visual findings only for photo indices previously delivered to the model in this research.");
     }
     this.#sql("INSERT INTO reviews VALUES (?, ?, ?, ?, ?)", event.eventId, event.id,
       JSON.stringify(event.photoIndices), event.findings, event.observedAt);
+    if (!event.requirements) return;
+    const observation = this.#observation(event.id);
+    if (observation?.listing?.evidenceId !== event.evidenceId) {
+      throw researchError("review_evidence_stale", "The listing facts changed after the photos were delivered. Call inspect_listing_images with fresh=true and copy its successful review context.");
+    }
+    const receipts = event.photoIds.map(photoId => this.#sql(`SELECT * FROM photo_receipts
+      WHERE listing_id = ? AND photo_id = ? AND evidence_id = ? AND valid = 1`, event.id, photoId, event.evidenceId).toArray()[0]);
+    if (receipts.some(receipt => !receipt) || event.photoIndices.some(index => !receipts.some(receipt => receipt.photo_index === index)) ||
+        receipts.some(receipt => !event.photoIndices.includes(receipt.photo_index))) {
+      throw researchError("review_photo_not_delivered", "Copy photoIds and photoIndices from successful model-image deliveries in this research. Read changed or missing photos again.");
+    }
+    for (const requirement of event.requirements) {
+      this.#sql(`INSERT INTO review_requirements VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        ON CONFLICT (listing_id, requirement_key) DO UPDATE SET requirement = excluded.requirement,
+          verdict = excluded.verdict, evidence = excluded.evidence, photo_ids = excluded.photo_ids,
+          evidence_id = excluded.evidence_id, findings = excluded.findings, reviewed_at = excluded.reviewed_at,
+          source_observed_at = excluded.source_observed_at, valid = 1, event_sequence = excluded.event_sequence
+        WHERE excluded.reviewed_at > review_requirements.reviewed_at OR
+          (excluded.reviewed_at = review_requirements.reviewed_at AND excluded.event_sequence > review_requirements.event_sequence)`,
+      event.id, requirementKey(requirement.requirement), requirement.requirement, requirement.verdict, requirement.evidence,
+      JSON.stringify(requirement.photoIds), event.evidenceId, event.findings, event.observedAt,
+      receipts.filter(receipt => requirement.photoIds.includes(receipt.photo_id)).map(receipt => receipt.source_observed_at).sort()[0], sequence);
+    }
+  }
+
+  async #prepareObservations(input) {
+    return Promise.all(normalizeListingObservations(input).map(async observation => {
+      if (!observation.listing) return observation;
+      const evidence = await reviewEvidence(observation.listing);
+      return { ...observation, listing: { ...observation.listing, evidenceId: evidence.evidenceId,
+        gallery: observation.listing.gallery.map((photo, index) => ({ ...photo, photoId: evidence.photos[index].photoId })) } };
+    }));
+  }
+
+  #observation(id) {
+    const row = this.#sql("SELECT * FROM listing_observations WHERE listing_id = ?", id).toArray()[0];
+    return row ? { id, kind: row.kind, observedAt: row.observed_at,
+      ...(row.listing ? { listing: JSON.parse(row.listing) } : {}) } : null;
   }
 
   #recordObservations(observations) {
     for (const incoming of observations) {
-      const row = this.#sql("SELECT kind, observed_at FROM listing_observations WHERE listing_id = ?", incoming.id).toArray()[0];
+      const row = this.#sql("SELECT * FROM listing_observations WHERE listing_id = ?", incoming.id).toArray()[0];
       const current = row ? { kind: row.kind, observedAt: row.observed_at } : null;
-      if (newestListingObservation(current, incoming) !== incoming) continue;
+      const stripEvidence = (key, value) => ["photoId", "evidenceId"].includes(key) ? undefined : value;
+      const enrichLegacy = row?.listing && !JSON.parse(row.listing).evidenceId && row.kind === incoming.kind &&
+        row.observed_at === incoming.observedAt && JSON.stringify(JSON.parse(row.listing), stripEvidence) === JSON.stringify(incoming.listing, stripEvidence);
+      if (newestListingObservation(current, incoming) !== incoming && !enrichLegacy) continue;
+      const evidenceId = incoming.listing?.evidenceId ?? "";
+      const photoIds = JSON.stringify(incoming.listing?.gallery.map(photo => photo.photoId).filter(Boolean) ?? []);
+      this.#sql(`UPDATE photo_receipts SET valid = 0 WHERE listing_id = ? AND valid = 1 AND
+        (evidence_id <> ? OR NOT EXISTS (SELECT 1 FROM json_each(?) p WHERE p.value = photo_receipts.photo_id))`,
+      incoming.id, evidenceId, photoIds);
+      this.#sql(`UPDATE review_requirements SET valid = 0 WHERE listing_id = ? AND valid = 1 AND
+        (evidence_id <> ? OR EXISTS (SELECT 1 FROM json_each(review_requirements.photo_ids) r
+          WHERE NOT EXISTS (SELECT 1 FROM json_each(?) p WHERE p.value = r.value)))`,
+      incoming.id, evidenceId, photoIds);
       this.#sql(`INSERT INTO listing_observations VALUES (?, ?, ?, ?)
         ON CONFLICT (listing_id) DO UPDATE SET kind = excluded.kind,
           observed_at = excluded.observed_at, listing = excluded.listing`,
@@ -216,9 +309,10 @@ export class ResearchSession extends DurableObject {
   async append(input) {
     try {
       const event = await normalizeResearchEvent(input);
-      const observations = normalizeListingObservations(input.observations);
+      const observations = await this.#prepareObservations(input.observations);
       const evidence = JSON.stringify(event, (key, value) => key === "observedAt" ? undefined : value);
-      const signature = await researchHash(observations.length ? JSON.stringify([evidence, observations]) : evidence);
+      const signature = await researchHash(observations.length ? JSON.stringify([evidence, observations],
+        (key, value) => ["evidenceId", "photoId"].includes(key) ? undefined : value) : evidence);
       return this.#execute(() => {
         this.#touch();
         const old = this.#sql("SELECT signature FROM events WHERE event_id = ?", event.eventId).toArray()[0];
@@ -229,24 +323,28 @@ export class ResearchSession extends DurableObject {
           if (event.type === "search") this.#recordSearch(event, row.sequence);
           if (event.type === "details") this.#recordDetails(event);
           if (event.type === "photos") this.#recordPhotos(event);
-          if (event.type === "review") this.#recordReview(event);
+          if (event.type === "review") this.#recordReview(event, row.sequence);
           if (event.type === "presentation") for (const id of event.ids) {
             this.#listing(id);
             this.#sql("INSERT OR IGNORE INTO presented VALUES (?)", id);
           }
           this.#recordObservations(observations);
         }
-        return { ...this.#summary(), duplicate: Boolean(old), ...(event.type === "search" ? { queryId: event.queryId } : {}) };
+        return { ...this.#summary(), duplicate: Boolean(old), ...(event.type === "search" ? { queryId: event.queryId } : {}),
+          ...(event.type === "photos" && event.audience === "model" ? { reviewContexts: this.#reviewContexts(event) } : {}),
+          ...(event.type === "review" ? { id: event.id, review: this.#review(event.id) } : {}) };
       });
     } catch (error) {
       return this.#failure(error);
     }
   }
 
-  resolveObservations({ ids, observations = [] } = {}) {
+  async resolveObservations({ ids, observations = [] } = {}) {
+    let incoming;
+    try { incoming = await this.#prepareObservations(observations); }
+    catch (error) { return this.#failure(error); }
     return this.#execute(() => {
       const wanted = normalizeObservationIds(ids);
-      const incoming = normalizeListingObservations(observations);
       if (incoming.some(observation => !wanted.includes(observation.id))) {
         throw researchError("invalid_research_input", "Only requested listing observations can be resolved.");
       }
@@ -261,6 +359,88 @@ export class ResearchSession extends DurableObject {
       return { researchId: this.#metadata().researchId,
         observations: wanted.filter(id => byId.has(id)).map(id => byId.get(id)),
         missingIds: wanted.filter(id => !byId.has(id)) };
+    });
+  }
+
+  #review(id) {
+    const observation = this.#observation(id);
+    const rows = this.#sql("SELECT * FROM review_requirements WHERE listing_id = ? ORDER BY reviewed_at DESC, requirement_key", id).toArray();
+    const indices = new Map((observation?.listing?.gallery ?? []).map(photo => [photo.photoId, photo.index]));
+    const applicable = rows.filter(row => row.valid && row.evidence_id === observation?.listing?.evidenceId &&
+      JSON.parse(row.photo_ids).every(photoId => indices.has(photoId)));
+    const requirements = applicable.map(row => ({ requirement: row.requirement, verdict: row.verdict,
+      evidence: row.evidence, photoIds: JSON.parse(row.photo_ids),
+      photoIndices: JSON.parse(row.photo_ids).map(photoId => indices.get(photoId)).sort((a, b) => a - b),
+      reviewedAt: row.reviewed_at, sourceObservedAt: row.source_observed_at }));
+    const checkedPhotoIds = [...new Set(requirements.flatMap(item => item.photoIds))];
+    return { status: !rows.length ? "unreviewed" : applicable.length === rows.length ? "current" : "stale",
+      evidenceType: "agent-reported", observedAt: observation?.observedAt ?? null,
+      reviewedAt: rows[0]?.reviewed_at ?? null, checkedPhotoIds,
+      checkedPhotoIndices: checkedPhotoIds.map(photoId => indices.get(photoId)).sort((a, b) => a - b),
+      findings: [...new Set(applicable.map(row => row.findings))], requirements,
+      staleRequirements: rows.filter(row => !applicable.includes(row)).map(row => row.requirement) };
+  }
+
+  #feedback(id, watermark = Number.MAX_SAFE_INTEGER) {
+    const row = this.#sql("SELECT * FROM listing_feedback WHERE listing_id = ? AND revision <= ? ORDER BY revision DESC LIMIT 1", id, watermark).toArray()[0];
+    return row ? { decision: row.decision, revision: row.revision, updatedAt: row.updated_at,
+      ...(row.reason ? { reason: row.reason } : {}) }
+      : { decision: "neutral", revision: 0, updatedAt: null };
+  }
+
+  #reviewContexts(event) {
+    const latest = this.#sql("SELECT preferences FROM refinements ORDER BY created_ms DESC, rowid DESC LIMIT 1").toArray()[0];
+    const requirements = latest ? JSON.parse(latest.preferences).requirements : [];
+    return [...new Set(event.photos.map(photo => photo.id))].map(id => {
+      const observation = this.#observation(id);
+      const photos = event.photos.filter(photo => photo.id === id && photo.evidenceId === observation?.listing?.evidenceId &&
+        this.#sql("SELECT 1 FROM photo_receipts WHERE listing_id = ? AND photo_id = ? AND evidence_id = ? AND valid = 1",
+          id, photo.photoId ?? "", photo.evidenceId ?? "").toArray().length)
+        .map(photo => ({ index: photo.index, photoId: photo.photoId, size: photo.size }));
+      return { researchId: this.#metadata().researchId, id, evidenceId: photos.length ? observation.listing.evidenceId : null,
+        listingObservedAt: event.photos.find(photo => photo.id === id && photo.evidenceId === observation?.listing?.evidenceId)?.listingObservedAt ?? null,
+        photos, requirements,
+        nextTool: photos.length ? "record_review" : "inspect_listing_images",
+        nextAction: photos.length
+          ? "Inspect these successfully delivered image blocks. Record actual visual findings with record_review, copying evidenceId, photoIds and photoIndices. Use the exact applicable requirement labels with confirmed, contradicted or unknown. Then start a new refine_research or present_listings to use the saved findings."
+          : "No current model-image receipt is available from this batch. Call inspect_listing_images with fresh=true before recording structured visual requirements." };
+    });
+  }
+
+  readListingState({ ids } = {}) {
+    return this.#execute(() => {
+      const wanted = normalizeObservationIds(ids);
+      this.#touch();
+      return { researchId: this.#metadata().researchId, listings: wanted.map(id => {
+        const review = this.#review(id);
+        const { checkedPhotoIds, ...compact } = review;
+        return { id, feedback: this.#feedback(id), review: { ...compact,
+          findings: review.findings.slice(0, 1).map(text => text.slice(0, 500)),
+          findingsTruncated: review.findings.length > 1 || review.findings.some(text => text.length > 500),
+          requirements: review.requirements.slice(0, 8).map(({ photoIds, ...item }) => ({ ...item,
+            evidence: item.evidence.slice(0, 280), evidenceTruncated: item.evidence.length > 280 })),
+          requirementsTotal: review.requirements.length, requirementsTruncated: review.requirements.length > 8,
+          fullReview: { tool: "get_research", arguments: { researchId: this.#metadata().researchId, section: "listings", ids: [id] } } } };
+      }) };
+    });
+  }
+
+  setListingFeedback({ id, decision, reason = "" } = {}) {
+    return this.#execute(() => {
+      const [listingId] = normalizeObservationIds([id]);
+      if (!["shortlist", "reject", "neutral"].includes(decision) || typeof reason !== "string" || reason.length > 280) {
+        throw researchError("invalid_research_input", "Choose shortlist, reject or neutral with an optional short reason.");
+      }
+      this.#touch();
+      if (!this.#sql("SELECT 1 FROM listings WHERE id = ?", listingId).toArray().length) {
+        throw researchError("research_listing_unavailable", "This listing has not been observed in the selected research.");
+      }
+      const old = this.#feedback(listingId);
+      if (old.decision !== decision || (old.reason ?? "") !== reason.trim()) {
+        this.#sql("INSERT INTO listing_feedback (listing_id, decision, reason, updated_at) VALUES (?, ?, ?, ?)",
+          listingId, decision, reason.trim(), iso(Date.now()));
+      }
+      return { researchId: this.#metadata().researchId, id: listingId, feedback: this.#feedback(listingId) };
     });
   }
 
@@ -351,15 +531,21 @@ export class ResearchSession extends DurableObject {
       appDeliveredFields: app ? JSON.parse(app.fields) : [],
       modelPhotos: photos.filter(photo => photo.audience === "model").map(photoRecord),
       uiPhotos: photos.filter(photo => photo.audience === "app").map(photoRecord),
-      findings, findingsCount: reviewCount, findingsTruncated: reviewCount > findings.length };
+      findings, findingsCount: reviewCount, findingsTruncated: reviewCount > findings.length,
+      review: this.#review(row.id), feedback: this.#feedback(row.id) };
   }
 
   read(args = {}) {
     return this.#execute(() => {
-      const { section, limit, cursor } = normalizeResearchRead(args);
+      const { section, limit, cursor, ids } = normalizeResearchRead(args);
       this.#touch();
       const summary = this.#summary();
       if (section === "summary") return summary;
+      if (ids) {
+        const rows = ids.map(id => this.#sql("SELECT * FROM listings WHERE id = ?", id).toArray()[0]);
+        return { ...summary, listings: rows.filter(Boolean).map(row => this.#listingAudit(row)),
+          missingIds: ids.filter((id, index) => !rows[index]), total: rows.filter(Boolean).length, nextCursor: null };
+      }
       const scope = summary.researchId + ":" + section;
       const offset = readResearchCursor(cursor, scope);
       const total = section === "queries" ? summary.queryCount : this.#sql("SELECT COUNT(*) AS count FROM listings").one().count;
@@ -371,8 +557,10 @@ export class ResearchSession extends DurableObject {
   }
 
   #collectionMetadata(row) {
+    const definition = JSON.parse(row.signature);
     return { ...this.#metadata(), collectionId: row.collection_id, title: row.title, summary: row.summary,
-      criteria: JSON.parse(row.signature).criteria ?? [],
+      criteria: definition.criteria ?? [], requirements: definition.requirements ?? [],
+      ...(definition.refinementId ? { refinementId: definition.refinementId } : {}),
       collectionCreatedAt: iso(row.created_ms), total: row.available_total,
       availableTotal: row.available_total, moreAvailable: false, selectionMode: row.mode };
   }
@@ -385,37 +573,150 @@ export class ResearchSession extends DurableObject {
     params: [row.listing_watermark, row.event_watermark, ...queryIds] };
   }
 
+  #saveCollection(collection) {
+    const signature = JSON.stringify(collection);
+    const old = this.#sql("SELECT * FROM collections WHERE collection_id = ?", collection.collectionId).toArray()[0];
+    if (old) {
+      if (old.signature !== signature) throw researchError("collection_conflict", "This collectionId already identifies a different ordered selection.");
+      return this.#collectionMetadata(old);
+    }
+    const queryIds = collection.queryIds ?? [];
+    const snapshot = { query_ids: JSON.stringify(queryIds),
+      listing_watermark: this.#sql("SELECT COALESCE(MAX(sequence), 0) AS watermark FROM listings").one().watermark,
+      event_watermark: this.#sql("SELECT COALESCE(MAX(sequence), 0) AS watermark FROM events").one().watermark };
+    let availableTotal = collection.selections?.length;
+    if (!collection.selections) {
+      for (const queryId of queryIds) {
+        if (!this.#sql("SELECT 1 FROM queries WHERE query_id = ?", queryId).toArray().length) {
+          throw researchError("research_query_unavailable", "A selected queryId is absent from this research.");
+        }
+      }
+      const { condition, params } = this.#collectionFilter(snapshot);
+      availableTotal = this.#sql(`SELECT COUNT(*) AS count FROM listings l WHERE ${condition}`, ...params).one().count;
+    }
+    this.#sql("INSERT INTO collections VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", collection.collectionId, collection.title,
+      collection.summary, signature, Date.now(), availableTotal, collection.selections ? "explicit" : "query",
+      snapshot.query_ids, snapshot.listing_watermark, snapshot.event_watermark);
+    for (const [position, selection] of (collection.selections ?? []).entries()) {
+      this.#sql("INSERT INTO collection_items VALUES (?, ?, ?, ?)", collection.collectionId, position, selection.id, JSON.stringify(selection));
+    }
+    return this.#collectionMetadata(this.#sql("SELECT * FROM collections WHERE collection_id = ?", collection.collectionId).one());
+  }
+
   saveCollection(args) {
     return this.#execute(() => {
-      const collection = normalizeCollection(args);
       this.#touch();
-      const signature = JSON.stringify(collection);
-      const old = this.#sql("SELECT * FROM collections WHERE collection_id = ?", collection.collectionId).toArray()[0];
-      if (old) {
-        if (old.signature !== signature) throw researchError("collection_conflict", "This collectionId already identifies a different ordered selection.");
-        return this.#collectionMetadata(old);
-      }
-      const queryIds = collection.queryIds ?? [];
-      const snapshot = { query_ids: JSON.stringify(queryIds),
-        listing_watermark: this.#sql("SELECT COALESCE(MAX(sequence), 0) AS watermark FROM listings").one().watermark,
-        event_watermark: this.#sql("SELECT COALESCE(MAX(sequence), 0) AS watermark FROM events").one().watermark };
-      let availableTotal = collection.selections?.length;
-      if (!collection.selections) {
-        for (const queryId of queryIds) {
-          if (!this.#sql("SELECT 1 FROM queries WHERE query_id = ?", queryId).toArray().length) {
-            throw researchError("research_query_unavailable", "A selected queryId is absent from this research.");
-          }
+      return this.#saveCollection(normalizeCollection(args));
+    });
+  }
+
+  #retainedCohort() {
+    const collectionId = "wc_" + crypto.randomUUID().replaceAll("-", "");
+    const total = this.#sql("SELECT COUNT(*) AS value FROM listings l JOIN listing_observations o ON o.listing_id = l.id").one().value;
+    const title = "Gespeicherte Beobachtungen";
+    const signature = JSON.stringify({ collectionId, title, summary: "" });
+    const listingWatermark = this.#sql("SELECT COALESCE(MAX(sequence), 0) AS value FROM listings").one().value;
+    const eventWatermark = this.#sql("SELECT COALESCE(MAX(sequence), 0) AS value FROM events").one().value;
+    this.#sql("INSERT INTO collections VALUES (?, ?, '', ?, ?, ?, 'retained', '[]', ?, ?)",
+      collectionId, title, signature, Date.now(), total, listingWatermark, eventWatermark);
+    this.#sql(`INSERT INTO collection_items (collection_id, position, listing_id, selection)
+      SELECT ?, ROW_NUMBER() OVER (ORDER BY l.sequence) - 1, l.id, json_object('id', l.id)
+      FROM listings l JOIN listing_observations o ON o.listing_id = l.id`, collectionId);
+    return { collectionId, total };
+  }
+
+  #refinementStep(job, step) {
+    const previous = this.#sql("SELECT response FROM refinement_steps WHERE refinement_id = ? AND step = ?", job.refinement_id, step).toArray()[0];
+    if (previous) return JSON.parse(previous.response);
+    if (job.completed || step !== job.next_step) {
+      throw researchError("invalid_research_cursor", "Use the nextCursor returned by this refinement, or start a new refinement for changed preferences.");
+    }
+    const preferences = JSON.parse(job.preferences);
+    const cohort = this.#sql("SELECT * FROM collections WHERE collection_id = ?", job.cohort_id).one();
+    let candidates;
+    if (cohort.mode === "query") {
+      const { condition, params } = this.#collectionFilter(cohort);
+      candidates = this.#sql(`SELECT id FROM listings l WHERE ${condition}
+        ORDER BY sequence LIMIT ? OFFSET ?`, ...params, REFINEMENT_STEP_SIZE, job.next_offset).toArray();
+    } else candidates = this.#sql(`SELECT listing_id AS id FROM collection_items
+      WHERE collection_id = ? ORDER BY position LIMIT ? OFFSET ?`, cohort.collection_id, REFINEMENT_STEP_SIZE, job.next_offset).toArray();
+    const decisions = candidates.map(({ id }, index) => {
+      const evaluation = evaluateRefinement(this.#observation(id), this.#review(id),
+        this.#feedback(id, job.feedback_watermark), preferences);
+      const confirmed = evaluation.requirements.filter(item => item.verdict !== "unknown" && item.mode !== "prefer");
+      const open = evaluation.requirements.filter(item => item.verdict === "unknown").map(item => item.requirement);
+      const selection = { id,
+        reason: confirmed.length ? confirmed.map(item => item.requirement).join(" · ").slice(0, 280) : "",
+        cautions: open.slice(0, 3).map(label => ("Offen · " + label).slice(0, 180)),
+        refinement: { observedAt: evaluation.observedAt, unknown: evaluation.unknown, score: evaluation.score } };
+      this.#sql("INSERT INTO refinement_results VALUES (?, ?, ?, ?, ?, ?, ?)", job.refinement_id,
+        job.next_offset + index, id, Number(evaluation.eligible), evaluation.score, JSON.stringify(evaluation), JSON.stringify(selection));
+      return { id, ...evaluation };
+    });
+    const evaluatedCount = job.next_offset + decisions.length;
+    const eligibleCount = job.eligible_count + decisions.filter(item => item.eligible).length;
+    const excludedCount = job.excluded_count + decisions.filter(item => !item.eligible).length;
+    const unknownCount = job.unknown_count + decisions.filter(item => item.unknown).length;
+    const completed = evaluatedCount >= job.candidate_total;
+    this.#sql(`UPDATE refinements SET next_offset = ?, next_step = ?, eligible_count = ?, excluded_count = ?,
+      unknown_count = ?, completed = ? WHERE refinement_id = ?`, evaluatedCount, step + 1,
+    eligibleCount, excludedCount, unknownCount, Number(completed), job.refinement_id);
+    if (completed) {
+      const title = "Verfeinerte Angebote";
+      const summary = `${eligibleCount} passende Angebote aus ${job.candidate_total} gespeicherten Kandidaten`;
+      const signature = JSON.stringify({ collectionId: job.result_collection_id, title, summary,
+        criteria: preferences.criteria, requirements: preferences.requirements, refinementId: job.refinement_id });
+      this.#sql("INSERT INTO collections VALUES (?, ?, ?, ?, ?, ?, 'explicit', '[]', ?, ?)",
+        job.result_collection_id, title, summary, signature, Date.now(), eligibleCount,
+        cohort.listing_watermark, cohort.event_watermark);
+      this.#sql(`INSERT INTO collection_items (collection_id, position, listing_id, selection)
+        SELECT ?, ROW_NUMBER() OVER (ORDER BY score DESC, position) - 1, listing_id, selection
+        FROM refinement_results WHERE refinement_id = ? AND eligible = 1`, job.result_collection_id, job.refinement_id);
+    }
+    const researchId = this.#metadata().researchId;
+    const nextCursor = completed ? null : researchCursor(researchId + ":refinement:" + job.refinement_id, step + 1);
+    const preview = this.#sql(`SELECT listing_id, evaluation FROM refinement_results
+      WHERE refinement_id = ? AND eligible = 1 ORDER BY score DESC, position LIMIT 12`, job.refinement_id).toArray().map(row => {
+      const evaluation = JSON.parse(row.evaluation);
+      return { id: row.listing_id, score: evaluation.score, unknown: evaluation.unknown, observedAt: evaluation.observedAt };
+    });
+    const result = { researchId, refinementId: job.refinement_id, completed, totalCandidates: job.candidate_total,
+      evaluatedCount, stepEvaluated: decisions.length, maxStepSize: REFINEMENT_STEP_SIZE,
+      eligibleCount, excludedCount, unknownCount, preferences, preview,
+      reviewNeeded: decisions.filter(item => item.requirements.some(requirement => requirement.verdict === "unknown"))
+        .slice(0, 12).map(item => ({ id: item.id, requirements: item.requirements.filter(requirement => requirement.verdict === "unknown").map(requirement => requirement.requirement) })),
+      collectionId: completed ? job.result_collection_id : null, nextCursor,
+      evaluationScope: "Cohort membership, preferences and explicit feedback are fixed at refinement start. Each retained observation is evaluated at its step with its original observedAt. Completed membership and cursor receipts are immutable.",
+      ranking: "Shortlisted eligible offers receive 100 points, confirmed hard requirements 2 each, confirmed preferences 1 each. Equal scores preserve discovery order.",
+      ...(nextCursor ? { continuation: { tool: "refine_research", arguments: { researchId, refinementId: job.refinement_id, cursor: nextCursor } } }
+        : { presentation: { tool: "present_listings", arguments: { source: this.#metadata().source, researchId, collectionId: job.result_collection_id } } }),
+      nextAction: completed ? "Open collectionId with present_listings. For unknown visual requirements, inspect original photos, record exact requirement findings, then start a new refinement."
+        : "Repeat continuation to evaluate the remaining retained candidates before presenting the completed collection." };
+    this.#sql("INSERT INTO refinement_steps VALUES (?, ?, ?)", job.refinement_id, step, JSON.stringify(result));
+    return result;
+  }
+
+  refine(args = {}) {
+    return this.#execute(() => {
+      this.#touch();
+      if (args.refinementId !== undefined || args.cursor !== undefined) {
+        if (!/^wf_[a-f0-9]{32}$/.test(args.refinementId ?? "") || args.cursor === undefined ||
+            ["requirements", "criteria", "unknownPolicy", "feedbackFilter", "queryIds"].some(key => args[key] !== undefined)) {
+          throw researchError("invalid_research_input", "Continue using only researchId, refinementId and cursor. Start a new refinement to change preferences.");
         }
-        const { condition, params } = this.#collectionFilter(snapshot);
-        availableTotal = this.#sql(`SELECT COUNT(*) AS count FROM listings l WHERE ${condition}`, ...params).one().count;
+        const job = this.#sql("SELECT * FROM refinements WHERE refinement_id = ?", args.refinementId).toArray()[0];
+        if (!job) throw researchError("refinement_unavailable", "This refinement is unavailable in the selected research.");
+        const step = readResearchCursor(args.cursor, this.#metadata().researchId + ":refinement:" + args.refinementId);
+        return this.#refinementStep(job, step);
       }
-      this.#sql("INSERT INTO collections VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", collection.collectionId, collection.title,
-        collection.summary, signature, Date.now(), availableTotal, collection.selections ? "explicit" : "query",
-        snapshot.query_ids, snapshot.listing_watermark, snapshot.event_watermark);
-      for (const [position, selection] of (collection.selections ?? []).entries()) {
-        this.#sql("INSERT INTO collection_items VALUES (?, ?, ?, ?)", collection.collectionId, position, selection.id, JSON.stringify(selection));
-      }
-      return this.#collectionMetadata(this.#sql("SELECT * FROM collections WHERE collection_id = ?", collection.collectionId).one());
+      const preferences = normalizeRefinement(args);
+      const cohort = args.queryIds ? this.#saveCollection(normalizeCollection({ queryIds: args.queryIds })) : this.#retainedCohort();
+      const refinementId = "wf_" + crypto.randomUUID().replaceAll("-", "");
+      const collectionId = "wc_" + crypto.randomUUID().replaceAll("-", "");
+      const watermark = this.#sql("SELECT COALESCE(MAX(revision), 0) AS value FROM listing_feedback").one().value;
+      this.#sql(`INSERT INTO refinements (refinement_id, cohort_id, result_collection_id, preferences, feedback_watermark, candidate_total, created_ms)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`, refinementId, cohort.collectionId, collectionId, JSON.stringify(preferences), watermark, cohort.total, Date.now());
+      return this.#refinementStep(this.#sql("SELECT * FROM refinements WHERE refinement_id = ?", refinementId).one(), 0);
     });
   }
 
