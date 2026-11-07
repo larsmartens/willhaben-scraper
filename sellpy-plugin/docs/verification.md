@@ -1,5 +1,7 @@
 # Verification record
 
+This file records the historical version 1.0 release. The deployed version 1.1 artifact, updated test counts and new ChatGPT acceptance workflow are documented in [upgrade-verification.md](upgrade-verification.md). Machine-readable live reports are updated by their latest run and may therefore describe a later release than this historical narrative.
+
 This is an appendable evidence record. Fixture, native-source, Workers, MCP-client and live ChatGPT checks are distinct.
 
 ## Implementation checkpoint, 2026-11-06

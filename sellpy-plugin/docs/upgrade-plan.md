@@ -13,7 +13,7 @@ Baseline local revision is `92ac6218496d4057626ddcc58621687c8dc9dcc3`. The corre
 - [x] Phase B: Design the workflow.
 - [x] Phase C: Run the loop.
 - [x] Phase D: Keep the audit trail.
-- [ ] Phase E: Verify and hand back.
+- [x] Phase E: Verify and hand back.
 
 The earlier pstack mode continues. Model the Domain changes the design to explicit tri-state constraints and separate user feedback, source observations and assistant evidence. Explain the Number requires repeated matched successful requests and a deterministic work-count regression for gallery updates. Prove It Works requires the deployed MCP endpoint and actual gallery interactions, not compilation alone. Available independent workers are GPT agents; no unavailable model family is claimed.
 
@@ -48,3 +48,7 @@ Source latency is variable. Report five alternating matched samples per side wit
 ## Release conditions
 
 All existing source search routes and continuation contracts remain supported. Existing data is migrated additively. Original source metadata is never overwritten by user feedback or model interpretation. Unknown fit/material facts stay unknown. Every new state-changing tool has correct MCP annotations and owner isolation. Independent review must resolve material findings before deployment. The public source and private setup record must describe the observed release accurately.
+
+## Completed release
+
+Version 1.1.0 was deployed on 7 November 2026 with the existing connection and state namespaces preserved. Independent release and state reviews passed for their documented scopes. All source/runtime/browser gates and both live harnesses passed; a new ChatGPT Chat-mode workflow exercised refinement, saved feedback, comparison and the explicit chat bridge. The existing plugin shell still shows its older 1.0.0 package label after an optional metadata-upload attempt stalled and was aborted; the connected server identifies as 1.1.0 and exposes all 24 tools. This cosmetic limitation does not claim an unobserved package update. The exact source, artifact identities, measured performance and acceptance evidence are in [upgrade-verification.md](upgrade-verification.md).

@@ -145,7 +145,7 @@ try {
   // Exercise the alternate Bearer path, sharing the same private search owner.
   await legacy.connect(new LegacyTransport(new URL(`${origin}/mcp`), { fetch: tracedFetch, requestInit: { headers: { authorization: `Bearer ${connection.token}` } } }));
   const legacyTools = await legacy.listTools();
-  assert.equal(legacyTools.tools.length, 16);
+  assert.equal(legacyTools.tools.length, 24);
   const legacyStatus = await legacy.callTool({ name: 'get_search_status', arguments: { run_id: page.run_id } });
   assert(!legacyStatus.isError);
   assert.equal(legacyStatus.structuredContent.run_id, page.run_id);

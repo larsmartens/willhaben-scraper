@@ -4,7 +4,7 @@ A remote MCP plugin for ordinary and visual Sellpy shopping research in ChatGPT.
 
 The implementation is independent of the in-flight Willhaben plugin. Default market is Austria, language German. Prices use the selected market's currency and integer minor units internally.
 
-**Release status:** version 1.0 is deployed and installed, with an actual Chat-mode Cottagecore search and original-photo gallery verified. Version 1.1 adds eight research tools, evidence-aware refinement and interactive comparison; its integrated release checks are in progress. See the separate release records for observed source, protocol, browser and ChatGPT evidence.
+**Release status:** version **1.1.0 is deployed** and its **24 tools** work through the existing ChatGPT connection. Verification passed 110 Node tests, 19 actual Workers tests, 33 Chromium gallery scenarios, 29 remote MCP checks and seven new research workflows. A new Chat-mode session used refinement, saved a shortlist, compared original-photo cards and continued the comparison in the same chat. See the [1.1 release record](docs/upgrade-verification.md) for exact artifacts, evidence scope and the remaining cosmetic package-version limitation.
 
 ## User workflows
 
@@ -91,5 +91,8 @@ For deployment, create an independent Worker with the bindings and SQLite migrat
 - [Refinement design and limits](docs/refinement-design.md)
 - [Matched provider performance evidence](docs/provider-performance.md)
 - [Independent upgrade review](docs/review-upgrade.md)
+- [Independent upgrade state review](docs/review-upgrade-state.md)
+- [Version 1.1 deployment and ChatGPT verification](docs/upgrade-verification.md)
+- [Version 1.1 live research workflows](docs/upgrade-live-verification.json)
 
 First-party integration references: [OpenAI plugin packaging](https://developers.openai.com/plugins/build/plugins), [ChatGPT connection flow](https://developers.openai.com/plugins/deploy/connect-chatgpt), [file inputs and UI metadata](https://developers.openai.com/plugins/reference), [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk), [Cloudflare SQLite Durable Objects](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/).

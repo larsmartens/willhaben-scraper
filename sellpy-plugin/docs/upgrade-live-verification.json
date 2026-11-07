@@ -1,0 +1,412 @@
+{
+  "checked_at": "2026-11-07T00:29:32.849Z",
+  "expected_version": "1.1.0",
+  "outcome": "passed",
+  "checks": [
+    {
+      "name": "upgrade_tool_contract",
+      "server": {
+        "name": "sellpy-studio",
+        "title": "Sellpy Studio",
+        "version": "1.1.0"
+      },
+      "protocol": "2026-07-28",
+      "tools": [
+        "get_preferences",
+        "set_preferences",
+        "set_item_feedback",
+        "list_item_feedback",
+        "refine_search",
+        "get_item_history",
+        "refresh_search",
+        "forget_search"
+      ]
+    },
+    {
+      "name": "named_profile_round_trip",
+      "unique_profile": true,
+      "default_profile_written": false,
+      "persisted_fields": [
+        "mode",
+        "currency",
+        "price_max",
+        "include_reserved",
+        "unknown_policy"
+      ]
+    },
+    {
+      "name": "history_uses_actual_observations",
+      "catalog_snapshots": 1,
+      "snapshots": 2,
+      "canonical_reads": 2,
+      "unknown_item_snapshots": 0,
+      "manufactured_price_changes": false
+    },
+    {
+      "name": "refinement_and_feedback",
+      "candidates": 12,
+      "currency": "EUR",
+      "ascending_across_pages": true,
+      "named_profile_applied": true,
+      "explicit_override_applied": true,
+      "feedback_pagination": true,
+      "reject_excluded_in_new_refinement": true,
+      "neutral_restored": true,
+      "immutable_page_sha256": "8e9eee8c7ef7aba7faf85ea86ec6868a65b702b4d18f3f792aa3a2107997dedb",
+      "visual_assessments_written": 0
+    },
+    {
+      "name": "gallery_feedback_is_separate_from_evidence",
+      "cards": 2,
+      "decisions": [
+        "shortlist",
+        "reject"
+      ],
+      "visual_confirmations": 0
+    },
+    {
+      "name": "refresh_retains_criteria_and_partitions_observed_ids",
+      "pages": [
+        {
+          "returned": 12,
+          "previously_seen": 12,
+          "newly_encountered": 0,
+          "actual_changed_items": 0
+        },
+        {
+          "returned": 12,
+          "previously_seen": 0,
+          "newly_encountered": 12,
+          "actual_changed_items": 0
+        }
+      ],
+      "old_run_retained": true,
+      "inherited_decisions_examined": 2,
+      "newly_encountered_is_not_newly_listed": true
+    },
+    {
+      "name": "owned_run_deletion_and_durable_tombstone",
+      "deleted_owned_run": true,
+      "idempotent": true,
+      "history_and_refinement_blocked": true,
+      "other_owned_run_retained": true,
+      "profile_retained": true,
+      "refresh_replay_after_prior_deletion": true
+    }
+  ],
+  "calls": [
+    {
+      "tool": "get_preferences",
+      "milliseconds": 288,
+      "is_error": false
+    },
+    {
+      "tool": "get_preferences",
+      "milliseconds": 56,
+      "is_error": false
+    },
+    {
+      "tool": "set_preferences",
+      "milliseconds": 77,
+      "is_error": false
+    },
+    {
+      "tool": "get_preferences",
+      "milliseconds": 66,
+      "is_error": false
+    },
+    {
+      "tool": "search_items",
+      "milliseconds": 3156,
+      "is_error": false
+    },
+    {
+      "tool": "get_search_status",
+      "milliseconds": 36,
+      "is_error": false
+    },
+    {
+      "tool": "get_item_history",
+      "milliseconds": 50,
+      "is_error": false
+    },
+    {
+      "tool": "get_items",
+      "milliseconds": 2305,
+      "is_error": false
+    },
+    {
+      "tool": "get_items",
+      "milliseconds": 551,
+      "is_error": false
+    },
+    {
+      "tool": "get_item_history",
+      "milliseconds": 38,
+      "is_error": false
+    },
+    {
+      "tool": "get_item_history",
+      "milliseconds": 46,
+      "is_error": false
+    },
+    {
+      "tool": "get_item_history",
+      "milliseconds": 45,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 96,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 133,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 130,
+      "is_error": false
+    },
+    {
+      "tool": "set_item_feedback",
+      "milliseconds": 62,
+      "is_error": false
+    },
+    {
+      "tool": "set_item_feedback",
+      "milliseconds": 69,
+      "is_error": false
+    },
+    {
+      "tool": "list_item_feedback",
+      "milliseconds": 42,
+      "is_error": false
+    },
+    {
+      "tool": "list_item_feedback",
+      "milliseconds": 53,
+      "is_error": false
+    },
+    {
+      "tool": "set_item_feedback",
+      "milliseconds": 72,
+      "is_error": false
+    },
+    {
+      "tool": "list_item_feedback",
+      "milliseconds": 45,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 43,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 33,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 71,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 90,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 69,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 68,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 126,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 111,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 95,
+      "is_error": false
+    },
+    {
+      "tool": "set_item_feedback",
+      "milliseconds": 66,
+      "is_error": false
+    },
+    {
+      "tool": "list_item_feedback",
+      "milliseconds": 55,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 96,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 80,
+      "is_error": false
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 81,
+      "is_error": false
+    },
+    {
+      "tool": "get_search_status",
+      "milliseconds": 39,
+      "is_error": false
+    },
+    {
+      "tool": "set_item_feedback",
+      "milliseconds": 61,
+      "is_error": false
+    },
+    {
+      "tool": "present_items",
+      "milliseconds": 754,
+      "is_error": false
+    },
+    {
+      "tool": "list_search_items",
+      "milliseconds": 39,
+      "is_error": false
+    },
+    {
+      "tool": "refresh_search",
+      "milliseconds": 2096,
+      "is_error": false
+    },
+    {
+      "tool": "get_search_status",
+      "milliseconds": 46,
+      "is_error": false
+    },
+    {
+      "tool": "continue_search",
+      "milliseconds": 628,
+      "is_error": false
+    },
+    {
+      "tool": "list_item_feedback",
+      "milliseconds": 76,
+      "is_error": false
+    },
+    {
+      "tool": "list_item_feedback",
+      "milliseconds": 58,
+      "is_error": false
+    },
+    {
+      "tool": "get_search_status",
+      "milliseconds": 36,
+      "is_error": false
+    },
+    {
+      "tool": "forget_search",
+      "milliseconds": 96,
+      "is_error": false
+    },
+    {
+      "tool": "get_search_status",
+      "milliseconds": 34,
+      "is_error": true,
+      "error_code": "search_forgotten"
+    },
+    {
+      "tool": "get_item_history",
+      "milliseconds": 27,
+      "is_error": true,
+      "error_code": "search_forgotten"
+    },
+    {
+      "tool": "refine_search",
+      "milliseconds": 27,
+      "is_error": true,
+      "error_code": "search_forgotten"
+    },
+    {
+      "tool": "forget_search",
+      "milliseconds": 96,
+      "is_error": false
+    },
+    {
+      "tool": "continue_search",
+      "milliseconds": 68,
+      "is_error": false
+    },
+    {
+      "tool": "get_search_status",
+      "milliseconds": 48,
+      "is_error": false
+    },
+    {
+      "tool": "get_preferences",
+      "milliseconds": 40,
+      "is_error": false
+    },
+    {
+      "tool": "forget_search",
+      "milliseconds": 115,
+      "is_error": false
+    },
+    {
+      "tool": "get_search_status",
+      "milliseconds": 43,
+      "is_error": true,
+      "error_code": "search_forgotten"
+    },
+    {
+      "tool": "set_preferences",
+      "milliseconds": 50,
+      "is_error": false
+    },
+    {
+      "tool": "get_preferences",
+      "milliseconds": 43,
+      "is_error": false
+    },
+    {
+      "tool": "get_preferences",
+      "milliseconds": 40,
+      "is_error": false
+    }
+  ],
+  "cleanup": {
+    "created_runs": 2,
+    "deleted_runs": 2,
+    "profile_cleared": true,
+    "default_profile_unchanged": true
+  },
+  "endpoint": "https://sellpy-studio.lars-e82.workers.dev/mcp",
+  "script_sha256": "e90bca8650324db19aa391dd885a10f90b25b81a39aa827be1a42c317f787a75",
+  "exercised_new_tools": [
+    "get_preferences",
+    "set_preferences",
+    "set_item_feedback",
+    "list_item_feedback",
+    "refine_search",
+    "get_item_history",
+    "refresh_search",
+    "forget_search"
+  ],
+  "finished_at": "2026-11-07T00:29:57.653Z"
+}
