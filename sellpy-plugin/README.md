@@ -4,7 +4,7 @@ A remote MCP plugin for ordinary and visual Sellpy shopping research in ChatGPT.
 
 The implementation is independent of the in-flight Willhaben plugin. Default market is Austria, language German. Prices use the selected market's currency and integer minor units internally.
 
-**Release status:** version **1.1.0 is deployed** and its **24 tools** work through the existing ChatGPT connection. Verification passed 110 Node tests, 19 actual Workers tests, 33 Chromium gallery scenarios, 29 remote MCP checks and seven new research workflows. A new Chat-mode session used refinement, saved a shortlist, compared original-photo cards and continued the comparison in the same chat. See the [1.1 release record](docs/upgrade-verification.md) for exact artifacts, evidence scope and the remaining cosmetic package-version limitation.
+**Release status:** version **1.1.1 is deployed** and its **24 tools** work through the existing ChatGPT connection. The latest patch makes original-photo assessment follow-through explicit. Its independent checks passed 35 Node tests, 11 actual Workers tests, both typechecks and five live checks. A new actual ChatGPT run saved photo findings, rendered them in the gallery/comparison and applied a strict visual requirement to six candidates. See the [1.1.1 release record](docs/followthrough-verification.md) for exact artifacts, observed outcomes and the remaining package-label limitation. The [1.1.0 release record](docs/upgrade-verification.md) retains the earlier full-suite and benchmark evidence.
 
 ## User workflows
 
@@ -96,3 +96,10 @@ For deployment, create an independent Worker with the bindings and SQLite migrat
 - [Version 1.1 live research workflows](docs/upgrade-live-verification.json)
 
 First-party integration references: [OpenAI plugin packaging](https://developers.openai.com/plugins/build/plugins), [ChatGPT connection flow](https://developers.openai.com/plugins/deploy/connect-chatgpt), [file inputs and UI metadata](https://developers.openai.com/plugins/reference), [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk), [Cloudflare SQLite Durable Objects](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/).
+
+### Version 1.1.1 follow-through
+
+- [Release and actual ChatGPT acceptance](docs/followthrough-verification.md)
+- [Independent response-contract and live-state review](docs/followthrough-review.md)
+- [Five live server checks](docs/followthrough-live-verification.json)
+- [Implementation plan and acceptance trail](docs/followthrough-plan.md)
