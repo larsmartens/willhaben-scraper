@@ -118,7 +118,7 @@ export async function presentListings(args, env, provider) {
   const retry = errors.find(error => error.retryAt);
   let nextAction = "For a request to show offers, finish with one plain-text sentence pointing to the app cards. For requested advice or a study, add the requested decision analysis. Keep each offer's photos, facts and original links in the app cards.";
   if (missingIds.length) {
-    nextAction = "Inspect missingIds with inspect_listings, then repeat this presentation selection.";
+    nextAction = "Keep missingIds visible as unavailable observations. Refresh the relevant search in the same researchId with fresh=true, then retry this collection page. Use inspect_listings for targeted verification of individual missingIds.";
   } else if (errors.some(error => error.code === "photo_index_unavailable")) {
     nextAction = "Keep the available cards. Correct photoIndex using image.error.availableIndices, then repeat present_listings. Respect retryAt for pending photos.";
   } else if (errors.length) {
@@ -127,7 +127,8 @@ export async function presentListings(args, env, provider) {
   return {
     source: provider.kind, title: args.title ?? "Ausgewählte Angebote",
     ...(args.summary ? { summary: args.summary } : {}),
-    requestedCount: args.selections.length, shownCount: cards.length, cards, missingIds, errors,
+    requestedCount: args.selections.length, pageRequestedCount: args.selections.length,
+    pageComplete: missingIds.length === 0, shownCount: cards.length, cards, missingIds, errors,
     nextAction,
     ...(retry ? { retryAt: retry.retryAt, retryAfterSeconds: retry.retryAfterSeconds } : {}),
     _meta: { listingImages },

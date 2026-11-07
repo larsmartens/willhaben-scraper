@@ -18,7 +18,7 @@ export class ResearchSession extends BaseResearchSession {
     if (action === 'alarm') {
       await this.alarm();
       return { alarm: await this.ctx.storage.getAlarm(),
-        tables: this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session'").toArray() };
+        tables: this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session', 'listing_observations')").toArray() };
     }
     if (action === 'failed-alarm') {
       const storage = this.ctx.storage;
@@ -35,7 +35,8 @@ export class ResearchSession extends BaseResearchSession {
     if (action === 'collection') return this.ctx.storage.sql.exec(
       'SELECT COUNT(*) AS storedSelections FROM collection_items WHERE collection_id = ?', collectionId).one();
     return { alarm: await this.ctx.storage.getAlarm(),
-      events: this.ctx.storage.sql.exec('SELECT payload FROM events ORDER BY sequence').toArray() };
+      events: this.ctx.storage.sql.exec('SELECT payload FROM events ORDER BY sequence').toArray(),
+      observations: this.ctx.storage.sql.exec('SELECT * FROM listing_observations ORDER BY listing_id').toArray() };
   }
 }
 export default { async fetch(request, env) {
@@ -313,13 +314,60 @@ try {
   assert.equal((await call("saveCollection", { researchId: bulkId })).total, 10002);
   console.log(`PASS all 10000 IDs page in 417 bounded reads with stable snapshot membership (${Date.now() - startPaging} ms)`);
 
+  const retainedSession = await call("ensureResearch", { source: "live" });
+  const retainedId = retainedSession.researchId;
+  const retainedAt = new Date(Date.now() - 600000).toISOString();
+  const retainedObservation = { id: "501", kind: "search", observedAt: retainedAt,
+    listing: { id: "501", title: "Retained lamp", price: 30,
+      url: "https://www.willhaben.at/iad/object?adId=501",
+      images: ["https://cache.willhaben.at/mmo/501.jpg"],
+      description: "unnecessary original description", imageUrl: "https://private.invalid/input.png" } };
+  const retainedEvent = { eventId: "retained-search", type: "search", query: "Retained", page: 1, pageSize: 50, ids: ["501"], observedAt: retainedAt };
+  const retainedAppend = { researchId: retainedId, event: retainedEvent, observations: [retainedObservation] };
+  await call("recordResearch", retainedAppend);
+  assert.equal((await call("recordResearch", retainedAppend)).duplicate, true);
+  const resolve = (observations = []) => call("resolveResearchObservations", { researchId: retainedId, ids: ["501", "502"], observations });
+  const initialRetained = await resolve();
+  assert.equal(initialRetained.observations[0].observedAt, retainedAt);
+  assert.deepEqual(initialRetained.missingIds, ["502"]);
+  assert.equal(initialRetained.observations[0].listing.description, undefined);
+  assert.ok(Date.now() - Date.parse(initialRetained.observations[0].observedAt) >= 600000);
+  await assert.rejects(call("recordResearch", { ...retainedAppend, observations: [
+    { ...retainedObservation, listing: { ...retainedObservation.listing, price: 99 } },
+  ] }), { code: "research_event_conflict" });
+  assert.deepEqual(await resolve(), initialRetained);
+  await assert.rejects(call("recordResearch", { ...retainedAppend,
+    event: { ...retainedEvent, eventId: "retained-query-conflict", queryId: (await call("getResearch", { researchId: retainedId })).queries[0].queryId, query: "Conflicting" },
+    observations: [{ ...retainedObservation, listing: { ...retainedObservation.listing, price: 99 } }],
+  }), { code: "research_query_conflict" });
+  assert.deepEqual(await resolve(), initialRetained);
+  const beforeResolveCounts = (await call("getResearch", { researchId: retainedId })).counts;
+  const detailObservation = { ...retainedObservation, kind: "detail", listing: { ...retainedObservation.listing, price: 25, attributes: { diameterMm: 60 } } };
+  await resolve([detailObservation]);
+  assert.equal((await resolve([retainedObservation])).observations[0].listing.price, 25);
+  const deletion = { id: "501", kind: "gone", observedAt: retainedAt };
+  assert.deepEqual((await resolve([deletion])).observations, [deletion]);
+  assert.deepEqual((await resolve([detailObservation])).observations, [deletion]);
+  const refreshed = { ...retainedObservation, observedAt: new Date(Date.parse(retainedAt) + 1000).toISOString() };
+  assert.equal((await resolve([refreshed])).observations[0].listing.attributes, undefined);
+  assert.deepEqual((await call("getResearch", { researchId: retainedId })).counts, beforeResolveCounts);
+  await assert.rejects(call("resolveResearchObservations", { researchId: retainedId, ids: ["501"] }, "second-fixture-owner"), { code: "research_unavailable" });
+  const retainedStorage = await call("inspectForTest", { researchId: retainedId });
+  assert.equal(JSON.stringify(retainedStorage).includes("private.invalid"), false);
+  assert.equal(JSON.stringify(retainedStorage.events).includes("cache.willhaben.at"), false);
+  assert.equal(JSON.stringify(retainedStorage.events).includes("Retained lamp"), false);
+  console.log("PASS compact observations are atomic, replay-safe, owner-scoped and ordered as whole facts independently of evidence counters");
+
+  await call("resolveResearchObservations", { researchId: other.researchId, ids: ["501"], observations: [retainedObservation] });
   const beforeRestart = await call("getResearch", { researchId });
+  const retainedBeforeRestart = await resolve();
   await mf.dispose();
   mf = new Miniflare(options);
   assert.deepEqual((await call("getResearch", { researchId })).counts, beforeRestart.counts);
   assert.deepEqual((await call("readCollection", { researchId, collectionId: collection.collectionId })).selections, page1.selections);
   assert.deepEqual((await call("readCollection", { researchId, collectionId: collection.collectionId })).criteria, criteria);
-  console.log("PASS research events, counts and ordered collections survive a real workerd restart");
+  assert.deepEqual(await resolve(), retainedBeforeRestart);
+  console.log("PASS research events, counts, listing observations and ordered collections survive a real workerd restart");
 
   const expirySession = other.researchId;
   const soon = Date.now() + 60000;

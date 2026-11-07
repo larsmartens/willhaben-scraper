@@ -4,7 +4,7 @@ import { invokeTool, toolDefinitions } from "./tools.mjs";
 import { PRESENTATION_URI, PRESENTATION_HTML, PRESENTATION_RESOURCE_META } from "./presentation-ui.mjs";
 import { ICON_BASE64 } from "./branding.mjs";
 
-const INFO = { name: "willhaben", title: "willhaben", version: "1.4.1",
+const INFO = { name: "willhaben", title: "willhaben", version: "1.4.2",
   icons: [{ src: "https://marktplatz-studie.lars-e82.workers.dev/icon.png", mimeType: "image/png", sizes: ["192x192"] }] };
 const MAX_BYTES = 2 * 1024 * 1024;
 const CACHE_HINT = { ttlMs: 60000, cacheScope: "public" };

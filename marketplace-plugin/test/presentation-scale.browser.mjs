@@ -110,6 +110,16 @@ try {
       for (const message of pending) send({ id: message.id, result: resultFor(message) });
     };
     state.publish = (scene = 0, pageSize = 12, eager = 2) => send({ method: "ui/notifications/tool-result", params: makePage(0, pageSize, scene, eager) });
+    state.publishPartial = (offset = 0, total = 48) => {
+      const result = makePage(offset, 12, 0, 2);
+      const data = result.structuredContent;
+      data.total = data.requestedCount = total;
+      data.cards = data.cards.slice(0, Math.min(12, total - offset));
+      data.missingIds = data.cards.splice(5).map(card => card.id);
+      data.shownCount = data.cards.length;
+      data.nextCursor = offset + 12 < total ? "page-" + (offset + 12) : null;
+      send({ method: "ui/notifications/tool-result", params: result });
+    };
     state.send = send;
     state.photoData = photoData;
     window.scaleFixture = state;
@@ -228,6 +238,33 @@ try {
   await frame.locator('.offer[data-id="1001"]').waitFor();
   assert((await calls("page")).some(call => call.params.arguments.pageSize === 24));
   pass("24-card pages replace the DOM page and preserve next and previous navigation");
+
+  const detailCallsBeforePartial = (await calls("details")).length;
+  await page.evaluate(() => window.scaleFixture.publishPartial());
+  await page.waitForFunction(() => document.getElementById("widget").contentDocument.querySelectorAll(".offer").length === 5);
+  assert.equal(await frame.locator("#source").textContent(), "willhaben · 5 von 48");
+  assert.equal(await frame.locator("#page-label").textContent(), "1–12 von 48");
+  assert.equal(await frame.locator("#notice").isVisible(), true);
+  assert.equal(await frame.locator("#notice").textContent(), "Angebote mit fehlenden Suchdaten · 7. Bitte die Suche im Chat aktualisieren.");
+  await page.evaluate(() => window.scaleFixture.send({ method: "ui/notifications/host-context-changed", params: { locale: "en-GB" } }));
+  await frame.locator("#notice").filter({ hasText: "Offers with missing search data" }).waitFor();
+  assert.equal(await frame.locator("#notice").textContent(), "Offers with missing search data · 7. Please refresh the search in chat.");
+  assert.equal(await frame.locator("#page-label").textContent(), "1–12 of 48");
+  await page.evaluate(() => window.scaleFixture.send({ method: "ui/notifications/tool-result", params: { isError: true } }));
+  await frame.locator("#notice").filter({ hasText: "The selection could not be updated." }).waitFor();
+  assert.equal(await cards.count(), 5);
+  await frame.locator("#page-next").click();
+  await frame.locator('.offer[data-id="1013"]').waitFor();
+  assert.equal(await frame.locator("#page-label").textContent(), "13–24 of 48");
+  assert.equal(await frame.locator("#notice").isVisible(), false);
+  await page.evaluate(() => window.scaleFixture.publishPartial(24, 26));
+  await page.waitForFunction(() => document.getElementById("widget").contentDocument.querySelectorAll(".offer").length === 2);
+  assert.equal(await frame.locator("#page-label").textContent(), "25–26 of 26");
+  assert.equal(await frame.locator("#page-next").isDisabled(), true);
+  assert.equal((await calls("details")).length, detailCallsBeforePartial);
+  await page.evaluate(() => window.scaleFixture.send({ method: "ui/notifications/host-context-changed", params: { locale: "de-AT" } }));
+  await publish(0, 24);
+  pass("partial legacy pages disclose missing search data in both locales and preserve collection slot ranges");
 
   for (const width of [320, 360, 700]) {
     await page.setViewportSize({ width, height: 900 });

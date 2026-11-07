@@ -63,7 +63,7 @@ The native icon assets come from willhaben's public frontend. The 192-pixel asse
 
 ## Automated verification
 
-On 2026-11-07, 147 Node unit tests passed for 1.4.1. The complete OriginGate, provider, four-revision MCP and research workerd suites passed. The tool integration covers native image-search continuation, source-detail auditing through a later failure, criteria across overview pages, metadata-only app photos and executable continuation arguments. Both Chromium suites passed all 24 groups using the official bridge with a controlled host.
+On 2026-11-07, 150 Node unit tests passed for 1.4.2. The complete OriginGate, provider, four-revision MCP and research workerd suites passed. The tool integration covers native image-search continuation, source-detail auditing through a later failure, criteria across overview pages, metadata-only app photos and executable continuation arguments. Both Chromium suites passed all 25 groups using the official bridge with a controlled host.
 
 An independent reviewer repeated the ledger, visual-provider, coalescing and continuation regressions. The review found no remaining confirmed P1/P2 issue in that scope. The controlled coalescing test establishes four concurrent cold calls sharing one upstream request under an identical synthetic upstream workload.
 
@@ -84,3 +84,11 @@ A second conversation uploaded an actual public listing photo through ChatGPT's 
 The client run exposed two follow-ups included in 1.4.1. Detail-gallery thumbnails were only 56 pixels wide, so app covers now prefer each observed main-image URL with the existing byte-budget thumbnail fallback and a fallback for an unavailable main image. The two eager covers, four-cover lazy batches and app-only image delivery remain covered by regression tests. The willhaben logo also appears inside the result header.
 
 The agent workflow now completes an overview from the first useful search page and leaves detailed inspection to verification, purchase advice and studies. The initial audit displays the actual counts, including zero detailed inspections. The installed plugin package includes the revised skill. Its manifest and server metadata contain the willhaben icon. The ChatGPT plugin directory still displayed its generic fallback icon during the observed 1.4.1 package check.
+
+## Collection lifetime correction in 1.4.2
+
+A longer ChatGPT study exposed a mismatch between seven-day collection membership and five-minute shared search observations. After the cache expired, a 51-ID collection displayed only five cards in its first twelve slots. The model recovered by refreshing evidence, but app-only navigation could still leave incomplete pages.
+
+ResearchSession now stores bounded, normalized listing observations atomically with search and detail events. Presentation and cover calls resolve only the selected page or cover subset against those research-owned facts. Original observation times, whole-observation ordering and deletion evidence are preserved. Access renews the research's seven-day inactivity period. Expiry cleanup removes its retained observations. Search and detail freshness retain their existing five- and fifteen-minute policies.
+
+The workerd regression covers all 100 IDs after cache expiry and restart, their original times, lazy covers, negative-cache timestamp preservation, newer search recovery and old collections with missing observations. An independent 50-ID reproduction returns 12/12/12/12/2 cards after expiry and restart, with four lazy covers and zero extra detail requests. Missing data in older collections now has a visible recovery notice. Page ranges use the requested slots and remain accurate when some rows are unavailable.

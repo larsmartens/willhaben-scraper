@@ -10,4 +10,4 @@ An individual record identifies delivered fields, description character counts a
 
 Describe these observations with their recorded scope. A delivered image establishes available visual input. A documented finding establishes what you reported inspecting. Use `end` and the query's completeness indicators when describing exhaustion. A changing reported total can require a fresh search before claiming a complete snapshot.
 
-Research metadata and collections expire after seven days of inactivity. The result supplies `expiresAt`, and access renews retention. An expired research starts with a new first call. Saved studies have their own explicit 24-hour workflow.
+Research metadata, collections and compact live-offer observations expire after seven days of inactivity. These observations retain listing facts, observed photo links and their original `observedAt` beyond the short search cache. Use that time when presenting a retained offer. The result supplies `expiresAt`, and access renews retention. Start a new research after expiry. Saved studies have their own explicit 24-hour workflow.

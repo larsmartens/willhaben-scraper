@@ -685,23 +685,30 @@ function liveProvider(env) {
       if (!entry.value.facets) schemaError("Filter metadata missing");
       return observation(entry.value.facets,entry.observedAt,entry.cacheHit);
     },
-    async summary(id,{deadline}={}) {
+    async summaryObservation(id,{deadline}={}) {
       listingId(id);
       const [summary, detail] = await Promise.all([
         readCache("summary:"+id,deadline), readCache("detail:"+id,deadline),
       ]);
-      const newerDetail = detail && (!summary || Date.parse(detail.observedAt) >= Date.parse(summary.observedAt));
+      const newerDetail = detail && (!summary || Date.parse(detail.observedAt) > Date.parse(summary.observedAt) ||
+        (Date.parse(detail.observedAt) === Date.parse(summary.observedAt) && (detail.value?.gone || !summary.value?.gone)));
       const entry = newerDetail ? detail : summary;
-      return entry?.value && !entry.value.gone ? observation(entry.value,entry.observedAt,true) : null;
+      if (!entry?.value) return null;
+      return { id, kind: entry.value.gone ? "gone" : newerDetail ? "detail" : "search", observedAt: entry.observedAt,
+        ...(!entry.value.gone ? { listing: entry.value } : {}) };
     },
-    async detail(id,{fresh=false,deadline}={}) {
+    async summary(id,options) {
+      const entry = await this.summaryObservation(id,options);
+      return entry && entry.kind !== "gone" ? observation(entry.listing,entry.observedAt,true) : null;
+    },
+    async detail(id,{fresh=false,deadline,includeGone=false}={}) {
       listingId(id);
       checkFresh(fresh);
       const key = "detail:"+id;
       const prior = await readCache(key,deadline);
-      if (prior && !fresh) return prior.value && !prior.value.gone ? observation(prior.value,prior.observedAt,true) : null;
+      if (prior && !fresh) return prior.value && (!prior.value.gone || includeGone) ? observation(prior.value,prior.observedAt,true) : null;
       const lease = await claimObservation(key,fresh,deadline);
-      if (lease.entry) return lease.entry.value.gone ? null : observation(lease.entry.value,lease.entry.observedAt,true);
+      if (lease.entry) return lease.entry.value.gone && !includeGone ? null : observation(lease.entry.value,lease.entry.observedAt,true);
       try {
         const hint = prior?.value ?? (await readCache("summary:"+id,deadline))?.value;
         const target = hint?.url && allowedPath(new URL(hint.url)) ? hint.url : objectUrl(id);
@@ -710,7 +717,7 @@ function liveProvider(env) {
         if (result === null || result.props.is404 === true) {
           const value = {id,gone:true};
           await writeCache([{key,value,observedAt,ttlSeconds:60},{key:"summary:"+id,value,observedAt,ttlSeconds:60}],deadline,lease);
-          return null;
+          return includeGone ? observation(value,observedAt,false) : null;
         }
         if(String(result.props.advertDetails?.id)!==id) schemaError("Detail response has a different or missing ID");
         const row = liveListing(result.props.advertDetails,true);

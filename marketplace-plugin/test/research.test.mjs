@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   ensureResearch, getResearch, recordResearch, normalizeResearchEvent, normalizeCollection,
   normalizeCollectionIds, researchCursor, readResearchCursor, RESEARCH_INACTIVITY_MS,
+  normalizeListingObservations, newestListingObservation, normalizeObservationIds,
 } from "../src/research.mjs";
 
 test("research is optional without a binding and explicit references require storage", async () => {
@@ -109,4 +110,59 @@ test("research cursors bind the research, section, collection and page size", ()
   assert.equal(readResearchCursor(undefined, scope), 0);
   assert.throws(() => readResearchCursor(cursor, "wr_fixture:wc_fixture:24"), { code: "invalid_research_input" });
   assert.throws(() => readResearchCursor("wrp1.bad", scope), { code: "invalid_research_input" });
+});
+
+test("retained observations keep compact listing facts and original photo metadata", () => {
+  const observedAt = "2026-01-01T12:00:00.000Z";
+  const input = { id: "41", kind: "detail", observedAt, listing: {
+    id: "41", title: "Lamp", price: 30, quantity: 2, shippingCost: 5, shipping: "both",
+    url: "https://www.willhaben.at/iad/object?adId=41", condition: "used", imageCount: 2,
+    description: "A private description is unnecessary for a retained overview", seller: { email: "private@example.invalid" },
+    attributes: { diameterMm: 60, Zustand: "Gebraucht" }, galleryComplete: true,
+    gallery: [{ index: 0, url: "https://cache.willhaben.at/mmo/41.jpg", thumbnailUrl: "https://cache.willhaben.at/mmo/41_thumb.jpg",
+      data: "secret-base64", similarSearchUrl: "https://private.invalid/upload" }],
+    imageUrl: "https://private.invalid/input.png",
+  } };
+  const [observation] = normalizeListingObservations([input]);
+  assert.equal(observation.observedAt, observedAt);
+  assert.equal(observation.kind, "detail");
+  assert.deepEqual(observation.listing.attributes, input.listing.attributes);
+  assert.equal(observation.listing.gallery[0].index, 0);
+  assert.equal(observation.listing.imageCount, 2);
+  assert.equal(observation.listing.galleryComplete, true);
+  assert.equal(JSON.stringify(observation).includes("private"), false);
+  assert.equal(JSON.stringify(observation).includes("base64"), false);
+  assert.equal(observation.listing.description, undefined);
+  assert.throws(() => normalizeListingObservations([{ ...input, observedAt: undefined }]), { code: "invalid_research_input" });
+  assert.throws(() => normalizeListingObservations([{ ...input, listing: { ...input.listing, id: "42" } }]), { code: "invalid_research_input" });
+  assert.throws(() => normalizeListingObservations([{ ...input, listing: { ...input.listing, gallery: [{ url: "https://private.invalid/input.jpg" }] } }]), { code: "invalid_research_input" });
+  assert.deepEqual(normalizeListingObservations([{ ...input, kind: "gone" }]), [{ id: "41", kind: "gone", observedAt }]);
+  assert.throws(() => normalizeObservationIds(Array.from({ length: 101 }, (_, index) => String(index))), { code: "invalid_research_input" });
+});
+
+test("the observation budget accommodates full 100-row pages independently of the audit budget", () => {
+  const observations = Array.from({ length: 100 }, (_, index) => ({ id: String(index + 1), kind: "search",
+    observedAt: "2026-01-01T12:00:00.000Z", listing: { id: String(index + 1), title: "Lamp", price: 30,
+      gallery: Array.from({ length: 10 }, (_, photo) => ({
+        url: "https://cache.willhaben.at/mmo/" + "a".repeat(1000) + index + "-" + photo + ".jpg",
+        thumbnailUrl: "https://cache.willhaben.at/mmo/" + "a".repeat(1000) + index + "-" + photo + "_thumb.jpg",
+      })) } }));
+  const result = normalizeListingObservations(observations);
+  assert.equal(result.length, 100);
+  assert.ok(JSON.stringify(result).length > 256 * 1024);
+  assert.ok(JSON.stringify(result).length < 4 * 1024 * 1024);
+});
+
+test("whole-observation ordering preserves newer facts, detail ties and deletion evidence", () => {
+  const search = { id: "1", kind: "search", observedAt: "2026-01-01T12:00:00.000Z", listing: { price: 30 } };
+  const detail = { ...search, kind: "detail", listing: { price: 25, condition: "used" } };
+  const gone = { id: "1", kind: "gone", observedAt: search.observedAt };
+  assert.equal(newestListingObservation(search, detail), detail);
+  assert.equal(newestListingObservation(detail, search), detail);
+  assert.equal(newestListingObservation(detail, gone), gone);
+  assert.equal(newestListingObservation(gone, detail), gone);
+  const newer = { ...search, observedAt: "2026-01-01T12:00:01.000Z" };
+  assert.equal(newestListingObservation(detail, newer), newer);
+  assert.equal(newestListingObservation(gone, newer), newer);
+  assert.equal(newestListingObservation(null, search), search);
 });

@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import {
   RESEARCH_INACTIVITY_DAYS, RESEARCH_INACTIVITY_MS,
   normalizeResearchEvent, normalizeResearchRead, normalizeCollection, normalizeCollectionIds,
+  normalizeListingObservations, normalizeObservationIds, newestListingObservation,
   researchError, researchHash, researchCursor, readResearchCursor,
   validateResearchId, validateResearchSource, validateCollectionId,
 } from "./research.mjs";
@@ -40,6 +41,9 @@ export class ResearchSession extends DurableObject {
         CREATE TABLE IF NOT EXISTS listings (
           sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
           detail_retrieved INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS listing_observations (
+          listing_id TEXT PRIMARY KEY, kind TEXT NOT NULL, observed_at TEXT NOT NULL, listing TEXT
         );
         CREATE TABLE IF NOT EXISTS search_hits (
           query_id TEXT NOT NULL, listing_id TEXT NOT NULL, first_event INTEGER NOT NULL, PRIMARY KEY (query_id, listing_id)
@@ -197,10 +201,24 @@ export class ResearchSession extends DurableObject {
       JSON.stringify(event.photoIndices), event.findings, event.observedAt);
   }
 
+  #recordObservations(observations) {
+    for (const incoming of observations) {
+      const row = this.#sql("SELECT kind, observed_at FROM listing_observations WHERE listing_id = ?", incoming.id).toArray()[0];
+      const current = row ? { kind: row.kind, observedAt: row.observed_at } : null;
+      if (newestListingObservation(current, incoming) !== incoming) continue;
+      this.#sql(`INSERT INTO listing_observations VALUES (?, ?, ?, ?)
+        ON CONFLICT (listing_id) DO UPDATE SET kind = excluded.kind,
+          observed_at = excluded.observed_at, listing = excluded.listing`,
+      incoming.id, incoming.kind, incoming.observedAt, incoming.listing ? JSON.stringify(incoming.listing) : null);
+    }
+  }
+
   async append(input) {
     try {
       const event = await normalizeResearchEvent(input);
-      const signature = await researchHash(JSON.stringify(event, (key, value) => key === "observedAt" ? undefined : value));
+      const observations = normalizeListingObservations(input.observations);
+      const evidence = JSON.stringify(event, (key, value) => key === "observedAt" ? undefined : value);
+      const signature = await researchHash(observations.length ? JSON.stringify([evidence, observations]) : evidence);
       return this.#execute(() => {
         this.#touch();
         const old = this.#sql("SELECT signature FROM events WHERE event_id = ?", event.eventId).toArray()[0];
@@ -216,12 +234,34 @@ export class ResearchSession extends DurableObject {
             this.#listing(id);
             this.#sql("INSERT OR IGNORE INTO presented VALUES (?)", id);
           }
+          this.#recordObservations(observations);
         }
         return { ...this.#summary(), duplicate: Boolean(old), ...(event.type === "search" ? { queryId: event.queryId } : {}) };
       });
     } catch (error) {
       return this.#failure(error);
     }
+  }
+
+  resolveObservations({ ids, observations = [] } = {}) {
+    return this.#execute(() => {
+      const wanted = normalizeObservationIds(ids);
+      const incoming = normalizeListingObservations(observations);
+      if (incoming.some(observation => !wanted.includes(observation.id))) {
+        throw researchError("invalid_research_input", "Only requested listing observations can be resolved.");
+      }
+      this.#touch();
+      this.#recordObservations(incoming);
+      const rows = wanted.length ? this.#sql(`SELECT * FROM listing_observations
+        WHERE listing_id IN (${wanted.map(() => "?").join(", ")})`, ...wanted).toArray() : [];
+      const byId = new Map(rows.map(row => [row.listing_id, {
+        id: row.listing_id, kind: row.kind, observedAt: row.observed_at,
+        ...(row.listing ? { listing: JSON.parse(row.listing) } : {}),
+      }]));
+      return { researchId: this.#metadata().researchId,
+        observations: wanted.filter(id => byId.has(id)).map(id => byId.get(id)),
+        missingIds: wanted.filter(id => !byId.has(id)) };
+    });
   }
 
   #counts() {

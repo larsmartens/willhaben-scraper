@@ -1,6 +1,6 @@
 ---
 name: marktplatz-studie
-description: Research willhaben products by text, reference photo or pasted search URL. Use for listing verification, illustrated offer comparisons, research coverage and saved asking-price studies in German or English.
+description: Search and compare willhaben offers by text, reference photo or pasted search URL. Use for illustrated offer overviews, listing verification, research coverage and saved asking-price studies in German or English.
 ---
 
 # willhaben research
@@ -23,7 +23,7 @@ Use the installed willhaben connection and its current tool schemas. Answer in t
 3. For verification, purchase advice or a study, inspect a focused shortlist against the user's decision-critical requirements. Request the fields that resolve the next decision. Increase `descriptionLimit` when the returned truncation indicator leaves relevant text unread.
 4. Inspect actual image blocks before making visual claims. After inspecting photos, use `record_review` with their precise indices and your observed findings. Read [photo retrieval](references/photos.md) for cover selection, complete galleries or interrupted batches.
 5. Follow `continuation` while relevant candidates remain and the user's requirements need more evidence. Broaden wording when a useful scope is exhausted. Read [continuation and recovery](references/continuation.md) for query changes, empty filtered pages, detail batches or cooldowns.
-6. Present verified recommendations with `present_listings`. Pass `researchId` for the observed collection, `queryIds` for selected searches, or ordered `selections` for a ranked set with reasons and open questions. Read [presenting offers](references/presentation.md) for the final selection or a display problem.
+6. Present verified recommendations with `present_listings`. Pass `researchId` for the observed collection, `queryIds` for selected searches, or ordered `selections` for a ranked set with reasons and open questions. Read [presenting offers](references/presentation.md) when choosing cards, restoring `missingIds` or resolving a display failure.
 7. Finish when the requested comparison has supporting evidence or the relevant scope is exhausted or blocked. Include the server's compact research coverage. Read [research coverage](references/research.md) when reporting counts, explaining what was inspected or resuming a previous task.
 
 ## Evaluate and answer

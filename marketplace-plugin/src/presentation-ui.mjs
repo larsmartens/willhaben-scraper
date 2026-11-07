@@ -34,6 +34,7 @@ function mountPresentation() {
       conditions: { new: "Neu", as_new: "Neuwertig", refurbished: "Generalüberholt", used: "Gebraucht", defective: "Defekt", display_item: "Ausstellungsstück" },
       statuses: { reserved: "Reserviert", sold: "Verkauft", inactive: "Inaktiv", expired: "Abgelaufen", deleted: "Entfernt" },
       unavailable: "Angebote brauchen eine neue Detailprüfung", empty: "Diese Auswahl enthält derzeit keine darstellbaren Angebote.",
+      missingObservations: "Angebote mit fehlenden Suchdaten", refreshSearch: "Bitte die Suche im Chat aktualisieren.",
       connection: "Die Verbindung ist noch nicht bereit. Bitte erneut versuchen.", timeout: "Der Aufruf hat zu lange gedauert. Bitte erneut versuchen.",
       loadError: "Die Fotos konnten nicht vollständig geladen werden.", linkError: "Das Inserat konnte nicht geöffnet werden.", linkUnsupported: "Dieser Chat unterstützt das Öffnen des Inserats hier nicht.",
       formatError: "Die Antwort konnte diesem Angebot nicht sicher zugeordnet werden.", waitUntil: "Erneut abrufbar ab", incompleteGallery: "Die vollständige Galerie ist noch offen.",
@@ -60,6 +61,7 @@ function mountPresentation() {
       conditions: { new: "New", as_new: "Like new", refurbished: "Refurbished", used: "Used", defective: "Defective", display_item: "Display item" },
       statuses: { reserved: "Reserved", sold: "Sold", inactive: "Inactive", expired: "Expired", deleted: "Removed" },
       unavailable: "Listings need another detail check", empty: "No listings in this selection can currently be displayed.",
+      missingObservations: "Offers with missing search data", refreshSearch: "Please refresh the search in chat.",
       connection: "The connection is not ready. Please try again.", timeout: "The request took too long. Please try again.",
       loadError: "The photos could not be loaded completely.", linkError: "The listing could not be opened.", linkUnsupported: "This chat cannot open the listing from this view.",
       formatError: "The response could not be matched safely to this listing.", waitUntil: "Available again after", incompleteGallery: "The full gallery is still unverified.",
@@ -89,7 +91,7 @@ function mountPresentation() {
   let queryCursor;
   let queryVersion;
   const coverQueue = new Set();
-  const app = new window.WillhabenMcpApps.App({ name: "willhaben", version: "1.4.1" }, {}, { autoResize: false });
+  const app = new window.WillhabenMcpApps.App({ name: "willhaben", version: "1.4.2" }, {}, { autoResize: false });
 
   const t = key => words[language][key];
   const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -556,7 +558,7 @@ function mountPresentation() {
     elements.source.textContent = t("source")[data.source] + " · " + data.cards.length + " " + t("of") + " " + (data.requestedCount ?? data.cards.length);
     elements.toolbar.hidden = !data.cards.length;
     const missing = Array.isArray(data.missingIds) ? data.missingIds.length : 0;
-    notice(missing ? missing + " " + t("unavailable") + "." : data.cards.length ? "" : t("empty"));
+    notice(missing ? t("missingObservations") + " · " + missing + ". " + t("refreshSearch") : data.cards.length ? "" : t("empty"));
     updateLabels();
     sortCards();
     renderCoverage(data.research);
@@ -565,7 +567,11 @@ function mountPresentation() {
     elements["page-next"].textContent = t("pageNext");
     elements["page-previous"].disabled = !data.previousCursor;
     elements["page-next"].disabled = !data.nextCursor;
-    elements["page-label"].textContent = ((data.offset ?? 0) + 1) + "–" + ((data.offset ?? 0) + data.cards.length) + " " + t("of") + " " + data.requestedCount;
+    const pageOffset = data.offset ?? 0;
+    const total = data.total ?? data.requestedCount ?? data.cards.length + missing;
+    const pageSlots = data.pageRequestedCount ?? data.pageSize ?? data.cards.length + missing;
+    const pageEnd = Math.min(pageOffset + pageSlots, total);
+    elements["page-label"].textContent = (total ? pageOffset + 1 : 0) + "–" + pageEnd + " " + t("of") + " " + total;
     elements["audit-records"].replaceChildren();
     elements["audit-more"].hidden = true;
     auditCursor = undefined;

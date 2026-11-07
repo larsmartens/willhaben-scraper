@@ -7,7 +7,7 @@ import { createCursor, readCursor } from "./cursors.mjs";
 import { galleryOf, imageBatch, pausesBatch, readGallery, toolFailure } from "./images.mjs";
 import { presentListings } from "./presentation.mjs";
 import { PRESENTATION_URI } from "./presentation-ui.mjs";
-import { ensureResearch, recordResearch, getResearch, saveCollection, readCollection } from "./research.mjs";
+import { ensureResearch, recordResearch, getResearch, saveCollection, readCollection, resolveResearchObservations } from "./research.mjs";
 import { VISUAL_IMAGE_SCHEMA } from "./visual-search.mjs";
 
 const string = maxLength => ({ type: "string", minLength: 1, maxLength });
@@ -89,7 +89,7 @@ export const toolDefinitions = [
     object({ id: photoId, index: photoIndex, fresh }, ["id", "index"]), online),
   {
     ...def("present_listings", "Angebote mit Bildern präsentieren",
-      "Show 12 offers initially, optionally 24 per page, with original photos, facts, links and research coverage. Pass researchId for all observed results or queryIds for selected searches. Use selections for a ranked selection with reasons or open questions. The user can page through the collection and open galleries. Inspect missingIds before recommending them. Keep offer facts and photos in the app cards. Finish a display request with one plain sentence pointing to them. For requested advice, add decision analysis. Inspect actual image blocks before visual claims. Search summaries provide the initial overview, and the app loads its cover photos.",
+      "Show 12 offers initially, optionally 24 per page, with original photos, facts, links and research coverage. Pass researchId for all observed results or queryIds for selected searches. Use selections for a ranked selection with reasons or open questions. The user can page through the collection and open galleries. For missingIds, refresh the relevant search with the same researchId and fresh=true, then repeat the presentation. Keep offer facts and photos in the app cards. Finish a display request with one plain sentence pointing to them. For requested advice, add decision analysis. Inspect actual image blocks before visual claims. Search summaries provide the initial overview, and the app loads its cover photos.",
       object({ ...data, researchId, selections: array(presentationSelection, 1, 1000),
         queryIds: array(string(100), 1, 32), pageSize: overviewPageSize,
         title: string(100), summary: string(400), criteria }, ["source"]), online),
@@ -505,21 +505,28 @@ function trackedProvider(provider, env, researchId, audience = "model", listings
       const page = await provider.search(options);
       const nextCursor = page.nextCursor == null ? null : await createCursor("search",
         searchIdentity({ source: provider.kind, listings, query: options.query, filters: options.filters, pageSize: options.pageSize }), Number(page.nextCursor));
-      const logged = await recordResearch(env, { researchId, event: {
-        type: "search", query: options.query, filters: options.filters, searchType: "text",
-        page: Number(options.cursor ?? 1), pageSize: options.pageSize ?? DEFAULT_PAGE_SIZE,
-        ids: page.items.map(row => row.id), scannedCount: page.scannedCount,
-        filteredOutCount: page.filteredOutCount, reportedTotal: page.total, exhausted: page.end === true,
-        nextCursor, observedAt: page.observedAt,
-      } });
+      const logged = await recordResearch(env, { researchId,
+        observations: provider.kind === "live" ? page.items.map(row => ({
+          id: row.id, kind: "search", observedAt: page.observedAt, listing: row,
+        })) : undefined,
+        event: {
+          type: "search", query: options.query, filters: options.filters, searchType: "text",
+          page: Number(options.cursor ?? 1), pageSize: options.pageSize ?? DEFAULT_PAGE_SIZE,
+          ids: page.items.map(row => row.id), scannedCount: page.scannedCount,
+          filteredOutCount: page.filteredOutCount, reportedTotal: page.total, exhausted: page.end === true,
+          nextCursor, observedAt: page.observedAt,
+        } });
       return { ...page, researchQueryId: logged.queryId };
     },
     async detail(id, options) {
-      const row = await provider.detail(id, options);
-      if (row) await recordResearch(env, { researchId, event: {
-        type: "details", audience, retrievedIds: [row.id], records: [], observedAt: row.observedAt,
-      } });
-      return row;
+      const row = await provider.detail(id, { ...options, includeGone: true });
+      if (row) await recordResearch(env, { researchId,
+        observations: provider.kind === "live" ? [{ id: row.id, kind: row.gone ? "gone" : "detail",
+          observedAt: row.observedAt, ...(!row.gone ? { listing: row } : {}) }] : undefined,
+        event: {
+          type: "details", audience, retrievedIds: row.gone ? [] : [row.id], records: [], observedAt: row.observedAt,
+        } });
+      return row?.gone ? null : row;
     },
   };
 }
@@ -536,17 +543,40 @@ async function visualSearch(args, env, provider) {
   if (args.researchId) {
     const descriptor = page.visual?.listingId ? "Inseratfoto " + page.visual.listingId + " / " + (page.visual.photoIndex ?? 0)
       : page.visual?.source === "attachment" ? "Hochgeladenes Bild" : "Bild aus öffentlicher URL";
-    const logged = await recordResearch(env, { researchId: args.researchId, event: {
-      type: "search", searchType: "visual", query: descriptor,
-      queryId: page.visual?.searchId ?? page.visual?.pictureKey,
-      filters: page.filters ?? args.filters ?? {}, page: result.page, pageSize: result.requestedPageSize,
-      ids: page.items.map(row => row.id), scannedCount: page.scannedCount,
-      filteredOutCount: page.filteredOutCount, reportedTotal: page.total, exhausted: page.end === true,
-      nextCursor: page.nextCursor, observedAt: page.observedAt,
-    } });
+    const logged = await recordResearch(env, { researchId: args.researchId,
+      observations: page.items.map(row => ({ id: row.id, kind: "search", observedAt: page.observedAt, listing: row })),
+      event: {
+        type: "search", searchType: "visual", query: descriptor,
+        queryId: page.visual?.searchId ?? page.visual?.pictureKey,
+        filters: page.filters ?? args.filters ?? {}, page: result.page, pageSize: result.requestedPageSize,
+        ids: page.items.map(row => row.id), scannedCount: page.scannedCount,
+        filteredOutCount: page.filteredOutCount, reportedTotal: page.total, exhausted: page.end === true,
+        nextCursor: page.nextCursor, observedAt: page.observedAt,
+      } });
     result.queryId = logged.queryId;
   }
   return result;
+}
+
+async function presentationProvider(provider, env, researchId, selections) {
+  if (!researchId || provider.kind !== "live") return provider;
+  const ids = selections.map(selection => selection.id);
+  const cached = await Promise.allSettled(ids.map(id => provider.summaryObservation(id, { deadline: requestDeadline(env) })));
+  const resolved = await resolveResearchObservations(env, { researchId, ids,
+    observations: cached.filter(result => result.status === "fulfilled" && result.value).map(result => result.value) });
+  const byId = new Map(resolved.observations.map(observation => [observation.id, observation]));
+  const errors = new Map(cached.flatMap((result, index) => result.status === "rejected" ? [[ids[index], result.reason]] : []));
+  return {
+    ...provider,
+    async summary(id) {
+      const observation = byId.get(id);
+      if (observation?.kind === "gone") return null;
+      if (observation) return { ...observation.listing, observedAt: observation.observedAt,
+        cacheAgeSeconds: Math.max(0, Math.floor((Date.now() - Date.parse(observation.observedAt)) / 1000)) };
+      if (errors.has(id)) throw errors.get(id);
+      return null;
+    },
+  };
 }
 
 async function present(args, env, provider) {
@@ -555,7 +585,8 @@ async function present(args, env, provider) {
       selections: args.selections, queryIds: args.queryIds, title: args.title, summary: args.summary, criteria: args.criteria });
     const page = await readCollection(env, { researchId: args.researchId,
       collectionId: collection.collectionId, pageSize: args.pageSize ?? 12 });
-    const result = await presentListings({ ...args, selections: page.selections }, env, provider);
+    const observed = await presentationProvider(provider, env, args.researchId, page.selections);
+    const result = await presentListings({ ...args, selections: page.selections }, env, observed);
     const { selections, ...navigation } = page;
     return { ...result, ...navigation, requestedCount: page.total, shownCount: result.cards.length };
   }
@@ -576,7 +607,8 @@ async function browseCollection(args, env) {
   const page = await readCollection(env, { researchId: args.researchId, collectionId: args.collectionId,
     pageSize: args.pageSize ?? 12, cursor: args.cursor,
     ...(args.action === "covers" ? { ids: args.ids } : args.action === "page" ? {} : { ids: [args.id] }) });
-  const provider = trackedProvider(getProvider(page.source, env), env, args.researchId, "app");
+  let provider = trackedProvider(getProvider(page.source, env), env, args.researchId, "app");
+  if (["page", "covers"].includes(args.action)) provider = await presentationProvider(provider, env, args.researchId, page.selections);
   let result;
   if (args.action === "page") {
     const rendered = await presentListings({ selections: page.selections, title: page.title,

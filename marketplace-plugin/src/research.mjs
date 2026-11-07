@@ -161,6 +161,89 @@ export async function normalizeResearchEvent(input) {
   return event;
 }
 
+function observationUrl(value, photo = false) {
+  if (value == null) return null;
+  text(value, "listing observation URL", 1200);
+  let url;
+  try { url = new URL(value); } catch { invalid("Invalid listing observation URL"); }
+  const allowed = photo
+    ? url.hostname === "cache.willhaben.at" && url.pathname.startsWith("/mmo/")
+    : ["www.willhaben.at", "willhaben.at"].includes(url.hostname) &&
+      (url.pathname.startsWith("/iad/kaufen-und-verkaufen/d/") ||
+        (url.pathname === "/iad/object" && /^\d+$/.test(url.searchParams.get("adId") ?? "")));
+  if (!allowed || url.protocol !== "https:" || url.username || url.password || url.port || url.hash) {
+    invalid("Listing observations require canonical willhaben URLs");
+  }
+  return url.href;
+}
+
+function compactListing(input, id) {
+  if (!input || typeof input !== "object" || input.id !== id) invalid("Listing observation identity mismatch");
+  const listing = { id, title: text(input.title, "observed title", 300),
+    price: input.price == null ? null : input.price };
+  if (listing.price !== null && (!Number.isFinite(listing.price) || listing.price < 0)) invalid("Invalid observed price");
+  if (input.url != null) listing.url = observationUrl(input.url);
+  for (const [key, max] of Object.entries({ priceType: 20, status: 20, condition: 20, location: 150,
+    shipping: 20, category: 160, model: 300, sellerType: 20 })) {
+    if (input[key] !== undefined) listing[key] = text(input[key], "observed " + key, max);
+  }
+  for (const key of ["quantity", "categoryId", "areaId", "imageCount"]) {
+    if (input[key] !== undefined) listing[key] = integer(input[key], "observed " + key);
+  }
+  if (input.shippingCost !== undefined) {
+    if (!Number.isFinite(input.shippingCost) || input.shippingCost < 0) invalid("Invalid observed shipping cost");
+    listing.shippingCost = input.shippingCost;
+  }
+  for (const key of ["paylivery", "galleryComplete"]) {
+    if (input[key] !== undefined) {
+      if (typeof input[key] !== "boolean") invalid("Invalid observed " + key);
+      listing[key] = input[key];
+    }
+  }
+  if (input.attributes !== undefined) {
+    if (!input.attributes || typeof input.attributes !== "object" || Array.isArray(input.attributes)) invalid("Invalid observed attributes");
+    const entries = Object.entries(input.attributes);
+    if (entries.length > 45) invalid("Too many observed attributes");
+    listing.attributes = Object.fromEntries(entries.map(([key, value]) => {
+      text(key, "observed attribute name", 80);
+      if (typeof value === "string") text(value, "observed attribute value", 300, true);
+      else if (typeof value !== "boolean" && !Number.isFinite(value)) invalid("Invalid observed attribute value");
+      return [key, value];
+    }));
+  }
+  const gallery = input.gallery ?? (input.images ?? []).map((url, index) => ({
+    index, url, thumbnailUrl: index === 0 ? input.thumbnailUrl : null,
+  }));
+  listing.gallery = list(gallery, "observed listing photos", 10000, (photo, index) => ({
+    index, url: observationUrl(photo?.url, true), thumbnailUrl: observationUrl(photo?.thumbnailUrl, true),
+  }));
+  return listing;
+}
+
+export function normalizeListingObservations(input = []) {
+  const observations = list(input, "listing observations", 200, item => {
+    const observation = { id: listingId(item?.id), kind: oneOf(item?.kind, ["search", "detail", "gone"], "observation kind"),
+      observedAt: observedTime(item?.observedAt) };
+    if (item?.observedAt === undefined) invalid("Listing observations require their original observation time");
+    if (observation.kind !== "gone") observation.listing = compactListing(item.listing, observation.id);
+    return observation;
+  });
+  if (encoder.encode(JSON.stringify(observations)).length > 4 * 1024 * 1024) invalid("Listing observations exceed their metadata budget");
+  return observations;
+}
+
+export function newestListingObservation(current, incoming) {
+  if (!current) return incoming;
+  if (!incoming) return current;
+  const rank = { search: 0, detail: 1, gone: 2 };
+  return incoming.observedAt > current.observedAt ||
+    (incoming.observedAt === current.observedAt && rank[incoming.kind] > rank[current.kind]) ? incoming : current;
+}
+
+export function normalizeObservationIds(ids) {
+  return [...new Set(list(ids, "observed listing IDs", 100, listingId))];
+}
+
 export function normalizeResearchRead(args = {}) {
   return { section: oneOf(args.section ?? "summary", ["summary", "queries", "listings"], "research section"),
     limit: integer(args.limit ?? 24, "research page limit", 1, 100), cursor: args.cursor };
@@ -250,8 +333,12 @@ export async function ensureResearch(env, { researchId, source = "live" } = {}) 
   return result;
 }
 
-export async function recordResearch(env, { researchId, event }) {
-  return rpc(await researchStub(env, researchId), "append", event);
+export async function recordResearch(env, { researchId, event, observations }) {
+  return rpc(await researchStub(env, researchId), "append", { ...event, ...(observations ? { observations } : {}) });
+}
+
+export async function resolveResearchObservations(env, { researchId, ...args }) {
+  return rpc(await researchStub(env, researchId), "resolveObservations", args);
 }
 
 export async function getResearch(env, { researchId, ...args }) {

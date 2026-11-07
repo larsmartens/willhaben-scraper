@@ -1,4 +1,4 @@
-# Verifikationsübersicht für 1.4.1
+# Verifikationsübersicht für 1.4.2
 
 Die Node-Suite prüft die Tool- und Protokollverträge. Fünf Miniflare-Suiten prüfen OriginGate, Provider, MCP-Transport, ResearchSession und die toolübergreifende Integration in workerd. Die unabhängigen Reviews verwenden eigene synthetische Repros.
 
@@ -10,6 +10,8 @@ Die Node-Suite prüft die Tool- und Protokollverträge. Fünf Miniflare-Suiten p
 | Native Bildsuche | `visual-search.test.mjs` prüft Anhang, URL, Inseratfoto, Normalisierung, effektive Filter und Cursor-Identität |
 | Parallel gleiche Suche | `provider.runtime.mjs` prüft vier parallele Cold-Requests gegen einen Upstream-Aufruf sowie Fresh- und Detailfälle |
 | Recherche und Herkunft | `research.runtime.mjs` prüft atomare Ereignisse, Owner-Scope, Query-Fortschritt, Beschreibungslängen und Fotoindizes |
+| Langlebige Angebotsdaten | 100 Inserate mit ursprünglichen Zeiten, vollständigen Seiten und Covers nach Cacheablauf und workerd-Neustart, einschließlich Tombstones, Owner-Isolation und Ablaufbereinigung |
+| Unvollständige Alt-Sammlungen | Sichtbarer Hinweis auf fehlende Datensätze, korrekte Seitenslots und gezielte Wiederherstellung ohne automatische Detailabrufe |
 | Große Sammlungen | 10.000 Inserate in 417 Seiten mit höchstens 24 Einträgen und stabiler Snapshot-Zugehörigkeit |
 | Toolübergreifende Nachweise | `research-tools.runtime.mjs` prüft Text- und Bildsuche, Details, Fotos, App-Ausgabe, Studien und korrekte Fortsetzungen |
 | Kleine Bildpakete | `presentation-scale.browser.mjs` prüft zwei vorab geladene Bilder und sichtbarkeitsabhängige Pakete mit höchstens vier IDs |
@@ -19,7 +21,7 @@ Die Node-Suite prüft die Tool- und Protokollverträge. Fünf Miniflare-Suiten p
 | Scharfe Angebotsbilder | Beobachtete Hauptbilder für zwei sofortige und vier nachgeladene Cover, Thumbnail-Fallback bei überschrittenem Bytebudget |
 | Frühe Übersicht | Server- und Skill-Anweisungen führen Übersichtsfragen nach der ersten brauchbaren Suchseite zur Kartenansicht |
 
-Die Chromium-Suiten verwenden einen simulierten Host mit der tatsächlichen offiziellen App-Bridge. Der Produktionsnachweis vom 7. November 2026 dokumentiert die veröffentlichte MCP-Verbindung und reale willhaben-Abfragen. Die zusätzliche Abnahme im ChatGPT-Webclient umfasst zwölf gerenderte Karten, aufklappbare Recherche- und Einzelnachweise, einen tatsächlichen Bildanhang und alle sieben Fotos des Referenzinserats über zwei Galerieabrufe. Der konkrete Verlauf und die daraus folgenden 1.4.1-Korrekturen stehen in `upgrade-1.4.md`. Frühere clientbezogene Beobachtungen in der folgenden Tabelle gehören zur Abnahme von 1.3.3.
+Die Chromium-Suiten verwenden einen simulierten Host mit der tatsächlichen offiziellen App-Bridge. Der Produktionsnachweis vom 7. November 2026 dokumentiert die veröffentlichte MCP-Verbindung und reale willhaben-Abfragen. Die zusätzliche Abnahme im ChatGPT-Webclient umfasst zwölf gerenderte Karten, aufklappbare Recherche- und Einzelnachweise, einen tatsächlichen Bildanhang und alle sieben Fotos des Referenzinserats über zwei Galerieabrufe. Der konkrete Verlauf und die daraus folgenden 1.4.1- und 1.4.2-Korrekturen stehen in `upgrade-1.4.md`. Frühere clientbezogene Beobachtungen in der folgenden Tabelle gehören zur Abnahme von 1.3.3.
 
 ## Fortgeführte Prüfpfade
 

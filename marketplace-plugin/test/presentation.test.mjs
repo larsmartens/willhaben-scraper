@@ -161,7 +161,9 @@ test("missing observations, unavailable indices and unsafe cached URLs retain ex
     { id: "1" }, { id: "2", photoIndex: 9 }, { id: "3" }, { id: "4" },
   ] }, storage.env);
   assert.deepEqual(result.missingIds, ["3", "4"]);
-  assert.match(result.nextAction, /Inspect missingIds with inspect_listings/);
+  assert.match(result.nextAction, /Refresh the relevant search in the same researchId/);
+  assert.equal(result.pageComplete, false);
+  assert.equal(result.pageRequestedCount, 4);
   assert.equal(result.cards[0].url, null);
   assert.equal(result.cards[0].image.url, null);
   assert.equal(result.cards[1].image.status, "failed");
@@ -390,7 +392,7 @@ test("Worker keeps hydrated image bytes outside model text and structuredContent
   assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
   assert.equal(result.structuredContent.cards[0].image.url, photo(1));
   const init = (await rpc("initialize", { protocolVersion: "2025-11-25", clientInfo: { name: "test", version: "1" }, capabilities: {} })).result;
-  assert.equal(init.serverInfo.version, "1.4.1");
+  assert.equal(init.serverInfo.version, "1.4.2");
   assert.match(init.instructions, /present_listings/);
   assert.match(init.instructions, /twelve relevant offers/);
   assert.match(init.instructions, /immediately after the first useful search page/);

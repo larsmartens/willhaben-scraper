@@ -8,7 +8,7 @@ Use the observed IDs in recommendation order, a short title and a concise summar
 
 Write each `reason` around the user's actual requirements. Put material unanswered questions in `cautions`. Include the user's explicit `criteria` for evidence-based requirement checks. Use `photoIndex` when an already inspected gallery photo shows the relevant feature better than the cover.
 
-The tool supplies canonical facts and the original observation time from the latest available search or detail observation. When `missingIds` are returned, inspect those IDs and repeat the selection. If a newer search observation leaves specifications open, use `inspect_listings` to establish current detail evidence.
+The tool supplies canonical facts and the original observation time from the latest available search or detail observation. When `missingIds` are returned, keep the available cards and the missing observations visible. Refresh the relevant search pages with their original scope, `fresh=true` and the same `researchId`, then repeat `present_listings` with the same selection or query scope. Use `inspect_listings` for targeted verification when an individual offer's specifications or current availability matter.
 
 The component displays the selected photos, facts and assessments. Its photo buttons request gallery batches on demand. Its price sorting applies to the current page. Its overview starts with two loaded covers and requests further visible photos on demand. Research coverage and individual evidence are expandable inside the component. Component photos arrive in widget-only `_meta`. For claims about visible damage, materials or shape, inspect actual image content through the photo tools first.
 
