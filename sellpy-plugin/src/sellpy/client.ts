@@ -4,6 +4,7 @@ import {
 } from '../domain.js';
 import { createConfigLoader, VERIFIED_AT, VERIFIED_RELEASE, type LocaleConfig, type NativeRoute, type PublicConfig } from './config.js';
 import { boundedBytes, checkDeadline, contractError, record, request, requestJson } from './http.js';
+import { withCachedObservation } from '../provider-cache.js';
 import {
   algoliaFilterParams, effectiveFilters, FACET_FIELDS, MARKETS, matchesFilters, MEASUREMENT_FIELDS,
   nativeFilters, normalizeItem, publicImageUrl, string, validateId, validateLocale,
@@ -18,6 +19,36 @@ const CATALOG_ATTRIBUTES = [
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
 const OUTFIT_WINDOW_PER_PART = 20;
 const REQUEST_OBJECT_CACHE_SIZE = 2000;
+
+export interface SimilarBrandsInput {
+  brands: string[];
+  limit: number;
+  market: string;
+  language: string;
+}
+
+export interface SimilarBrand {
+  brand: string;
+  brand_object_id: string | null;
+  native_score: number | null;
+}
+
+export interface SimilarBrandsResult {
+  market: string;
+  language: string;
+  seed_brands: string[];
+  brands: SimilarBrand[];
+  requested_limit: number;
+  inventory_checked: false;
+  source_url: string;
+  source_version: string | null;
+  observed_at: string;
+  warnings: string[];
+}
+
+export type NativeSellpyProvider = SellpyProvider & {
+  similarBrands(input: SimilarBrandsInput, context: RequestContext): Promise<SimilarBrandsResult>;
+};
 
 interface CatalogObject {
   value: Record<string, unknown>;
@@ -198,7 +229,7 @@ async function referenceImage(reference: ReferenceImage, context: RequestContext
   return { bytes, mime_type, file_name: `reference.${extension}` };
 }
 
-export function createSellpyProvider(): SellpyProvider {
+export function createSellpyProvider(): NativeSellpyProvider {
   const loadConfig = createConfigLoader();
   // Only completed public data is memoized, scoped by the current tool request.
   // No response, stream, request or I/O promise survives a request boundary.
@@ -361,6 +392,65 @@ export function createSellpyProvider(): SellpyProvider {
   }
 
   return {
+    async similarBrands(input, context): Promise<SimilarBrandsResult> {
+      validateLocale(input.market, input.language);
+      if (!Array.isArray(input.brands) || !input.brands.length || input.brands.length > 50 ||
+        input.brands.some(brand => typeof brand !== 'string' || !brand.trim() || brand.length > 300 || /[\u0000-\u001f\u007f]/.test(brand))) {
+        throw new ToolError('invalid_brand_seeds', 'Provide between 1 and 50 nonempty native brand names, each at most 300 characters.');
+      }
+      if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 100) {
+        throw new ToolError('invalid_brand_limit', 'Request between 1 and 100 brand alternatives per call. This is a response budget, not a catalog limit.');
+      }
+      const identity = (brand: string): string => brand.normalize('NFKC').toLowerCase();
+      const seeds = new Map<string, string>();
+      for (const brand of input.brands) if (!seeds.has(identity(brand.trim()))) seeds.set(identity(brand.trim()), brand.trim());
+      return withCachedObservation(context, {
+        kind: 'brands', input, observed_at: value => Date.parse(value.observed_at),
+        project: value => { const { seed_brands: _seeds, ...publicResult } = value; return publicResult; },
+        restore: value => ({ ...value as Omit<SimilarBrandsResult, 'seed_brands'>, seed_brands: [...seeds.values()] }),
+      }, async (): Promise<SimilarBrandsResult> => {
+        const config = await loadConfig(context);
+        const service = config.similar_brands;
+        if (!service) throw new ToolError('unsupported_native_capability', 'The current public Sellpy configuration does not expose similar-brand discovery.', {
+          next_action: 'Use an exact brand catalog search, or retry after the native configuration is updated.',
+        });
+        const response = await request(service.url, {
+          method: 'POST', headers: { 'content-type': 'application/json', 'X-SimilarItems-Key': service.key },
+          body: JSON.stringify({ brand_groups: [[...seeds.values()]], n_items: input.limit, request_source: REQUEST_SOURCE }),
+        }, context);
+        let parsed: unknown;
+        try { parsed = JSON.parse(new TextDecoder().decode(await boundedBytes(response, 128 * 1024))) as unknown; }
+        catch (error) {
+          if (error instanceof ToolError) throw error;
+          throw contractError('The native similar-brand response is not valid JSON.');
+        }
+        if (!Array.isArray(parsed) || parsed.length !== 1 || !Array.isArray(parsed[0])) {
+          throw contractError('The native similar-brand response no longer matches the requested brand group.');
+        }
+        const brands: SimilarBrand[] = [];
+        const seen = new Set(seeds.keys());
+        for (const raw of parsed[0] as unknown[]) {
+          const entry = record(raw);
+          if (typeof entry.brand !== 'string' || !entry.brand.trim() || entry.brand.length > 300 || /[\u0000-\u001f\u007f]/.test(entry.brand) ||
+            (entry.objectid !== undefined && (typeof entry.objectid !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(entry.objectid))) ||
+            (entry.score !== undefined && (typeof entry.score !== 'number' || !Number.isFinite(entry.score)))) {
+            throw contractError('The native similar-brand response contains invalid brand metadata.');
+          }
+          const name = entry.brand.trim(), key = identity(name);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (brands.length < input.limit) brands.push({ brand: name,
+            brand_object_id: typeof entry.objectid === 'string' ? entry.objectid : null,
+            native_score: typeof entry.score === 'number' ? entry.score : null });
+        }
+        return { market: input.market, language: input.language, seed_brands: [...seeds.values()], brands,
+          requested_limit: input.limit, inventory_checked: false, source_url: service.url,
+          source_version: config.source_version, observed_at: new Date().toISOString(),
+          warnings: ['Native brand alternatives are not market-stock checks or item matches. Native scores are not probabilities and are not comparable with item-search scores.',
+            'Sellpy exposes a finite requested brand window; no continuation cursor or exhaustive total is verified.'],
+        };
+      });
+    },
     async capabilities(context): Promise<ProviderCapabilities> {
       const config = await loadConfig(context);
       const evidence = `First-party frontend contract and successful public request verified ${VERIFIED_AT}; configuration discovered at runtime.`;
@@ -380,93 +470,117 @@ export function createSellpyProvider(): SellpyProvider {
     async search(input, context): Promise<ProviderPage> {
       validatePage(input); validateLocale(input.market, input.language);
       const filters = effectiveFilters(input.arm.filters, input.arm.category_relaxed);
-      const config = await loadConfig(context);
-      return input.arm.route === 'catalog' ? catalog(input, filters, config, context) : native(input, filters, config, context);
+      const load = async () => {
+        const config = await loadConfig(context);
+        return input.arm.route === 'catalog' ? catalog(input, filters, config, context) : native(input, filters, config, context);
+      };
+      // Retained uploads and private reference state never enter a shared key
+      // or value. Only public catalog/seed/Sellpy-photo routes are coordinated.
+      if (input.arm.route === 'upload' || input.arm.reference) return load();
+      const { id: _identity, ...arm } = input.arm;
+      return withCachedObservation(context, {
+        kind: 'search', input: { ...input, arm },
+        observed_at: (value: ProviderPage) => Math.min(Date.parse(value.observed_at), ...value.items.map(item => Date.parse(item.observed_at))),
+        project: value => { const { applied_filters: _filters, ...publicPage } = value; return publicPage; },
+        restore: value => ({ ...value as Omit<ProviderPage, 'applied_filters'>, applied_filters: structuredClone(filters) }),
+      }, load);
     },
     async details(ids, market, language, context): Promise<DetailBatch> {
       validateLocale(market, language);
       const unique = [...new Set(ids.map(validateId))];
       const result: DetailBatch = { items: [], failures: [], remaining_ids: [] };
       if (!unique.length) return result;
-      const config = await loadConfig(context);
-      const locale = localeConfig(config, market, language);
-      for (let start = 0; start < unique.length; start += 10) {
-        const batch = unique.slice(start, start + 10);
-        if (context.signal?.aborted || Date.now() >= context.deadline) { result.remaining_ids = unique.slice(start); break; }
-        try {
-          // These two sources are independent. Keep concurrency at two while
-          // awaiting both outcomes so a failed source never leaves floating I/O.
-          // Canonical details deliberately bypass request-local search hydration
-          // memoization: current price/availability checks always hit the source.
-          const [catalogResult, graphResult] = await Promise.allSettled([
-            objects(batch, locale, market, context),
-            graphDetails(batch, config, market, language, context),
-          ]);
-          if (catalogResult.status === 'rejected') throw dominantDetailFailure([
-            errorForDetail(catalogResult.reason), ...(graphResult.status === 'rejected' ? [errorForDetail(graphResult.reason)] : []),
-          ]);
-          const catalogItems = catalogResult.value;
-          let graph: Awaited<ReturnType<typeof graphDetails>>;
+      return withCachedObservation(context, {
+        kind: 'details', input: { ids, market, language },
+        observed_at: (value: DetailBatch) => Math.min(...value.items.map(item => Date.parse(item.observed_at))),
+        cacheable: value => !value.failures.length && !value.remaining_ids.length && value.items.length === unique.length,
+      }, async () => {
+        const config = await loadConfig(context);
+        const locale = localeConfig(config, market, language);
+        for (let start = 0; start < unique.length; start += 10) {
+          const batch = unique.slice(start, start + 10);
+          if (context.signal?.aborted || Date.now() >= context.deadline) { result.remaining_ids = unique.slice(start); break; }
           try {
-            if (graphResult.status === 'rejected') throw graphResult.reason;
-            graph = graphResult.value;
-          }
-          catch (error) {
+            // These two sources are independent. Keep concurrency at two while
+            // awaiting both outcomes so a failed source never leaves floating I/O.
+            // Canonical details deliberately bypass request-local search hydration
+            // memoization. Explicit refresh callers also bypass the five-second
+            // completed-observation cache using withoutObservationCache().
+            const [catalogResult, graphResult] = await Promise.allSettled([
+              objects(batch, locale, market, context),
+              graphDetails(batch, config, market, language, context),
+            ]);
+            if (catalogResult.status === 'rejected') throw dominantDetailFailure([
+              errorForDetail(catalogResult.reason), ...(graphResult.status === 'rejected' ? [errorForDetail(graphResult.reason)] : []),
+            ]);
+            const catalogItems = catalogResult.value;
+            let graph: Awaited<ReturnType<typeof graphDetails>>;
+            try {
+              if (graphResult.status === 'rejected') throw graphResult.reason;
+              graph = graphResult.value;
+            }
+            catch (error) {
+              const providerError = errorForDetail(error);
+              if (detailInterrupted(providerError)) {
+                result.remaining_ids = unique.slice(start);
+                result.failures.push(...result.remaining_ids.map(id => ({id,error:providerError.toJSON()})));
+                break;
+              }
+              for (const id of batch) {
+                const observation = catalogItems.get(id);
+                const item = normalizeItem(observation?.value, market, language, observation?.observed_at ?? new Date().toISOString());
+                if (item) result.items.push(item);
+                result.failures.push({ id, error: providerError.toJSON() });
+              }
+              continue;
+            }
+            for (const id of batch) {
+              const item = normalizeItem(catalogItems.get(id)?.value, market, language, new Date().toISOString(), graph.items.get(id));
+              if (item && graph.missing.has(id)) item.availability = 'unknown';
+              if (item) result.items.push(item);
+              if (graph.failed.has(id)) result.failures.push({ id, error: new ToolError('detail_unavailable', 'Sellpy returned an error for this public item detail.', { retryable: true }).toJSON() });
+              else if (graph.missing.has(id)) result.failures.push({ id, error: new ToolError('item_not_found', 'The canonical Sellpy item could not be found; current availability is unconfirmed.').toJSON() });
+            }
+          } catch (error) {
             const providerError = errorForDetail(error);
             if (detailInterrupted(providerError)) {
               result.remaining_ids = unique.slice(start);
               result.failures.push(...result.remaining_ids.map(id => ({id,error:providerError.toJSON()})));
               break;
             }
-            for (const id of batch) {
-              const observation = catalogItems.get(id);
-              const item = normalizeItem(observation?.value, market, language, observation?.observed_at ?? new Date().toISOString());
-              if (item) result.items.push(item);
-              result.failures.push({ id, error: providerError.toJSON() });
-            }
-            continue;
+            for (const id of batch) result.failures.push({ id, error: providerError.toJSON() });
           }
-          for (const id of batch) {
-            const item = normalizeItem(catalogItems.get(id)?.value, market, language, new Date().toISOString(), graph.items.get(id));
-            if (item && graph.missing.has(id)) item.availability = 'unknown';
-            if (item) result.items.push(item);
-            if (graph.failed.has(id)) result.failures.push({ id, error: new ToolError('detail_unavailable', 'Sellpy returned an error for this public item detail.', { retryable: true }).toJSON() });
-            else if (graph.missing.has(id)) result.failures.push({ id, error: new ToolError('item_not_found', 'The canonical Sellpy item could not be found; current availability is unconfirmed.').toJSON() });
-          }
-        } catch (error) {
-          const providerError = errorForDetail(error);
-          if (detailInterrupted(providerError)) {
-            result.remaining_ids = unique.slice(start);
-            result.failures.push(...result.remaining_ids.map(id => ({id,error:providerError.toJSON()})));
-            break;
-          }
-          for (const id of batch) result.failures.push({ id, error: providerError.toJSON() });
         }
-      }
-      return result;
+        return result;
+      });
     },
     async facets(query, inputFilters, market, language, context): Promise<FacetResult> {
       validateLocale(market, language);
-      const config = await loadConfig(context), locale = localeConfig(config, market, language);
       const filters = effectiveFilters(inputFilters);
-      const response = await algolia('queries', { requests: [{ indexName: locale.indices.relevance, query,
-        hitsPerPage: 0, page: 0, facets: ['*'], ...algoliaFilterParams(filters, market),
-      }] }, locale, context);
-      const result = record(Array.isArray(response.results) ? response.results[0] : undefined);
-      if (!result.facets || typeof result.facets !== 'object' || numeric(result.nbHits) === null) throw contractError('Sellpy did not return the expected public facet response.');
-      const facets: FacetResult['facets'] = {}, numeric_facets: FacetResult['numeric_facets'] = {};
-      for (const [key, raw] of Object.entries(record(result.facets))) {
-        if (!FACET_FIELDS.has(key)) continue;
-        facets[key] = Object.fromEntries(Object.entries(record(raw)).filter((entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] >= 0));
-      }
-      for (const [key, raw] of Object.entries(record(result.facets_stats))) {
-        if (key !== `price_${market}.amount` && !(key.startsWith('metadata.measurement.') && MEASUREMENT_FIELDS.has(key.slice('metadata.measurement.'.length)))) continue;
-        const values = record(raw), min = numeric(values.min), max = numeric(values.max);
-        if (min === null || max === null) continue;
-        // Price statistics use the same base currency unit as SearchFilters; measurements remain cm.
-        numeric_facets[key] = key === `price_${market}.amount` ? { min: min / 100, max: max / 100 } : { min, max };
-      }
-      return { market, language, facets, numeric_facets, total: numeric(result.nbHits), observed_at: new Date().toISOString() };
+      return withCachedObservation(context, {
+        kind: 'facets', input: { query, filters: inputFilters, market, language },
+        observed_at: (value: FacetResult) => Date.parse(value.observed_at),
+      }, async () => {
+        const config = await loadConfig(context), locale = localeConfig(config, market, language);
+        const response = await algolia('queries', { requests: [{ indexName: locale.indices.relevance, query,
+          hitsPerPage: 0, page: 0, facets: ['*'], ...algoliaFilterParams(filters, market),
+        }] }, locale, context);
+        const result = record(Array.isArray(response.results) ? response.results[0] : undefined);
+        if (!result.facets || typeof result.facets !== 'object' || numeric(result.nbHits) === null) throw contractError('Sellpy did not return the expected public facet response.');
+        const facets: FacetResult['facets'] = {}, numeric_facets: FacetResult['numeric_facets'] = {};
+        for (const [key, raw] of Object.entries(record(result.facets))) {
+          if (!FACET_FIELDS.has(key)) continue;
+          facets[key] = Object.fromEntries(Object.entries(record(raw)).filter((entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] >= 0));
+        }
+        for (const [key, raw] of Object.entries(record(result.facets_stats))) {
+          if (key !== `price_${market}.amount` && !(key.startsWith('metadata.measurement.') && MEASUREMENT_FIELDS.has(key.slice('metadata.measurement.'.length)))) continue;
+          const values = record(raw), min = numeric(values.min), max = numeric(values.max);
+          if (min === null || max === null) continue;
+          // Price statistics use the same base currency unit as SearchFilters; measurements remain cm.
+          numeric_facets[key] = key === `price_${market}.amount` ? { min: min / 100, max: max / 100 } : { min, max };
+        }
+        return { market, language, facets, numeric_facets, total: numeric(result.nbHits), observed_at: new Date().toISOString() };
+      });
     },
   };
 }

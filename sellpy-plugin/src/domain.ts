@@ -1,3 +1,5 @@
+import type { CollectionDescriptor, CollectionPageInfo, CollectionScope } from './collection-contract.js';
+
 export type Market = string;
 export type Language = string;
 export type Route = 'catalog' | 'semantic' | 'similar' | 'image' | 'upload' | 'outfit';
@@ -172,7 +174,15 @@ export interface VisualAssessment {
   author: 'assistant';
 }
 
+export interface GallerySummary {
+  omitted_fields: string[];
+  image_count: number;
+  assessment_recorded: boolean;
+  checked_image_count: number;
+}
+
 export interface Candidate {
+  presentation_summary?: GallerySummary;
   item: ItemObservation;
   paths: RetrievalPath[];
   fusion_score: number;
@@ -215,6 +225,7 @@ export interface ItemFeedback {
 }
 
 export interface GalleryCard {
+  summary?: GallerySummary;
   item: ItemObservation;
   reason: string;
   cautions: string[];
@@ -224,6 +235,11 @@ export interface GalleryCard {
 }
 
 export interface GalleryData {
+  version?: 3;
+  collection?: CollectionDescriptor;
+  page?: CollectionPageInfo;
+  scope?: CollectionScope;
+  request_id?: string;
   run_id: string;
   language: string;
   title: string;

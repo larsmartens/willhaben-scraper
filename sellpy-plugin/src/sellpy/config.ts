@@ -12,6 +12,7 @@ export const SERVICE_PATHS = {
   outfit: '/complementary-recommendations',
 } as const;
 export type NativeRoute = keyof typeof SERVICE_PATHS;
+export const SIMILAR_BRANDS_URL = 'https://services.sellpy.net/similar-items-app/get-similar-brands';
 export interface LocaleConfig {
   application_id: string;
   search_key: string;
@@ -20,6 +21,7 @@ export interface LocaleConfig {
 export interface PublicConfig {
   locales: Record<string, LocaleConfig>;
   services: Record<NativeRoute, { url: string; key: string }>;
+  similar_brands?: { url: string; key: string };
   graphql_url: string;
   parse_application_id: string;
   source_version: string | null;
@@ -151,10 +153,18 @@ export function parsePublicConfig(source: string, sourceUrl: string): PublicConf
     }
     services[route as NativeRoute] = { url, key: requiredString(config, 'key') };
   }
+  let similar_brands: PublicConfig['similar_brands'];
+  if (Object.hasOwn(ml, 'similarBrands')) {
+    const config = record(ml.similarBrands);
+    const url = requiredString(config, 'url');
+    if (url !== SIMILAR_BRANDS_URL) throw contractError('The public Sellpy similar-brand endpoint changed and requires contract review.');
+    similar_brands = { url, key: requiredString(config, 'key') };
+  }
   const graphql_url = requiredString(staticObject(source, 'apollo'), 'uri');
   if (graphql_url !== 'https://sellpy-parse-prod.herokuapp.com/graphql') throw contractError('The public Sellpy item endpoint changed and requires contract review.');
   return {
-    locales, services, graphql_url, parse_application_id: requiredString(staticObject(source, 'parse'), 'applicationId'),
+    locales, services, ...(similar_brands ? { similar_brands } : {}), graphql_url,
+    parse_application_id: requiredString(staticObject(source, 'parse'), 'applicationId'),
     source_url: sourceUrl, source_version: /SENTRY_RELEASE\s*=\s*\{id:\s*[`'"]([a-f\d]{40})[`'"]/.exec(source)?.[1] ?? null,
   };
 }

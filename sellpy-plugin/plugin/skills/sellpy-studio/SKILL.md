@@ -1,19 +1,29 @@
 ---
 name: sellpy-studio
-description: Search, refine and compare Sellpy offers in chat using visual styles, reference photos, category-error recovery, saved preferences, shortlists and observed price changes. Use for finding, inspecting, comparing or resuming Sellpy shopping research.
+description: Search, browse, refine and compare Sellpy offers in chat. Use for ordinary searches, Sellpy search links, visual styles, reference photos, mislabeled garments, similar brands, saved preferences, shortlists and observed price changes.
 ---
 
 # Sellpy Studio
 
 Use the remote Sellpy tools directly in chat. No local executor is required for shopping. Default to AT, German and EUR unless the user specifies a different market. Keep conversational answers in the user's language.
 
+Explicit user instructions take precedence over this workflow. Resolve routine search and presentation choices without extra confirmation when the request already supplies the intent.
+
 ## Choose the retrieval path
 
-Use `discover_filters` before applying unfamiliar facet names or values. Apply the user's actual budget, size and exclusions. Use `search_items` for ordinary catalog searches and `get_items` for known item IDs or links.
+Use `discover_filters` before applying unfamiliar facet names or values. Apply the user's actual budget, size and exclusions. Use `search_items` for ordinary catalog searches and `get_items` for known item IDs or links. Import a supplied Sellpy search link with `search_url`; preserve its market, language, filters and sort. Unsupported restrictions must be resolved explicitly, never silently removed.
 
 For a visual style, use `search_style`. Translate the aesthetic into observable features and supply multiple English `attribute_queries`. For cottagecore, useful candidate features might include a small floral print, lace trim, gathered fabric and puff sleeves; their relevance depends on the particular request. Also supply `relaxed_queries` containing visible features without the desired garment noun. These arms omit source category constraints so an incorrectly categorized dress can enter the pool. The actual requested garment type remains a requirement during visual review.
 
-Use `find_similar` to expand a promising item. Use `search_by_image` with the declared `reference` file input for an attached photo, or with an exact Sellpy `image_url`. Never invent a file download URL. A reference image is sent to Sellpy's visual search and stored privately with the run for later pages. For a requested change, provide `modification` and concrete `attribute_queries`; inspect results to check the change. Native image retrieval and semantic retrieval are distinct routes. Use `find_outfit` for complementary pieces and describe its finite recommendation window honestly.
+Use `find_similar` to expand a promising item. Use `search_similar_brands` for native brand alternatives, then search actual inventory for useful returned brand names. Brand object IDs are not item IDs; a brand recommendation does not establish stock, size availability or a calibrated similarity probability.
+
+Use `search_by_image` with the declared `reference` file input for an attached photo, an exact Sellpy `image_url`, a `public_image_url`, or an observed `item_image` with its item ID and photo index. Never invent a file download URL or substitute a different product photo. External public images are downloaded without account credentials, then submitted to Sellpy's native upload route; retained reference bytes support later pages. For a requested change, provide `modification` and concrete `attribute_queries`; inspect results to check the change. Native image retrieval and semantic retrieval are distinct routes. Use `find_outfit` for complementary pieces and describe its finite recommendation window honestly.
+
+## Show a useful overview early
+
+After ordinary retrieval, call `present_items({run_id})` to show the whole observed cohort. Do not enumerate all item IDs or invent selection reasons. The gallery starts with twelve cards and offers twenty-four per page; further browsing happens inside the app. Use its `source` selector for an individual arm, saved shortlist or refinement. An overview can contain unassessed items with an explicit status.
+
+The app carries the item facts. Keep accompanying chat brief and add only a decision, limitation or useful next step. Avoid repeating the cards in a second table or prose list. Use compact labeled fragments in selections and criteria: `Ärmel: lang`, `Material: Baumwolle laut Shop`, `Stilprüfung: offen`. Preserve unknowns and contradictions.
 
 ## Inspect actual evidence
 
@@ -39,11 +49,13 @@ Use each search page's `next_cursor` for more. Repeating an old cursor replays i
 
 There are no plugin-imposed cumulative page, item, detail or photo caps. Individual calls have work and byte budgets. Native source windows and changing inventory still limit coverage. Never say “all Sellpy was searched” merely because one route ended.
 
-## Show an illustrated selection
+## Recommend, compare and resume
 
-Refresh details for the shortlist. Call `present_items` with the ranked item IDs, concrete reasons and uncertainties. Every individually discussed or recommended item must have its own exact original photo and listing link. The gallery supports additional photos, price refresh, shortlist/reject decisions, local filters, item comparison and continuation. A user can send an explicitly selected comparison back into the chat.
+Before a final shortlist recommendation, refresh its details and complete any necessary visual review. Use `present_items` with an explicit ranked selection when the order and individual selection notes matter. Every individually discussed or recommended item needs its exact original photo and listing link. The gallery supports additional photos, deliberate price refresh, shortlist/reject decisions, collection-wide filters and sorting, comparison, observed history and page navigation. Comparison totals use observed prices in the same currency; missing prices and mixed currencies remain explicit. A user can send an explicitly selected comparison back into the chat.
 
-If the client does not render MCP Apps, use each returned card's `image.url` as a Markdown image, then show its original item link, observed price, size, reason and caveat. Do not replace illustrations with text links alone. Preserve image identity after sorting. If a photo fails, state that failure and provide the original link; do not substitute a different garment's photo.
+Collections freeze membership and order. New discovery or changed shortlist decisions require an updated collection; item observations retain their actual timestamps. A displayed source total is per search route, not a deduplicated count of all Sellpy inventory. Distinguish discovered candidates, detail observations, delivered descriptions/photos and recorded assessments. Photo delivery or widget display never proves inspection.
+
+If the client actually cannot render MCP Apps, use each returned card's exact `image.url` as a Markdown image, followed by its original link and short labeled facts. Use this fallback only for that rendering limitation; avoid a duplicate illustrated list alongside a working app. If a photo fails, identify the failure and provide the original link.
 
 Only save a search when requested, using `save_search`. Use `list_saved_searches` to resume later. Use `refresh_search` to repeat the same criteria as a fresh run, keeping the earlier run for comparison. Newly encountered IDs mean new to that earlier discovered set, not necessarily newly listed on Sellpy.
 

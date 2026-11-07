@@ -1,5 +1,5 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
-import type { Candidate, ItemObservation, SearchPlan, SearchPage } from './domain.js';
+import type { Candidate, GalleryData, ItemObservation, SearchPlan, SearchPage } from './domain.js';
 import { ToolError } from './domain.js';
 import { inputSchemas, type ToolName } from './schemas.js';
 import { catalogPlan, imagePlan, outfitPlan, similarPlan, stylePlan } from './planning.js';
@@ -12,6 +12,10 @@ import type { RefinementPage } from './research-store.js';
 import { itemSnapshot, observationChanges } from './observations.js';
 import { commonSourceFacets } from './facet-evidence.js';
 import { MARKETS } from './sellpy/normalize.js';
+import type { StoredCollectionPage } from './collection-store.js';
+import { parseSearchUrl } from './search-url.js';
+import { preparePublicReference, createPublicReferenceFetch } from './public-reference.js';
+import { withoutObservationCache } from './provider-cache.js';
 
 export interface ToolContext {
   env: Env;
@@ -98,6 +102,7 @@ function searchResult(page:SearchPage):CallToolResult {
 async function searchResponse(page: SearchPage, context: ToolContext, step = 0): Promise<CallToolResult> {
   const run = actor(context, page.run_id);
   const { plan } = await run.status();
+  await run.markModelItemsDelivered(page.items.map(candidate => ({ item_id: candidate.item.id, description: false })));
   const result = searchResult(page);
   const data = result.structuredContent as Record<string, unknown>;
   data.refinement_hint = 'Use refine_search to apply explicit preferences, requirements and feedback to discovered candidates. Check unknown visual criteria on original photos, then start a new refinement.';
@@ -127,7 +132,8 @@ async function searchResponse(page: SearchPage, context: ToolContext, step = 0):
   return result;
 }
 
-function refinementResponse(page: RefinementPage): CallToolResult {
+async function refinementResponse(page: RefinementPage, context: ToolContext): Promise<CallToolResult> {
+  await actor(context, page.run_id).markModelItemsDelivered(page.items.map(entry => ({ item_id: entry.candidate.item.id, description: false })));
   return payload({ ...page, items: page.items.map(entry => ({ ...compactCandidate(entry.candidate), evaluation: entry.evaluation,
     score: entry.score, diversity_penalty: entry.diversity_penalty,
     ...(entry.response_omissions ? { response_omissions: entry.response_omissions } : {}) })) },
@@ -144,7 +150,7 @@ async function refine(args: unknown, context: ToolContext): Promise<CallToolResu
     if (cursor.v !== 1 || cursor.kind !== 'refinement' || cursor.run_id !== input.run_id ||
       typeof cursor.refinement_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(cursor.refinement_id) ||
       !Number.isSafeInteger(cursor.step) || Number(cursor.step) < 1) throw new ToolError('invalid_cursor', 'Use this search’s refinement next_cursor.');
-    return refinementResponse(await run.continueRefinement(cursor.refinement_id, Number(cursor.step)));
+    return refinementResponse(await run.continueRefinement(cursor.refinement_id, Number(cursor.step)), context);
   }
   const [{ plan }, profile] = await Promise.all([run.status(),
     input.use_profile ? library(context).getProfile(input.profile ?? 'default') : Promise.resolve(null)]);
@@ -162,17 +168,17 @@ async function refine(args: unknown, context: ToolContext): Promise<CallToolResu
     ...(requirements.length ? { requirements: [...(profile?.preferences.requirements ?? []), ...requirements] } : {}),
     ...input.preferences,
   };
-  return refinementResponse(await run.refine(input.run_id, preferences, input.page_size));
+  return refinementResponse(await run.refine(input.run_id, preferences, input.page_size), context);
 }
 
-async function start(plan:SearchPlan, context:ToolContext):Promise<CallToolResult> {
+async function start(plan:SearchPlan, context:ToolContext, prepared?: { file_id: string; bytes: Uint8Array; mime_type: string; file_name: string }):Promise<CallToolResult> {
   const runId=crypto.randomUUID();
   const run=actor(context,runId);
   const references=plan.arms.flatMap(arm=>arm.reference?[arm.reference]:[]);
   const stored=new Set<string>();
   for (const reference of references) {
     if (stored.has(reference.file_id)) continue;
-    const file = plan.refresh_of ? await actor(context, plan.refresh_of).getReference(reference.file_id)
+    const file = prepared?.file_id === reference.file_id ? prepared : plan.refresh_of ? await actor(context, plan.refresh_of).getReference(reference.file_id)
       : await prepareReference(reference,providerContext(context));
     if (!file) throw new ToolError('reference_unavailable', 'The previous search’s reference image is unavailable. Attach it again to start a new image search.');
     await run.storeReference(reference.file_id,file.bytes,file.mime_type,file.file_name);
@@ -200,44 +206,64 @@ async function getCandidates(context:ToolContext, runId:string, ids:string[], re
   return {candidates:await run.getCandidates(ids),warnings};
 }
 
-async function present(args:unknown, context:ToolContext):Promise<CallToolResult> {
-  const input=inputSchemas.present_items.parse(args);
-  const run=actor(context,input.run_id);
-  let selectionId:string;
-  let offset=0;
+async function collectionResult(page: StoredCollectionPage, context: ToolContext, forModel: boolean): Promise<CallToolResult> {
+  const run = actor(context, page.run_id);
+  const gallery: GalleryData = { ...buildGallery({ ...page, next_cursor: page.page.next_cursor }), version: 3,
+    collection: page.collection, page: page.page, scope: page.scope, ...(page.request_id ? { request_id: page.request_id } : {}) };
+  const hydration: Record<string, string> = {};
+  if (Date.now() + 500 < context.deadline) {
+    const results = await Promise.allSettled(gallery.cards.slice(0, 2).map(async card => {
+      const cover = card.item.images[0];
+      if (!cover) return;
+      const batch = await loadImages(card.item, cover.index, 1, providerContext(context), { for_model: false, byte_budget: 2 * 1024 * 1024 });
+      const ids = Object.keys(batch.hydration);
+      if (ids.length) await run.markWidgetImagesDelivered(card.item.id, ids);
+      Object.assign(hydration, batch.hydration);
+    }));
+    for (const result of results) if (result.status === 'rejected') gallery.warnings.push('A cover could not be loaded. Stored facts and all collection members remain available.');
+  }
+  if (forModel) await run.markModelItemsDelivered(gallery.cards.map(card => ({ item_id: card.item.id, description: false })));
+  gallery.scope = await run.collectionScope(page.collection.id);
+  return galleryResult(gallery, hydration);
+}
+
+async function present(args: unknown, context: ToolContext): Promise<CallToolResult> {
+  const input = inputSchemas.present_items.parse(args), run = actor(context, input.run_id);
+  if ([Boolean(input.selection), Boolean(input.source), Boolean(input.cursor)].filter(Boolean).length > 1) throw new ToolError('invalid_collection_source', 'Choose one collection source, explicit selection, or continuation cursor.');
+  let page: StoredCollectionPage;
   if (input.cursor) {
-    const cursor=decodeCursor(input.cursor);
-    if (cursor.kind!=='presentation' || cursor.v!==1 || cursor.run_id!==input.run_id || typeof cursor.selection_id!=='string' ||
-      !Number.isSafeInteger(cursor.offset) || Number(cursor.offset)<0) throw new ToolError('invalid_cursor','This is not a presentation cursor for this search.');
-    selectionId=cursor.selection_id;
-    offset=Number(cursor.offset);
-  } else {
-    if (!input.selection) throw new ToolError('selection_required','Provide a ranked selection or its presentation cursor.');
-    selectionId=crypto.randomUUID();
-    await run.storePresentation(selectionId,{title:input.title,selection:input.selection,page_size:input.page_size});
+    const cursor = decodeCursor(input.cursor);
+    if (cursor.run_id !== input.run_id) throw new ToolError('invalid_cursor', 'This cursor belongs to another search.');
+    if (cursor.v === 2 && cursor.kind === 'collection' && typeof cursor.collection_id === 'string') {
+      page = await run.pageCollection(cursor.collection_id, { cursor: input.cursor, page_size: input.page_size, request_id: input.request_id });
+    } else if (cursor.v === 1 && cursor.kind === 'presentation' && typeof cursor.selection_id === 'string' && Number.isSafeInteger(cursor.offset) && Number(cursor.offset) >= 0) {
+      page = await run.legacyCollection(cursor.selection_id, Number(cursor.offset), input.request_id);
+    } else throw new ToolError('invalid_cursor', 'Use the exact presentation or collection cursor returned by this search.');
+  } else page = await run.openCollection({ source: input.source, selection: input.selection, title: input.title, page_size: input.page_size, request_id: input.request_id });
+  return collectionResult(page, context, input.for_model);
+}
+
+async function browse(args: unknown, context: ToolContext): Promise<CallToolResult> {
+  const input = inputSchemas.browse_collection.parse(args), run = actor(context, input.run_id);
+  if (input.action === 'derive') {
+    if (!input.view || input.cursor || input.item_id) throw new ToolError('invalid_collection_view', 'Choose one view without a page cursor or item.');
+    return collectionResult(await run.deriveCollection(input.collection_id, input.view, input.request_id, input.page_size), context, false);
   }
-  const saved=await run.getPresentation(selectionId);
-  if (!saved) throw new ToolError('selection_not_found','This saved selection is not available in this search.');
-  const selection=saved.selection.slice(offset,offset+saved.page_size);
-  const {candidates,warnings}=await getCandidates(context,input.run_id,selection.map(entry=>entry.item_id),true);
-  const {plan}=await run.status();
-  const nextOffset=offset+selection.length;
-  const next=nextOffset<saved.selection.length ? encodeCursor({v:1,kind:'presentation',run_id:input.run_id,selection_id:selectionId,offset:nextOffset}) : null;
-  warnings.push(...selection.filter(entry=>!candidates.some(candidate=>candidate.item.id===entry.item_id)).map(entry=>`Item ${entry.item_id} could not be refreshed or found.`));
-  const feedback = await run.getFeedback(selection.map(entry => entry.item_id));
-  const gallery=buildGallery({run_id:input.run_id,language:plan.language,title:saved.title,candidates,selection,next_cursor:next,warnings,feedback});
-  const hydration:Record<string,string>={};
-  let byteBudget=6*1024*1024;
-  for (const card of gallery.cards) {
-    if (Date.now()+500>=context.deadline || byteBudget<200000) break;
-    const cover=card.item.images[0];
-    if (!cover) continue;
-    const images=await loadImages(card.item,cover.index,1,providerContext(context),{for_model:false,byte_budget:byteBudget});
-    Object.assign(hydration,images.hydration);
-    byteBudget-=Object.values(images.hydration).reduce((sum,data)=>sum+data.length,0);
-    for (const failure of images.images.filter(image=>image.status==='failed')) gallery.warnings.push(`Image ${failure.id}: ${failure.error?.message ?? 'unavailable'}`);
+  if (input.action === 'details') {
+    if (!input.item_id) throw new ToolError('item_required', 'Choose an item in this collection.');
+    const detail = await run.collectionDetail(input.collection_id, input.item_id);
+    const gallery = buildGallery({ run_id: input.run_id, language: detail.candidate.item.language, title: '', candidates: [detail.candidate], selection: [detail.selection],
+      feedback: detail.feedback ? { [input.item_id]: detail.feedback } : {} });
+    const value = { run_id: input.run_id, collection_id: input.collection_id, ...(input.request_id ? { request_id: input.request_id } : {}), card: gallery.cards[0] };
+    return { ...payload({ run_id: input.run_id, collection_id: input.collection_id, item_id: input.item_id, observed_at: detail.candidate.item.observed_at }, 'Stored item details; no source refresh or visual inspection is implied.'), _meta: { collection_detail: value } };
   }
-  return galleryResult(gallery,hydration);
+  if (input.action === 'coverage') {
+    const scope = await run.collectionScope(input.collection_id);
+    return { ...payload({ run_id: input.run_id, collection_id: input.collection_id, scope }, 'Observed research scope. Deliveries are not reading or inspection.'),
+      _meta: { collection_scope: { run_id: input.run_id, collection_id: input.collection_id, ...(input.request_id ? { request_id: input.request_id } : {}), scope } } };
+  }
+  if (input.view || input.item_id) throw new ToolError('invalid_collection_page', 'Use derive or details for a view or item request.');
+  return collectionResult(await run.pageCollection(input.collection_id, { cursor: input.cursor, page_size: input.page_size, request_id: input.request_id }), context, false);
 }
 
 export async function invokeTool(name:ToolName,args:unknown,context:ToolContext):Promise<CallToolResult> {
@@ -258,12 +284,34 @@ export async function invokeTool(name:ToolName,args:unknown,context:ToolContext)
         return payload(await sharedSellpyProvider.facets(input.query,input.filters??{},input.market,input.language,providerContext(context)),
           'Use these exact current facet names and values. Price bounds use major units of the selected market currency.');
       }
+      case 'search_url': {
+        const input = inputSchemas.search_url.parse(args);
+        const parsed = parseSearchUrl(input.url, { market: input.market, language: input.language });
+        const result = await start(catalogPlan({ ...parsed, page_size: input.page_size }), context);
+        if (result.structuredContent) { const data = result.structuredContent as Record<string, unknown>; data.imported_search = parsed; const warnings = data.warnings as string[] | undefined; data.warnings = [...(warnings ?? []), ...parsed.warnings]; }
+        return result;
+      }
+      case 'search_similar_brands': {
+        const input = inputSchemas.search_similar_brands.parse(args);
+        return payload(await sharedSellpyProvider.similarBrands(input, providerContext(context)), 'Native brand discovery only. Brand object IDs are not item IDs; inventory has not been checked.');
+      }
       case 'search_items':return await start(catalogPlan(inputSchemas.search_items.parse(args)),context);
       case 'search_style':return await start(stylePlan(inputSchemas.search_style.parse(args)),context);
       case 'find_similar':return await start(similarPlan(inputSchemas.find_similar.parse(args)),context);
       case 'search_by_image': {
         const input=inputSchemas.search_by_image.parse(args);
-        if (Boolean(input.reference)===Boolean(input.image_url)) throw new ToolError('image_input_required','Provide exactly one reference file or Sellpy image URL.');
+        if ([input.reference, input.image_url, input.public_image_url, input.item_image].filter(Boolean).length !== 1) throw new ToolError('image_input_required', 'Provide exactly one reference file, Sellpy image URL, public image URL, or stored item image.');
+        if (input.public_image_url) {
+          const prepared = await preparePublicReference(input.public_image_url, { fetch: createPublicReferenceFetch(globalThis.fetch.bind(globalThis)), deadline: context.deadline, signal: context.signal });
+          const file_id = `public-${crypto.randomUUID()}`;
+          return await start(imagePlan({ ...input, reference: { file_id, download_url: prepared.source_url, mime_type: prepared.mime_type, file_name: prepared.file_name } }), context, { ...prepared, file_id });
+        }
+        if (input.item_image) {
+          const candidates = await actor(context, input.item_image.run_id).getCandidates([input.item_image.item_id]);
+          const image = candidates[0]?.item.images.find(value => value.index === input.item_image!.image_index);
+          if (!image) throw new ToolError('image_not_found', 'This stored item image is unavailable. Load canonical item details or choose an available image index.');
+          return await start(imagePlan({ ...input, image_url: image.url }), context);
+        }
         return await start(imagePlan(input),context);
       }
       case 'find_outfit':return await start(outfitPlan(inputSchemas.find_outfit.parse(args)),context);
@@ -282,6 +330,7 @@ export async function invokeTool(name:ToolName,args:unknown,context:ToolContext)
       case 'list_search_items': {
         const input=inputSchemas.list_search_items.parse(args);
         const page=await actor(context,input.run_id).listCandidates(input.offset,input.page_size);
+        await actor(context,input.run_id).markModelItemsDelivered(page.items.map(candidate => ({ item_id: candidate.item.id, description: false })));
         return payload({run_id:input.run_id,...page,items:page.items.map(compactCandidate)},'Previously discovered candidates, without a new provider search.');
       }
       case 'get_items': {
@@ -292,8 +341,9 @@ export async function invokeTool(name:ToolName,args:unknown,context:ToolContext)
         const {plan}=await run.status();
         const ids=[...new Set(input.ids)];
         const page=ids.slice(input.start_index,input.start_index+input.batch_size);
-        const result=await sharedSellpyProvider.details(page,plan.market,plan.language,providerContext(context));
+        const result=await sharedSellpyProvider.details(page,plan.market,plan.language,withoutObservationCache(providerContext(context)));
         const observed_changes = await run.updateItems(result.items);
+        if (input.for_model) await run.markModelItemsDelivered(result.items.map(item => ({ item_id: item.id, description: Boolean(item.description) })));
         const processed=page.length-result.remaining_ids.length;
         const next=input.start_index+processed;
         return payload({run_id:runId,...result,observed_changes,next_index:next<ids.length?next:null,
@@ -302,11 +352,14 @@ export async function invokeTool(name:ToolName,args:unknown,context:ToolContext)
       }
       case 'get_item_images': {
         const input=inputSchemas.get_item_images.parse(args);
-        const {candidates,warnings}=await getCandidates(context,input.run_id,[input.item_id],true);
+        const {candidates,warnings}=input.for_model || input.refresh_details
+          ? await getCandidates(context,input.run_id,[input.item_id],true)
+          : { candidates: await actor(context,input.run_id).getCandidates([input.item_id]), warnings: [] as string[] };
         const item=candidates[0]?.item;
         if (!item) throw new ToolError('item_not_found','This item could not be loaded.');
         const batch=await loadImages(item,input.start_index,input.batch_size,providerContext(context),{for_model:input.for_model});
         const {contents,hydration,delivered_ids,...result}=batch;
+        if (!input.for_model && Object.keys(hydration).length) await actor(context,input.run_id).markWidgetImagesDelivered(item.id,Object.keys(hydration));
         let assessment_context: AssessmentContext | undefined;
         if (input.for_model) {
           const run=actor(context,input.run_id);
@@ -332,6 +385,7 @@ export async function invokeTool(name:ToolName,args:unknown,context:ToolContext)
         return payload({run_id,item_id:assessment.item_id,recorded:true},'Visual evidence recorded separately from original shop metadata.');
       }
       case 'present_items':return await present(args,context);
+      case 'browse_collection':return await browse(args,context);
       case 'save_search': {
         const input=inputSchemas.save_search.parse(args);
         await actor(context,input.run_id).status();
@@ -362,13 +416,16 @@ export async function invokeTool(name:ToolName,args:unknown,context:ToolContext)
         const result = await run.listFeedback(input.decision, input.after, input.page_size);
         const items = await run.getCandidates(result.items.map(item => item.item_id));
         const byId = new Map(items.map(item => [item.item.id, item]));
+        await run.markModelItemsDelivered(items.map(candidate => ({ item_id: candidate.item.id, description: false })));
         return payload({ run_id: input.run_id, ...result, items: result.items.map(item => ({ ...item,
           candidate: byId.has(item.item_id) ? compactCandidate(byId.get(item.item_id)!) : null })) }, 'Saved user decisions and stored facts. Use get_items for fresh prices and present_items for an illustrated shortlist.');
       }
       case 'refine_search': return await refine(args, context);
       case 'get_item_history': {
         const input = inputSchemas.get_item_history.parse(args);
-        return payload({ run_id: input.run_id, item_id: input.item_id, ...await actor(context, input.run_id).itemHistory(input.item_id, input.after, input.page_size),
+        const run = actor(context, input.run_id), history = await run.itemHistory(input.item_id, input.after, input.page_size);
+        if (input.for_model && history.observations.length) await run.markModelItemsDelivered([{ item_id: input.item_id, description: false }]);
+        return payload({ run_id: input.run_id, item_id: input.item_id, ...history,
           scope: 'Snapshots actually observed within this run. Unchanged repeat observations may be coalesced. No source price history or future prices are inferred.' }, 'Observed price, availability and attribute changes. Follow next_after for all recorded snapshots.');
       }
       case 'refresh_search': {

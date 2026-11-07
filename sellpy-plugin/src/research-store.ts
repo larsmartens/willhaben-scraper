@@ -5,6 +5,7 @@ import type { Atomic, SearchStore, SqlPort } from './search-store.js';
 type SqlValue = string | number | ArrayBuffer | null;
 type JobRow = { id: string; run_id: string; preferences_json: string; max_sequence: number; cohort_total: number;
   scanned_to: number; next_step: number; page_size: number; ready: number; created_at: string };
+type CanonicalRow = { refinement_id: string; next_step: number; imported_step: number; position: number; evaluated: number; eligible: number; excluded: number; unknown: number; observations_from: string | null; observations_to: string | null; completed_at: string | null };
 type StoredEvaluation = { candidate: Candidate; evaluation: CandidateEvaluation; feedback?: ItemFeedback };
 export interface PreferenceProfile { name: string; preferences: RankingPreferences; updated_at: string }
 export interface RefinementPage {
@@ -22,7 +23,7 @@ export interface RefinementPage {
   observed_at: string;
 }
 
-const TABLES = ['research_feedback', 'preference_profiles', 'refinement_jobs', 'refinement_items', 'refinement_feedback', 'refinement_receipts', 'search_response_notes'];
+const TABLES = ['research_feedback', 'preference_profiles', 'refinement_jobs', 'refinement_items', 'refinement_feedback', 'refinement_receipts', 'search_response_notes', 'feedback_versions', 'feedback_clock', 'refinement_canonical', 'refinement_prepared', 'refinement_positions'];
 const SCAN_WORK = 256;
 const WINDOW_BYTES = 2_000_000;
 const RESPONSE_BYTES = 1_250_000;
@@ -56,8 +57,19 @@ export class ResearchStore {
       'CREATE TABLE IF NOT EXISTS refinement_feedback (refinement_id TEXT NOT NULL, item_id TEXT NOT NULL, value_json TEXT NOT NULL, PRIMARY KEY(refinement_id,item_id))',
       'CREATE TABLE IF NOT EXISTS refinement_receipts (refinement_id TEXT NOT NULL, step INTEGER NOT NULL, response_json TEXT NOT NULL, PRIMARY KEY(refinement_id,step))',
       'CREATE TABLE IF NOT EXISTS search_response_notes (step INTEGER PRIMARY KEY, value_json TEXT NOT NULL)',
+      'CREATE TABLE IF NOT EXISTS feedback_clock (id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL DEFAULT 0)',
+      'INSERT OR IGNORE INTO feedback_clock(id,revision) VALUES(1,0)',
+      'CREATE TABLE IF NOT EXISTS feedback_versions (item_id TEXT NOT NULL,revision INTEGER NOT NULL,value_json TEXT,PRIMARY KEY(item_id,revision))',
+      'CREATE TABLE IF NOT EXISTS refinement_canonical (refinement_id TEXT PRIMARY KEY,next_step INTEGER NOT NULL DEFAULT 0,imported_step INTEGER NOT NULL DEFAULT -1,position INTEGER NOT NULL DEFAULT 0,evaluated INTEGER NOT NULL DEFAULT 0,eligible INTEGER NOT NULL DEFAULT 0,excluded INTEGER NOT NULL DEFAULT 0,unknown INTEGER NOT NULL DEFAULT 0,observations_from TEXT,observations_to TEXT,completed_at TEXT)',
+      'CREATE TABLE IF NOT EXISTS refinement_prepared (refinement_id TEXT NOT NULL,step INTEGER NOT NULL,response_json TEXT NOT NULL,PRIMARY KEY(refinement_id,step))',
+      'CREATE TABLE IF NOT EXISTS refinement_positions (refinement_id TEXT NOT NULL,position INTEGER NOT NULL,item_id TEXT NOT NULL,PRIMARY KEY(refinement_id,position),UNIQUE(refinement_id,item_id))',
+
     ];
     for (const statement of statements) this.sql.exec(statement);
+    const columns = this.rows<{ name: string }>('PRAGMA table_info(refinement_items)');
+    if (!columns.some(column => column.name === 'ordering_step')) this.sql.exec('ALTER TABLE refinement_items ADD COLUMN ordering_step INTEGER');
+    this.sql.exec('CREATE INDEX IF NOT EXISTS refinement_unordered ON refinement_items(refinement_id,included,ordering_step,sort_primary DESC,sort_secondary DESC,item_id)');
+
   }
 
   private rows<T extends Record<string, SqlValue>>(query: string, ...bindings: unknown[]): T[] {
@@ -87,8 +99,23 @@ export class ResearchStore {
     const previous = this.getFeedback([itemId])[itemId];
     if (previous?.decision === decision && (previous.reason ?? '') === (reason ?? '')) return previous;
     const value: ItemFeedback = { item_id: itemId, decision, ...(reason ? { reason } : {}), updated_at: this.time() };
-    this.sql.exec('INSERT INTO research_feedback(item_id,decision,value_json) VALUES(?,?,?) ON CONFLICT(item_id) DO UPDATE SET decision=excluded.decision,value_json=excluded.value_json', itemId, decision, JSON.stringify(value));
+    this.atomic(() => { this.writeFeedbackVersion(value, previous ?? null);
+      this.sql.exec('INSERT INTO research_feedback(item_id,decision,value_json) VALUES(?,?,?) ON CONFLICT(item_id) DO UPDATE SET decision=excluded.decision,value_json=excluded.value_json', itemId, decision, JSON.stringify(value)); });
     return value;
+  }
+
+  private writeFeedbackVersion(value: ItemFeedback, previous: ItemFeedback | null): void {
+    // Revision zero preserves the pre-upgrade value, including an explicit absent baseline.
+    this.sql.exec('INSERT OR IGNORE INTO feedback_versions(item_id,revision,value_json) VALUES(?,0,?)', value.item_id, previous ? JSON.stringify(previous) : null);
+    this.sql.exec('UPDATE feedback_clock SET revision=revision+1 WHERE id=1');
+    this.sql.exec('INSERT INTO feedback_versions(item_id,revision,value_json) SELECT ?,revision,? FROM feedback_clock WHERE id=1', value.item_id, JSON.stringify(value));
+  }
+
+  feedbackRevision(): number { return this.rows<{ revision: number }>('SELECT revision FROM feedback_clock WHERE id=1')[0]!.revision; }
+
+  feedbackAt(itemId: string, revision: number): ItemFeedback | null {
+    const row = this.rows<{ value_json: string | null }>('SELECT value_json FROM feedback_versions WHERE item_id=? AND revision<=? ORDER BY revision DESC LIMIT 1', itemId, revision)[0];
+    return row ? row.value_json ? JSON.parse(row.value_json) as ItemFeedback : null : this.getFeedback([itemId])[itemId] ?? null;
   }
 
   getFeedback(ids: string[]): Record<string, ItemFeedback> {
@@ -103,7 +130,8 @@ export class ResearchStore {
   inheritFeedback(values: ItemFeedback[]): void {
     this.atomic(() => {
       for (const value of values) {
-        if (this.candidates.getCandidates([value.item_id]).length) {
+        if (this.candidates.getCandidates([value.item_id]).length && !this.getFeedback([value.item_id])[value.item_id]) {
+          this.writeFeedbackVersion(value, null);
           this.sql.exec('INSERT OR IGNORE INTO research_feedback(item_id,decision,value_json) VALUES(?,?,?)', value.item_id, value.decision, JSON.stringify(value));
         }
       }
@@ -137,18 +165,86 @@ export class ResearchStore {
       this.sql.exec('INSERT INTO refinement_jobs(id,run_id,preferences_json,max_sequence,cohort_total,page_size,created_at) VALUES(?,?,?,?,?,?,?)',
         id, runId, JSON.stringify(preferences), cohort.max_sequence, cohort.total, pageSize, this.time());
       this.sql.exec('INSERT INTO refinement_feedback(refinement_id,item_id,value_json) SELECT ?,item_id,value_json FROM research_feedback', id);
+      this.sql.exec('INSERT INTO refinement_canonical(refinement_id) VALUES(?)', id);
     });
     return id;
   }
 
+  private refinementJob(id: string): JobRow {
+    const job = this.rows<JobRow>('SELECT * FROM refinement_jobs WHERE id=?', id)[0];
+    if (!job) throw new ToolError('refinement_not_found', 'This refinement does not belong to the search.');
+    return job;
+  }
+
+  /** Import at most one historical receipt per request. Published bytes stay unchanged. */
+  private ensureCanonical(id: string): boolean {
+    const job = this.refinementJob(id);
+    return this.atomic(() => {
+      let state = this.rows<CanonicalRow>('SELECT * FROM refinement_canonical WHERE refinement_id=?', id)[0];
+      if (!state) {
+        this.sql.exec(`INSERT INTO refinement_canonical(refinement_id,evaluated,eligible,excluded,unknown)
+          SELECT ?,COUNT(*),COALESCE(SUM(included),0),COALESCE(SUM(included=0),0),COALESCE(SUM(unknown),0)
+          FROM refinement_items WHERE refinement_id=?`, id, id);
+        state = this.rows<CanonicalRow>('SELECT * FROM refinement_canonical WHERE refinement_id=?', id)[0]!;
+      }
+      const step = state.imported_step + 1;
+      if (step >= job.next_step || state.next_step >= job.next_step) return true;
+      const receipt = this.rows<{ response_json: string }>('SELECT response_json FROM refinement_receipts WHERE refinement_id=? AND step=?', id, step)[0];
+      if (!receipt) throw new ToolError('refinement_receipt_missing', 'An existing refinement receipt could not be recovered.');
+      const page = JSON.parse(receipt.response_json) as RefinementPage;
+      const ids = [...page.items.map(value => value.candidate.item.id), ...page.detail_only_items.map(value => value.item_id)];
+      for (const itemId of ids) {
+        this.sql.exec('INSERT OR IGNORE INTO refinement_positions(refinement_id,position,item_id) VALUES(?,?,?)', id, ++state.position, itemId);
+        this.sql.exec('UPDATE refinement_items SET ordering_step=? WHERE refinement_id=? AND item_id=?', step, id, itemId);
+      }
+      this.sql.exec('INSERT OR IGNORE INTO refinement_prepared(refinement_id,step,response_json) VALUES(?,?,?)', id, step, receipt.response_json);
+      this.sql.exec('UPDATE refinement_canonical SET imported_step=?,next_step=?,position=?,completed_at=? WHERE refinement_id=?', step, step + 1, state.position, page.status === 'ended' ? page.observed_at : null, id);
+      return step + 1 >= job.next_step;
+    });
+  }
+
   advanceRefinement(id: string, step: number): RefinementPage {
     if (!Number.isSafeInteger(step) || step < 0) throw new ToolError('invalid_cursor', 'The refinement step is invalid.');
+    const receipt = this.rows<{ response_json: string }>('SELECT response_json FROM refinement_receipts WHERE refinement_id=? AND step=?', id, step)[0];
+    if (receipt) return JSON.parse(receipt.response_json) as RefinementPage;
+    const job = this.refinementJob(id);
+    if (job.next_step !== step) throw new ToolError('invalid_cursor', 'Use the exact next_cursor returned by this refinement.');
+    if (!this.ensureCanonical(id)) throw new ToolError('refinement_preparing', 'The saved refinement order is being indexed. Retry the same cursor.', { retryable: true });
+    const prepared = this.rows<{ response_json: string }>('SELECT response_json FROM refinement_prepared WHERE refinement_id=? AND step=?', id, step)[0];
+    const page = prepared ? JSON.parse(prepared.response_json) as RefinementPage : this.prepareStep(id, step);
+    this.atomic(() => {
+      const json = prepared?.response_json ?? JSON.stringify(page);
+      this.sql.exec('INSERT INTO refinement_receipts(refinement_id,step,response_json) VALUES(?,?,?)', id, step, json);
+      for (const itemId of [...page.items.map(value => value.candidate.item.id), ...page.detail_only_items.map(value => value.item_id)]) {
+        this.sql.exec('UPDATE refinement_items SET returned_step=? WHERE refinement_id=? AND item_id=?', step, id, itemId);
+      }
+      this.sql.exec('UPDATE refinement_jobs SET next_step=? WHERE id=?', step + 1, id);
+    });
+    return page;
+  }
+
+  prepareCollectionRefinement(id: string) {
+    const imported = this.ensureCanonical(id);
+    let state = this.rows<CanonicalRow>('SELECT * FROM refinement_canonical WHERE refinement_id=?', id)[0]!;
+    if (imported && !state.completed_at) {
+      this.prepareStep(id, state.next_step);
+      state = this.rows<CanonicalRow>('SELECT * FROM refinement_canonical WHERE refinement_id=?', id)[0]!;
+    }
+    const job = this.refinementJob(id);
+    return { ready: imported && Boolean(state.completed_at), total: job.ready ? state.eligible : null,
+      scanned: state.evaluated, cohort: job.cohort_total, created_at: job.created_at,
+      evaluation: { started_at: job.created_at, completed_at: state.completed_at, observations_from: state.observations_from, observations_to: state.observations_to } };
+  }
+
+  private prepareStep(id: string, step: number): RefinementPage {
+    if (!Number.isSafeInteger(step) || step < 0) throw new ToolError('invalid_cursor', 'The refinement step is invalid.');
     return this.atomic(() => {
-      const receipt = this.rows<{ response_json: string }>('SELECT response_json FROM refinement_receipts WHERE refinement_id=? AND step=?', id, step)[0];
+      const receipt = this.rows<{ response_json: string }>('SELECT response_json FROM refinement_prepared WHERE refinement_id=? AND step=?', id, step)[0];
       if (receipt) return JSON.parse(receipt.response_json) as RefinementPage;
       const job = this.rows<JobRow>('SELECT * FROM refinement_jobs WHERE id=?', id)[0];
       if (!job) throw new ToolError('refinement_not_found', 'Start refinement for this search before continuing it.');
-      if (job.next_step !== step) throw new ToolError('invalid_cursor', 'Use the exact next_cursor returned by this refinement.');
+      const canonical = this.rows<CanonicalRow>('SELECT * FROM refinement_canonical WHERE refinement_id=?', id)[0]!;
+      if (canonical.next_step !== step) throw new ToolError('invalid_cursor', 'Use the exact next_cursor returned by this refinement.');
       const preferences = JSON.parse(job.preferences_json) as RankingPreferences;
       let scanned = job.scanned_to;
       let ready = Boolean(job.ready);
@@ -166,6 +262,12 @@ export class ResearchStore {
           this.sql.exec('INSERT INTO refinement_items(refinement_id,item_id,included,unknown,sort_primary,sort_secondary,byte_size,entry_json) VALUES(?,?,?,?,?,?,?,?)',
             id, candidate.item.id, Number(evaluation.included), Number(evaluation.eligibility === 'unknown'),
             priceMode ? evaluation.base_score : tier, priceMode ? tier : evaluation.base_score, encoder.encode(json).byteLength, json);
+          canonical.evaluated++;
+          if (evaluation.included) canonical.eligible++; else canonical.excluded++;
+          if (evaluation.eligibility === 'unknown') canonical.unknown++;
+          const observed = candidate.item.observed_at;
+          if (!canonical.observations_from || observed < canonical.observations_from) canonical.observations_from = observed;
+          if (!canonical.observations_to || observed > canonical.observations_to) canonical.observations_to = observed;
           scanned = row.sequence;
         }
         ready = rows.length < 16 || scanned >= job.max_sequence;
@@ -175,6 +277,7 @@ export class ResearchStore {
       const items: RankedCandidate[] = [];
       const detailOnly: RefinementPage['detail_only_items'] = [];
       const omissions: RefinementPage['response_omissions'] = [];
+      const emitted: string[] = [];
       // Evidence can be individually large while still fitting the accepted input
       // envelope. Omit duplicate response text explicitly, never ranking work or
       // canonical source data, and reserve room for the whole response metadata.
@@ -189,7 +292,7 @@ export class ResearchStore {
         });
       const itemBudget = RESPONSE_BYTES - encoder.encode(JSON.stringify({ preferences: echoedPreferences, excluded_examples: excluded })).byteLength - 40_000;
       if (ready) {
-        const indexes = this.rows<{ item_id: string; byte_size: number }>('SELECT item_id,byte_size FROM refinement_items WHERE refinement_id=? AND included=1 AND returned_step IS NULL ORDER BY sort_primary DESC,sort_secondary DESC,item_id LIMIT ?', id, Math.max(200, job.page_size * 4));
+        const indexes = this.rows<{ item_id: string; byte_size: number }>('SELECT item_id,byte_size FROM refinement_items WHERE refinement_id=? AND included=1 AND ordering_step IS NULL ORDER BY sort_primary DESC,sort_secondary DESC,item_id LIMIT ?', id, Math.max(200, job.page_size * 4));
         const pool: StoredEvaluation[] = [];
         let bytes = 0;
         for (const index of indexes) {
@@ -198,7 +301,7 @@ export class ResearchStore {
           pool.push(JSON.parse(row.entry_json) as StoredEvaluation);
           bytes += index.byte_size;
         }
-        const prior = this.rows<{ entry_json: string }>('SELECT entry_json FROM refinement_items WHERE refinement_id=? AND returned_step=? ORDER BY sort_primary DESC,sort_secondary DESC,item_id LIMIT 12', id, step - 1)
+        const prior = this.rows<{ entry_json: string }>('SELECT entry_json FROM refinement_items WHERE refinement_id=? AND ordering_step=? ORDER BY sort_primary DESC,sort_secondary DESC,item_id LIMIT 12', id, step - 1)
           .map(row => (JSON.parse(row.entry_json) as StoredEvaluation).candidate);
         const ranked = rankCandidates(pool.map(value => value.candidate), preferences,
           new Map(pool.flatMap(value => value.feedback ? [[value.feedback.item_id, value.feedback] as const] : [])),
@@ -219,7 +322,8 @@ export class ResearchStore {
             detailOnly.push({ item_id: entry.candidate.item.id, eligibility: entry.evaluation.eligibility, score: entry.score,
               reason: 'This item needs a separate detail response because its evidence exceeds the page byte budget. It was fully evaluated; no source evidence was discarded.',
               details_tool: 'list_search_items returns the original candidate assessment; get_item_images returns all original photos with pagination.' });
-            this.sql.exec('UPDATE refinement_items SET returned_step=? WHERE refinement_id=? AND item_id=?', step, id, entry.candidate.item.id);
+            this.sql.exec('UPDATE refinement_items SET ordering_step=? WHERE refinement_id=? AND item_id=?', step, id, entry.candidate.item.id);
+            emitted.push(entry.candidate.item.id);
             warnings.push('Some fully evaluated IDs appear in detail_only_items. Inspect their retained evidence separately; continuation still reaches every eligible ID.');
             continue;
           }
@@ -228,11 +332,11 @@ export class ResearchStore {
             break;
           }
           items.push(entry); bytes += size;
-          this.sql.exec('UPDATE refinement_items SET returned_step=? WHERE refinement_id=? AND item_id=?', step, id, entry.candidate.item.id);
+          this.sql.exec('UPDATE refinement_items SET ordering_step=? WHERE refinement_id=? AND item_id=?', step, id, entry.candidate.item.id);
+            emitted.push(entry.candidate.item.id);
         }
       }
-      const counts = this.rows<{ evaluated: number; eligible: number; excluded: number; unknown: number; returned: number }>(
-        'SELECT COUNT(*) AS evaluated,COALESCE(SUM(included),0) AS eligible,COALESCE(SUM(included=0),0) AS excluded,COALESCE(SUM(unknown),0) AS unknown,COALESCE(SUM(returned_step IS NOT NULL),0) AS returned FROM refinement_items WHERE refinement_id=?', id)[0]!;
+      const counts = { evaluated: canonical.evaluated, eligible: canonical.eligible, excluded: canonical.excluded, unknown: canonical.unknown, returned: canonical.position + emitted.length };
       const ended = ready && counts.returned === counts.eligible;
       warnings.push('This is a snapshot of discovered candidates and feedback, not exhaustive catalog coverage. Start a new refinement after changing feedback or visual evidence.');
       if (!ready) warnings.push('Candidate evaluation continues on the next cursor. No discovered candidate is dropped by the per-call work budget.');
@@ -244,8 +348,10 @@ export class ResearchStore {
         next_cursor: ended ? null : cursorFor(job.run_id, id, step + 1), status: ended ? 'ended' : ready ? 'ready' : 'scanning',
         coverage: { ...counts, cohort_total: job.cohort_total, snapshot_max_sequence: job.max_sequence }, excluded_examples: excluded,
         warnings: [...new Set(warnings)], observed_at: this.time() };
-      this.sql.exec('INSERT INTO refinement_receipts(refinement_id,step,response_json) VALUES(?,?,?)', id, step, JSON.stringify(result));
-      this.sql.exec('UPDATE refinement_jobs SET next_step=? WHERE id=?', step + 1, id);
+      for (const [index, itemId] of emitted.entries()) this.sql.exec('INSERT INTO refinement_positions(refinement_id,position,item_id) VALUES(?,?,?)', id, canonical.position + index + 1, itemId);
+      this.sql.exec('INSERT INTO refinement_prepared(refinement_id,step,response_json) VALUES(?,?,?)', id, step, JSON.stringify(result));
+      this.sql.exec('UPDATE refinement_canonical SET next_step=?,position=?,evaluated=?,eligible=?,excluded=?,unknown=?,observations_from=?,observations_to=?,completed_at=? WHERE refinement_id=?',
+        step + 1, counts.returned, counts.evaluated, counts.eligible, counts.excluded, counts.unknown, canonical.observations_from, canonical.observations_to, ended ? this.time() : null, id);
       return result;
     });
   }

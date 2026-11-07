@@ -45,15 +45,15 @@ try {
   assert.equal((await fetch(connection.endpoint, { headers: { origin: 'https://untrusted.example' } })).status, 403);
   note('health_and_access_control', { status: health.status, service: healthData.service, unauthenticated: 401, hostile_origin: 403 });
 
-  modern = new Client({ name: 'sellpy-release-verification', version: '1.1.0' }, { versionNegotiation: { mode: 'auto' } });
+  modern = new Client({ name: 'sellpy-release-verification', version: '1.2.0' }, { versionNegotiation: { mode: 'auto' } });
   await modern.connect(new StreamableHTTPClientTransport(new URL(connection.endpoint)));
   assert.equal(modern.getNegotiatedProtocolVersion(), '2026-07-28');
   assert.equal(modern.getServerVersion()?.name, 'sellpy-studio');
   note('modern_sdk_handshake', { sdk_version: '2.4.0', protocol: modern.getNegotiatedProtocolVersion(), server: modern.getServerVersion() });
   const listed = await modern.listTools();
-  assert.equal(listed.tools.length, 24);
+  assert.equal(listed.tools.length, 27);
   assert.deepEqual(listed.tools.find(tool => tool.name === 'search_by_image')._meta['openai/fileParams'], ['reference']);
-  const resource = await modern.readResource({ uri: 'ui://sellpy/gallery-v2.html' });
+  const resource = await modern.readResource({ uri: 'ui://sellpy/gallery-v3.html' });
   assert.equal(resource.contents[0].mimeType, 'text/html;profile=mcp-app');
   assert(resource.contents[0].text.includes('Sellpy'));
   note('tools_and_gallery_resource', { tools: listed.tools.length, tool_names: listed.tools.map(tool => tool.name), reference_file_parameter: true, gallery_bytes: Buffer.byteLength(resource.contents[0].text) });
@@ -141,11 +141,11 @@ try {
     }
     return response;
   };
-  legacy = new LegacyClient({ name: 'sellpy-legacy-release-verification', version: '1.1.0' });
+  legacy = new LegacyClient({ name: 'sellpy-legacy-release-verification', version: '1.2.0' });
   // Exercise the alternate Bearer path, sharing the same private search owner.
   await legacy.connect(new LegacyTransport(new URL(`${origin}/mcp`), { fetch: tracedFetch, requestInit: { headers: { authorization: `Bearer ${connection.token}` } } }));
   const legacyTools = await legacy.listTools();
-  assert.equal(legacyTools.tools.length, 24);
+  assert.equal(legacyTools.tools.length, 27);
   const legacyStatus = await legacy.callTool({ name: 'get_search_status', arguments: { run_id: page.run_id } });
   assert(!legacyStatus.isError);
   assert.equal(legacyStatus.structuredContent.run_id, page.run_id);

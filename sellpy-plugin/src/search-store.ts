@@ -15,6 +15,7 @@ import {
   type VisualAssessment,
 } from './domain.js';
 import { assessmentStillApplies, preferObservation, reciprocalRankScore } from './ranking.js';
+import type { CollectionScope } from './collection-contract.js';
 import { itemSnapshot, observationChanges, type ItemSnapshot, type ObservedItemChange } from './observations.js';
 
 type SqlValue = string | number | ArrayBuffer | null;
@@ -58,6 +59,27 @@ const schema = [
   'CREATE TABLE IF NOT EXISTS bookmarks (sequence INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL UNIQUE, value_json TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS item_observations (sequence INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL, snapshot_json TEXT NOT NULL)',
   'CREATE INDEX IF NOT EXISTS item_observation_history ON item_observations(item_id,sequence)',
+  'CREATE TABLE IF NOT EXISTS arm_memberships (sequence INTEGER PRIMARY KEY AUTOINCREMENT, arm_id TEXT NOT NULL, item_id TEXT NOT NULL, observed_at TEXT NOT NULL, UNIQUE(arm_id,item_id))',
+  'CREATE INDEX IF NOT EXISTS arm_membership_order ON arm_memberships(arm_id,sequence)',
+  "CREATE TABLE IF NOT EXISTS arm_membership_migrations (arm_id TEXT PRIMARY KEY,source_rank INTEGER NOT NULL DEFAULT 0,item_id TEXT NOT NULL DEFAULT '',done INTEGER NOT NULL DEFAULT 0)",
+  'CREATE TABLE IF NOT EXISTS arm_scope (arm_id TEXT PRIMARY KEY, candidates INTEGER NOT NULL DEFAULT 0, observed_at TEXT)',
+  'CREATE TABLE IF NOT EXISTS widget_image_delivery (item_id TEXT NOT NULL,image_id TEXT NOT NULL,delivered_at TEXT NOT NULL,PRIMARY KEY(item_id,image_id))',
+  'CREATE TABLE IF NOT EXISTS model_item_delivery (item_id TEXT PRIMARY KEY,facts INTEGER NOT NULL DEFAULT 0,description INTEGER NOT NULL DEFAULT 0)',
+  'CREATE TABLE IF NOT EXISTS search_metrics (id INTEGER PRIMARY KEY CHECK(id=1), candidates INTEGER NOT NULL DEFAULT 0,returned INTEGER NOT NULL DEFAULT 0,assessed INTEGER NOT NULL DEFAULT 0,details INTEGER NOT NULL DEFAULT 0,descriptions INTEGER NOT NULL DEFAULT 0,model_photos INTEGER NOT NULL DEFAULT 0,widget_photos INTEGER NOT NULL DEFAULT 0,model_facts INTEGER NOT NULL DEFAULT 0,model_descriptions INTEGER NOT NULL DEFAULT 0,legacy INTEGER NOT NULL DEFAULT 0)',
+  'CREATE TABLE IF NOT EXISTS detail_items (item_id TEXT PRIMARY KEY)',
+  `CREATE TRIGGER IF NOT EXISTS metric_candidate_insert AFTER INSERT ON candidates BEGIN
+    UPDATE search_metrics SET candidates=candidates+1,returned=returned+(NEW.returned_step IS NOT NULL),assessed=assessed+(NEW.assessment_json IS NOT NULL),descriptions=descriptions+(COALESCE(LENGTH(json_extract(NEW.item_json,'$.description')),0)>0) WHERE id=1;
+  END`,
+  `CREATE TRIGGER IF NOT EXISTS metric_candidate_update AFTER UPDATE ON candidates BEGIN
+    UPDATE search_metrics SET returned=returned+(NEW.returned_step IS NOT NULL)-(OLD.returned_step IS NOT NULL),assessed=assessed+(NEW.assessment_json IS NOT NULL)-(OLD.assessment_json IS NOT NULL),descriptions=descriptions+(COALESCE(LENGTH(json_extract(NEW.item_json,'$.description')),0)>0)-(COALESCE(LENGTH(json_extract(OLD.item_json,'$.description')),0)>0) WHERE id=1;
+  END`,
+  'CREATE TRIGGER IF NOT EXISTS metric_model_image AFTER INSERT ON image_evidence BEGIN UPDATE search_metrics SET model_photos=model_photos+1 WHERE id=1; END',
+  'CREATE TRIGGER IF NOT EXISTS metric_widget_image AFTER INSERT ON widget_image_delivery BEGIN UPDATE search_metrics SET widget_photos=widget_photos+1 WHERE id=1; END',
+  'CREATE TRIGGER IF NOT EXISTS metric_detail_item AFTER INSERT ON detail_items BEGIN UPDATE search_metrics SET details=details+1 WHERE id=1; END',
+  'CREATE TRIGGER IF NOT EXISTS metric_arm_member AFTER INSERT ON arm_memberships BEGIN INSERT INTO arm_scope(arm_id,candidates,observed_at) VALUES(NEW.arm_id,1,NEW.observed_at) ON CONFLICT(arm_id) DO UPDATE SET candidates=candidates+1,observed_at=MAX(observed_at,excluded.observed_at); END',
+  'CREATE TRIGGER IF NOT EXISTS metric_model_item_insert AFTER INSERT ON model_item_delivery BEGIN UPDATE search_metrics SET model_facts=model_facts+NEW.facts,model_descriptions=model_descriptions+NEW.description WHERE id=1; END',
+  'CREATE TRIGGER IF NOT EXISTS metric_model_item_update AFTER UPDATE ON model_item_delivery BEGIN UPDATE search_metrics SET model_facts=model_facts+NEW.facts-OLD.facts,model_descriptions=model_descriptions+NEW.description-OLD.description WHERE id=1; END',
+
 ];
 
 function stable(value: unknown): string {
@@ -101,6 +123,16 @@ function safeCount(value: number, name: string): void {
 export class SearchStore {
   constructor(private readonly sql: SqlPort, private readonly atomic: Atomic, private readonly now: () => number = Date.now) {
     for (const statement of schema) this.sql.exec(statement);
+    // Scalar baseline migration runs once for an existing run; ordinary page reads
+    // use these counters, not table-wide aggregation or JSON materialization.
+    if (!this.sql.exec('SELECT id FROM search_metrics WHERE id=1').toArray().length) {
+      this.atomic(() => {
+        this.sql.exec(`INSERT INTO search_metrics(id,candidates,returned,assessed,descriptions,model_photos,legacy)
+          SELECT 1,COUNT(*),COALESCE(SUM(returned_step IS NOT NULL),0),COALESCE(SUM(assessment_json IS NOT NULL),0),
+            COALESCE(SUM(COALESCE(LENGTH(json_extract(item_json,'$.description')),0)>0),0),
+            (SELECT COUNT(*) FROM image_evidence),CASE WHEN COUNT(*)>0 THEN 1 ELSE 0 END FROM candidates`);
+      });
+    }
   }
 
   private rows<T extends Record<string, SqlValue>>(query: string, ...bindings: unknown[]): T[] {
@@ -158,7 +190,7 @@ export class SearchStore {
   coverage(): SearchPage['coverage'] {
     this.run();
     const counts = this.rows<{ unique_items: number; returned_items: number; visually_assessed_items: number }>(
-      'SELECT COUNT(*) AS unique_items,COALESCE(SUM(returned_step IS NOT NULL),0) AS returned_items,COALESCE(SUM(assessment_json IS NOT NULL),0) AS visually_assessed_items FROM candidates')[0]!;
+      'SELECT candidates AS unique_items,returned AS returned_items,assessed AS visually_assessed_items FROM search_metrics WHERE id=1')[0]!;
     const arms = this.armRows().map(row => this.progress(row));
     return { ...counts, pages_read: arms.reduce((sum, arm) => sum + arm.pages_read, 0), arms };
   }
@@ -167,8 +199,8 @@ export class SearchStore {
     return { plan: JSON.parse(this.run().plan_json) as SearchPlan, coverage: this.coverage() };
   }
 
-  private candidate(row: CandidateRow): Candidate {
-    const paths = this.rows<PathRow>('SELECT arm_id,route,source_rank,source_score,observed_at FROM retrieval_paths WHERE item_id=? ORDER BY arm_id', row.item_id)
+  private candidate(row: CandidateRow, pathLimit?: number): Candidate {
+    const paths = this.rows<PathRow>(`SELECT arm_id,route,source_rank,source_score,observed_at FROM retrieval_paths WHERE item_id=? ORDER BY arm_id${pathLimit ? ' LIMIT ?' : ''}`, row.item_id, ...(pathLimit ? [pathLimit] : []))
       .map(path => ({ arm_id: path.arm_id, route: path.route, rank: path.source_rank,
         ...(path.source_score !== null ? { score: path.source_score } : {}), observed_at: path.observed_at }));
     return { item: JSON.parse(row.item_json) as ItemObservation, paths, fusion_score: row.fusion_score,
@@ -184,6 +216,72 @@ export class SearchStore {
     return result;
   }
 
+  collectionFacts(ids: string[]): { item_id: string; observed_at: string; availability: ItemObservation['availability']; price_minor: number | null; currency: string | null; assessed: number }[] {
+    if (ids.length > 128) throw new ToolError('invalid_batch_size', 'Evaluate at most128 collection members per batch.');
+    return [...new Set(ids)].flatMap(id => this.rows<{ item_id: string; observed_at: string; availability: ItemObservation['availability']; price_minor: number | null; currency: string | null; assessed: number }>(
+      `SELECT item_id,json_extract(item_json,'$.observed_at') AS observed_at,json_extract(item_json,'$.availability') AS availability,
+        json_extract(item_json,'$.price.amount_minor') AS price_minor,json_extract(item_json,'$.price.currency') AS currency,
+        (assessment_json IS NOT NULL) AS assessed FROM candidates WHERE item_id=?`, id));
+  }
+
+  /** Page-only projection. Canonical observations/evidence remain untouched. */
+  getGalleryCandidates(ids: string[]): Candidate[] {
+    if (ids.length > 128) throw new ToolError('invalid_batch_size', 'Read at most128 gallery candidates per batch.');
+    const result: Candidate[] = [];
+    for (const id of new Set(ids)) {
+      const shape = this.rows<{ item_bytes: number; assessment_bytes: number; image_count: number; checked_count: number }>(`SELECT LENGTH(CAST(item_json AS BLOB)) AS item_bytes,
+        COALESCE(LENGTH(CAST(assessment_json AS BLOB)),0) AS assessment_bytes,COALESCE(json_array_length(item_json,'$.images'),0) AS image_count,
+        COALESCE(json_array_length(assessment_json,'$.checked_image_ids'),0) AS checked_count FROM candidates WHERE item_id=?`, id)[0];
+      if (!shape) continue;
+      const omitted: string[] = [];
+      let row: CandidateRow;
+      if (shape.item_bytes <= 16000 && shape.assessment_bytes <= 16000) {
+        row = this.rows<CandidateRow>('SELECT * FROM candidates WHERE item_id=?', id)[0]!;
+      } else {
+        // SQLite projects large rows without moving the complete JSON into the Worker.
+        // Image identity for retained assessments is restored below from the indexed item JSON.
+        row = this.rows<CandidateRow>(`SELECT sequence,item_id,fusion_score,returned_step,
+          json_object('id',item_id,'market',json_extract(item_json,'$.market'),'language',json_extract(item_json,'$.language'),
+            'url',json_extract(item_json,'$.url'),'title',substr(json_extract(item_json,'$.title'),1,500),'brand',substr(json_extract(item_json,'$.brand'),1,300),
+            'price',json_extract(item_json,'$.price'),'original_price',json_extract(item_json,'$.original_price'),
+            'size',substr(json_extract(item_json,'$.size'),1,200),'size_system',substr(json_extract(item_json,'$.size_system'),1,200),
+            'condition',substr(json_extract(item_json,'$.condition'),1,300),'availability',json_extract(item_json,'$.availability'),
+            'observed_at',json_extract(item_json,'$.observed_at'),'source',json_extract(item_json,'$.source'),
+            'categories',json('[]'),'colors',json('[]'),'materials',json('[]'),'measurements',json('{}'),'defects',json('[]'),
+            'description',NULL,'attributes',json('{}'),'images',json('[]')) AS item_json,
+          CASE WHEN LENGTH(CAST(assessment_json AS BLOB))<=16000 THEN assessment_json ELSE NULL END AS assessment_json
+          FROM candidates WHERE item_id=?`, id)[0]!;
+        const imageRows = this.rows<{ value: string }>(`SELECT image.value FROM candidates c,json_each(c.item_json,'$.images') image WHERE c.item_id=? AND
+          (CAST(image.key AS INTEGER)<4 OR json_extract(image.value,'$.id') IN(SELECT value FROM json_each(?,'$.checked_image_ids'))) LIMIT 64`, id, row.assessment_json ?? '{}');
+        const projected = JSON.parse(row.item_json) as ItemObservation;
+        projected.images = imageRows.map(value => JSON.parse(value.value) as ItemObservation['images'][number]);
+        row.item_json = JSON.stringify(projected);
+        omitted.push('item.description', 'item.attributes', 'item.additional_facts');
+        if (projected.images.length < shape.image_count) omitted.push('item.images');
+        if (shape.assessment_bytes > 16000) omitted.push('assessment');
+      }
+      const candidate = this.candidate(row, 32);
+      if (candidate.item.description) { candidate.item = { ...candidate.item, description: null }; if (!omitted.includes('item.description')) omitted.push('item.description'); }
+      if (Object.keys(candidate.item.attributes).length) { candidate.item = { ...candidate.item, attributes: {} }; if (!omitted.includes('item.attributes')) omitted.push('item.attributes'); }
+      if (candidate.paths.length === 32) omitted.push('retrieval_paths');
+      if (candidate.assessment && candidate.assessment.checked_image_ids.some(imageId => !candidate.item.images.some(image => image.id === imageId))) {
+        candidate.assessment = null; if (!omitted.includes('assessment')) omitted.push('assessment');
+      }
+      if (encoder.encode(JSON.stringify(candidate)).byteLength > 40000) {
+        candidate.item = { ...candidate.item, title: candidate.item.title.slice(0, 500), brand: candidate.item.brand?.slice(0, 300) ?? null,
+          size: candidate.item.size?.slice(0, 200) ?? null, size_system: candidate.item.size_system?.slice(0, 200) ?? null,
+          condition: candidate.item.condition?.slice(0, 300) ?? null, description: null, attributes: {}, categories: [], colors: [], materials: [], measurements: {}, defects: [],
+          images: candidate.item.images.filter(image => image.url.length <= 4096 && image.id.length <= 250).slice(0, 1) };
+        candidate.assessment = null; candidate.paths = candidate.paths.slice(0, 4);
+        omitted.push('item.additional_facts', 'item.images', 'assessment');
+      }
+      if (omitted.length) candidate.presentation_summary = { omitted_fields: [...new Set(omitted)], image_count: shape.image_count,
+        assessment_recorded: shape.assessment_bytes > 0, checked_image_count: shape.checked_count };
+      result.push(candidate);
+    }
+    return result;
+  }
+
   listCandidates(offset: number, limit: number): { items: Candidate[]; next_offset: number | null } {
     safeCount(offset, 'offset');
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) throw new ToolError('invalid_batch_size', 'Use 1 to 500 items per call and follow next_offset for further items.');
@@ -193,7 +291,7 @@ export class SearchStore {
 
   snapshotCohort(): { max_sequence: number; total: number } {
     this.run();
-    return this.rows<{ max_sequence: number; total: number }>('SELECT COALESCE(MAX(sequence),0) AS max_sequence,COUNT(*) AS total FROM candidates')[0]!;
+    return this.rows<{ max_sequence: number; total: number }>('SELECT COALESCE((SELECT sequence FROM candidates ORDER BY sequence DESC LIMIT 1),0) AS max_sequence,candidates AS total FROM search_metrics WHERE id=1')[0]!;
   }
 
   scanCandidates(after: number, maximum: number, limit: number): { sequence: number; candidate: Candidate }[] {
@@ -215,12 +313,14 @@ export class SearchStore {
   private putObservation(item: ItemObservation): ObservedItemChange | null {
     const row = this.rows<CandidateRow>('SELECT * FROM candidates WHERE item_id=?', item.id)[0];
     if (!row) {
+      if (item.source === 'detail') this.sql.exec('INSERT OR IGNORE INTO detail_items(item_id) VALUES(?)', item.id);
       this.sql.exec('INSERT INTO candidates(item_id,item_json) VALUES(?,?)', item.id, JSON.stringify(item));
       this.sql.exec('INSERT INTO item_observations(item_id,snapshot_json) VALUES(?,?)', item.id, JSON.stringify(itemSnapshot(item)));
       return null;
     }
     const current = this.candidate(row);
     if (!preferObservation(current.item, item)) return null;
+    if (item.source === 'detail') this.sql.exec('INSERT OR IGNORE INTO detail_items(item_id) VALUES(?)', item.id);
     const changes = observationChanges(itemSnapshot(current.item), itemSnapshot(item));
     this.ensureHistoryBaseline(current.item);
     this.sql.exec('UPDATE candidates SET item_json=?,assessment_json=? WHERE item_id=?', JSON.stringify(item),
@@ -275,6 +375,65 @@ export class SearchStore {
     }
     if (!Number.isFinite(Date.parse(assessment.assessed_at))) throw new ToolError('invalid_assessment_time', 'Use a valid timestamp for the assessment.');
     this.sql.exec('UPDATE candidates SET assessment_json=? WHERE item_id=?', JSON.stringify(assessment), assessment.item_id);
+  }
+
+
+  /** Exact first-observation memberships; migrated legacy paths have an explicit upgrade timestamp. */
+  ensureArmMemberships(armId: string, limit = 128): boolean {
+    const arm = this.rows<ArmRow>('SELECT * FROM arms WHERE id=?', armId)[0];
+    if (!arm) throw new ToolError('arm_not_found', 'This retrieval arm does not belong to the search.');
+    const legacy = this.rows<{ legacy: number }>('SELECT legacy FROM search_metrics WHERE id=1')[0]!.legacy;
+    if (!legacy) return true;
+    const state = this.rows<{ source_rank: number; item_id: string; done: number }>('SELECT source_rank,item_id,done FROM arm_membership_migrations WHERE arm_id=?', armId)[0];
+    if (state?.done) return true;
+    const rows = this.rows<{ item_id: string; observed_at: string; source_rank: number }>(`SELECT item_id,observed_at,source_rank FROM retrieval_paths
+      WHERE arm_id=? AND (source_rank,item_id)>(?,?) ORDER BY source_rank,item_id LIMIT ?`, armId, state?.source_rank ?? 0, state?.item_id ?? '', limit + 1);
+    const batch = rows.slice(0, limit), last = batch.at(-1), done = rows.length <= limit;
+    this.atomic(() => {
+      for (const row of batch) this.sql.exec('INSERT OR IGNORE INTO arm_memberships(arm_id,item_id,observed_at) VALUES(?,?,?)', armId, row.item_id, row.observed_at);
+      this.sql.exec('INSERT INTO arm_membership_migrations(arm_id,source_rank,item_id,done) VALUES(?,?,?,?) ON CONFLICT(arm_id) DO UPDATE SET source_rank=excluded.source_rank,item_id=excluded.item_id,done=excluded.done', armId, last?.source_rank ?? 0, last?.item_id ?? '', Number(done));
+    });
+    return done;
+  }
+
+  markWidgetImagesDelivered(itemId: string, imageIds: string[]): void {
+    const candidate = this.getCandidates([itemId])[0];
+    if (!candidate) throw new ToolError('item_not_found', 'The item is no longer available in this search.');
+    const known = new Set(candidate.item.images.map(image => image.id));
+    if (imageIds.some(id => !known.has(id))) throw new ToolError('image_identity_mismatch', 'Every delivered image must belong to the stored item.');
+    this.atomic(() => { for (const id of new Set(imageIds)) this.sql.exec('INSERT OR IGNORE INTO widget_image_delivery(item_id,image_id,delivered_at) VALUES(?,?,?)', itemId, id, new Date(this.now()).toISOString()); });
+  }
+
+  markModelItemsDelivered(values: { item_id: string; description: boolean }[]): void {
+    this.assertActive();
+    this.atomic(() => {
+      for (const value of values) if (this.rows<{ item_id: string }>('SELECT item_id FROM candidates WHERE item_id=?', value.item_id).length) {
+        this.sql.exec('INSERT INTO model_item_delivery(item_id,facts,description) VALUES(?,1,?) ON CONFLICT(item_id) DO UPDATE SET facts=1,description=MAX(description,excluded.description)', value.item_id, Number(value.description));
+      }
+    });
+  }
+
+  collectionScope(total: number | null): CollectionScope {
+    const { plan, coverage } = this.status();
+    const counts = this.rows<{ candidates: number; details: number; descriptions: number; model_photos: number; widget_photos: number; assessed: number; model_facts: number; model_descriptions: number; legacy: number }>('SELECT * FROM search_metrics WHERE id=1')[0]!;
+    const scopes = new Map(this.rows<{ arm_id: string; candidates: number; observed_at: string | null }>('SELECT * FROM arm_scope').map(row => [row.arm_id, row]));
+    const migratedArms = new Set(this.rows<{ arm_id: string }>('SELECT arm_id FROM arm_membership_migrations WHERE done=1').map(row => row.arm_id));
+    return { observed_at: new Date(this.now()).toISOString(), candidates: counts.candidates, search_pages: coverage.pages_read,
+      detail_observations: counts.legacy ? null : counts.details, stored_descriptions: counts.descriptions,
+      model_delivered_photos: counts.model_photos, widget_delivered_photos: counts.legacy ? null : counts.widget_photos,
+      model_delivered_fact_items: counts.legacy ? null : counts.model_facts,
+      model_delivered_description_items: counts.legacy ? null : counts.model_descriptions,
+      recorded_assessments: counts.assessed, collection_members: total,
+      arms: plan.arms.map(arm => { const progress = coverage.arms.find(value => value.id === arm.id)!; const scope = scopes.get(arm.id);
+        return { arm_id: arm.id, route: arm.route, query: arm.query ?? null, filters: arm.filters ?? {},
+          category_relaxed: arm.category_relaxed ?? false, pages: progress.pages_read, candidates: counts.legacy && !migratedArms.has(arm.id) ? null : scope?.candidates ?? 0,
+          native_total: progress.total, native_window: progress.window, status: progress.status, observed_at: scope?.observed_at ?? null }; }),
+      notes: [
+        'Counts describe this run, not all Sellpy inventory. Native totals can overlap across arms.',
+        'Details count distinct items with a stored detail observation; descriptions count current stored descriptions. Delivery counts distinct item/image identities, not reading or inspection.',
+        'Recorded assessments count current accepted assistant assessments. Widget photos never establish model visual evidence.',
+        ...(counts.legacy ? ['Historical detail, widget-photo and model text deliveries before this upgrade are unknown.'] : []),
+      ] };
   }
 
   async storeReference(fileId: string, bytes: Uint8Array, mimeType: string, fileName: string): Promise<void> {
@@ -340,7 +499,7 @@ export class SearchStore {
   removeBookmark(runId: string): void { this.sql.exec('DELETE FROM bookmarks WHERE run_id=?', runId); }
 
   erase(): void {
-    for (const table of ['run', 'arms', 'candidates', 'retrieval_paths', 'operations', 'warnings', 'image_evidence', 'reference_files', 'reference_chunks', 'presentations', 'bookmarks', 'item_observations']) {
+    for (const table of ['run', 'arms', 'candidates', 'retrieval_paths', 'operations', 'warnings', 'image_evidence', 'reference_files', 'reference_chunks', 'presentations', 'bookmarks', 'item_observations', 'arm_memberships', 'arm_membership_migrations', 'arm_scope', 'widget_image_delivery', 'model_item_delivery', 'detail_items', 'search_metrics']) {
       this.sql.exec(`DELETE FROM ${table}`);
     }
     this.sql.exec('INSERT INTO lifecycle(id,deleted) VALUES(1,1) ON CONFLICT(id) DO UPDATE SET deleted=1');
@@ -401,6 +560,7 @@ export class SearchStore {
       const spec = JSON.parse(arm.spec_json) as SearchArm;
       for (const [index, item] of page.items.entries()) {
         this.putObservation(item);
+        this.sql.exec('INSERT OR IGNORE INTO arm_memberships(arm_id,item_id,observed_at) VALUES(?,?,?)', arm.id, item.id, page.observed_at);
         const suppliedRank = page.ranks?.[item.id];
         const rank = suppliedRank !== undefined && Number.isSafeInteger(suppliedRank) && suppliedRank > 0 ? suppliedRank : arm.offset + index + 1;
         const suppliedScore = page.scores?.[item.id];
@@ -410,6 +570,7 @@ export class SearchStore {
         const candidate = this.getCandidates([item.id])[0]!;
         this.sql.exec('UPDATE candidates SET fusion_score=? WHERE item_id=?', reciprocalRankScore(candidate.paths, plan.arms), item.id);
       }
+      this.sql.exec('INSERT INTO arm_scope(arm_id,candidates,observed_at) VALUES(?,0,?) ON CONFLICT(arm_id) DO UPDATE SET observed_at=excluded.observed_at', arm.id, page.observed_at);
       const status = page.next_offset === null ? page.end_reason === 'upstream_window' ? 'window' : 'exhausted' : 'ready';
       this.sql.exec('UPDATE arms SET offset=?,pages_read=pages_read+1,status=?,total=?,window_size=?,error_json=NULL WHERE id=?', page.next_offset ?? arm.offset, status, page.total, page.window, arm.id);
       for (const warning of page.warnings) this.sql.exec('INSERT OR IGNORE INTO warnings(message) VALUES(?)', warning);

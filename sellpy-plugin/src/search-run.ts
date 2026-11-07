@@ -5,17 +5,21 @@ import { SearchStore, parseSearchCursor, type Bookmark, type PresentationRecord,
 import { createProviderContext } from './traffic.js';
 import { ResearchStore, type PreferenceProfile, type RefinementPage } from './research-store.js';
 import type { RankingPreferences } from './refinement.js';
+import { CollectionStore, type OpenCollectionInput, type PageCollectionInput } from './collection-store.js';
+import type { CollectionView } from './collection-contract.js';
 import type { ObservedItemChange } from './observations.js';
 
 export class SearchRun extends DurableObject<Env> {
   private readonly state: SearchStore;
   private readonly research: ResearchStore;
+  private readonly collections: CollectionStore;
   private readonly provider = createSellpyProvider();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.state = new SearchStore(ctx.storage.sql, operation => ctx.storage.transactionSync(operation));
     this.research = new ResearchStore(ctx.storage.sql, operation => ctx.storage.transactionSync(operation), this.state);
+    this.collections = new CollectionStore(ctx.storage.sql, operation => ctx.storage.transactionSync(operation), this.state, this.research);
   }
 
   private context(deadline?: number) {
@@ -38,6 +42,8 @@ export class SearchRun extends DurableObject<Env> {
   async getCandidates(ids: string[]): Promise<Candidate[]> { return this.state.getCandidates(ids); }
   async updateItems(items: ItemObservation[]): Promise<ObservedItemChange[]> { return this.state.updateItems(items); }
   async recordAssessment(assessment: VisualAssessment): Promise<void> { this.state.recordAssessment(assessment); }
+  async markWidgetImagesDelivered(itemId: string, imageIds: string[]): Promise<void> { this.state.markWidgetImagesDelivered(itemId, imageIds); }
+  async markModelItemsDelivered(values: { item_id: string; description: boolean }[]): Promise<void> { this.state.markModelItemsDelivered(values); }
   async markImagesDelivered(itemId: string, imageIds: string[]): Promise<void> { this.state.markImagesDelivered(itemId, imageIds); }
   async status(): Promise<{ plan: SearchPlan; coverage: SearchPage['coverage'] }> { return this.state.status(); }
   async listCandidates(offset: number, limit: number): Promise<{ items: Candidate[]; next_offset: number | null }> { return this.state.listCandidates(offset, limit); }
@@ -71,9 +77,15 @@ export class SearchRun extends DurableObject<Env> {
   async continueRefinement(id: string, step: number): Promise<RefinementPage> {
     this.state.status(); return this.research.advanceRefinement(id, step);
   }
+  async openCollection(input: OpenCollectionInput) { return this.collections.open(input); }
+  async pageCollection(id: string, input: PageCollectionInput = {}) { return this.collections.page(id, input); }
+  async deriveCollection(id: string, view: CollectionView, requestId?: string, pageSize = 12) { return this.collections.derive(id, view, requestId, pageSize); }
+  async legacyCollection(id: string, offset: number, requestId?: string) { return this.collections.legacy(id, offset, requestId); }
+  async collectionDetail(id: string, itemId: string) { return this.collections.detail(id, itemId); }
+  async collectionScope(id: string) { return this.collections.scope(id); }
   async itemHistory(itemId: string, after: number, limit: number) { return this.state.itemHistory(itemId, after, limit); }
   async forget(): Promise<{ deleted: true }> {
-    this.ctx.storage.transactionSync(() => { this.research.erase(); this.state.erase(); });
+    this.ctx.storage.transactionSync(() => { this.collections.erase(); this.research.erase(); this.state.erase(); });
     return { deleted: true };
   }
 }

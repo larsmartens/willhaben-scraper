@@ -1,5 +1,7 @@
-import type { GalleryCard, GalleryData, ItemFeedback, ItemImage, ItemObservation, Money, RetrievalPath, VisualAssessment } from '../src/domain.js';
+import type { GalleryCard, GalleryData, ItemFeedback, ItemImage, ItemObservation, Money, RetrievalPath, SearchFilters, VisualAssessment } from '../src/domain.js';
+import type { CollectionDescriptor, CollectionDetail, CollectionPageInfo, CollectionScope } from '../src/collection-contract.js';
 import { assessmentStillApplies, preferObservation } from '../src/ranking.js';
+export { formatMoney } from '../src/card-facts.js';
 
 const ITEM_HOST = /^(?:www\.)?sellpy\.(?:com|at|de|se|nl|fi|dk|fr|be|pl|cz|it|es|ee|lt|lu|sk|hr|hu|si|pt|ie|ro|bg|gr)$/;
 const IMAGE_HOSTS = new Set(['prod.images.sellpy.net', 'images.sellpy.net', 'sellpy-parse-prod-files.s3.amazonaws.com', 'sellpy-parse-prod-files.s3.eu-west-1.amazonaws.com']);
@@ -41,13 +43,6 @@ function money(value: unknown): Money | null {
   return data && Number.isSafeInteger(data.amount_minor) && (data.amount_minor as number) >= 0 &&
     typeof data.currency === 'string' && /^[A-Z]{3}$/.test(data.currency)
     ? { amount_minor: data.amount_minor as number, currency: data.currency } : null;
-}
-
-export function formatMoney(value: Money | null, language = 'de'): string {
-  if (!value) return language.startsWith('de') ? 'Preis offen' : 'Price unknown';
-  try {
-    return new Intl.NumberFormat(language, { style: 'currency', currency: value.currency }).format(value.amount_minor / 100);
-  } catch { return `${(value.amount_minor / 100).toFixed(2)} ${value.currency}`; }
 }
 
 export function parseItem(value: unknown): ItemObservation | null {
@@ -127,14 +122,18 @@ export function feedbackFromResult(value: unknown, runId: string, itemId: string
 /** Overlapping pages may have been captured before an acknowledged refresh or feedback write. */
 export function mergeAppendedCard(current: GalleryCard | undefined, incoming: GalleryCard): GalleryCard {
   if (!current || current.item.id !== incoming.item.id) return incoming;
-  const item = preferObservation(current.item, incoming.item) ? incoming.item : current.item;
+  const sameObservation = current.item.observed_at === incoming.item.observed_at && current.item.source === incoming.item.source;
+  const enrichesProjection = sameObservation && Boolean(current.summary?.omitted_fields.length) && !incoming.summary?.omitted_fields.length;
+  const item = preferObservation(current.item, incoming.item) || enrichesProjection ? incoming.item : current.item;
   const previousAssessment = assessmentStillApplies(current, item) ? current.assessment : null;
   const receivedAssessment = assessmentStillApplies(incoming, item) ? incoming.assessment : null;
   const assessment = receivedAssessment && (!previousAssessment
     || Date.parse(receivedAssessment.assessed_at) > Date.parse(previousAssessment.assessed_at)) ? receivedAssessment : previousAssessment;
   const feedback = incoming.feedback && (!current.feedback
     || Date.parse(incoming.feedback.updated_at) > Date.parse(current.feedback.updated_at)) ? incoming.feedback : current.feedback;
-  return { ...incoming, item, assessment, ...(feedback ? { feedback } : {}) };
+  const summary = item === incoming.item ? incoming.summary : current.summary;
+  const { summary: _receivedSummary, ...received } = incoming;
+  return { ...received, item, assessment, ...(summary ? { summary } : {}), ...(feedback ? { feedback } : {}) };
 }
 
 export function parseGallery(value: unknown): GalleryData | null {
@@ -143,15 +142,139 @@ export function parseGallery(value: unknown): GalleryData | null {
   const cards: GalleryCard[] = [];
   const seen = new Set<string>();
   for (const entry of data.cards) {
-    const card = record(entry), item = parseItem(card?.item);
-    if (!card || !item || seen.has(item.id)) continue;
-    seen.add(item.id);
-    const feedback = parseFeedback(card.feedback, item.id);
-    cards.push({ item, reason: string(card.reason) ?? '', cautions: strings(card.cautions),
-      assessment: parseAssessment(card.assessment, item), paths: parsePaths(card.paths), ...(feedback ? { feedback } : {}) });
+    const card = parseCard(entry);
+    if (!card || seen.has(card.item.id)) continue;
+    seen.add(card.item.id);
+    cards.push(card);
   }
+  const collection = parseCollection(data.collection), page = parseCollectionPage(data.page), scope = parseScope(data.scope);
+  if (data.version === 3 && (!collection || !page || cards.length > 24 || cards.length > page.size)) return null;
   return { run_id: data.run_id, cards, language: string(data.language) ?? 'de', title: string(data.title) ?? '',
-    next_cursor: string(data.next_cursor), warnings: strings(data.warnings) };
+    next_cursor: page?.next_cursor ?? string(data.next_cursor), warnings: strings(data.warnings),
+    ...(data.version === 3 ? { version: 3 } : {}), ...(collection ? { collection } : {}), ...(page ? { page } : {}),
+    ...(scope ? { scope } : {}), ...(typeof data.request_id === 'string' ? { request_id: data.request_id } : {}) };
+}
+
+export function parseCard(value: unknown): GalleryCard | null {
+  const card = record(value), item = parseItem(card?.item);
+  if (!card || !item) return null;
+  const feedback = parseFeedback(card.feedback, item.id);
+  const summary = record(card.summary);
+  const validSummary = summary && count(summary.image_count) !== null && count(summary.checked_image_count) !== null
+    && (summary.image_count as number) >= item.images.length && (summary.checked_image_count as number) <= (summary.image_count as number)
+    && typeof summary.assessment_recorded === 'boolean';
+  return { item, reason: string(card.reason) ?? '', cautions: strings(card.cautions),
+    assessment: parseAssessment(card.assessment, item), paths: parsePaths(card.paths), ...(feedback ? { feedback } : {}),
+    ...(validSummary ? { summary: { omitted_fields: strings(summary.omitted_fields), image_count: summary.image_count as number,
+      assessment_recorded: summary.assessment_recorded as boolean, checked_image_count: summary.checked_image_count as number } } : {}) };
+}
+
+function count(value: unknown): number | null {
+  return Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : null;
+}
+function timestamp(value: unknown): string | null {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
+}
+const collectionKinds = ['observed', 'arm', 'selection', 'shortlist', 'refinement', 'derived'];
+const collectionOrders = ['discovery', 'arm_discovery', 'selection', 'shortlist', 'refinement', 'price_asc', 'price_desc'];
+const collectionViews = ['shortlist', 'available', 'assessed', 'unassessed', 'price_asc', 'price_desc', 'source_order'];
+
+export function parseCollection(value: unknown): CollectionDescriptor | null {
+  const data = record(value), source = record(data?.source), progress = record(data?.progress), evaluation = record(data?.evaluation);
+  if (!data || typeof data.id !== 'string' || !data.id || !source || !collectionKinds.includes(String(source.kind))
+    || !collectionOrders.includes(String(data.order)) || !['ready', 'preparing'].includes(String(data.status))
+    || !timestamp(data.created_at) || !timestamp(data.membership_as_of) || (data.total !== null && count(data.total) === null)) return null;
+  return { id: data.id, source: { kind: source.kind as CollectionDescriptor['source']['kind'],
+    ...(typeof source.arm_id === 'string' ? { arm_id: source.arm_id } : {}),
+    ...(typeof source.refinement_id === 'string' ? { refinement_id: source.refinement_id } : {}),
+    ...(typeof source.base_collection_id === 'string' ? { base_collection_id: source.base_collection_id } : {}),
+    ...(collectionViews.includes(String(source.view)) ? { view: source.view as NonNullable<CollectionDescriptor['source']['view']> } : {}) },
+    created_at: data.created_at as string, membership_as_of: data.membership_as_of as string,
+    order: data.order as CollectionDescriptor['order'], total: count(data.total), status: data.status as CollectionDescriptor['status'],
+    ...(progress && count(progress.scanned) !== null && count(progress.cohort) !== null
+      ? { progress: { scanned: progress.scanned as number, cohort: progress.cohort as number } } : {}),
+    ...(evaluation && timestamp(evaluation.started_at) ? { evaluation: { started_at: evaluation.started_at as string,
+      completed_at: timestamp(evaluation.completed_at), observations_from: timestamp(evaluation.observations_from), observations_to: timestamp(evaluation.observations_to) } } : {}) };
+}
+
+export function parseCollectionPage(value: unknown): CollectionPageInfo | null {
+  const data = record(value);
+  if (!data || count(data.size) === null || (data.size as number) < 1 || (data.size as number) > 24
+    || count(data.start) === null || count(data.end) === null || (data.end as number) < (data.start as number)
+    || ['cursor', 'previous_cursor', 'next_cursor'].some(key => data[key] !== null && typeof data[key] !== 'string')) return null;
+  return { size: data.size as number, start: data.start as number, end: data.end as number,
+    cursor: string(data.cursor), previous_cursor: string(data.previous_cursor), next_cursor: string(data.next_cursor) };
+}
+
+function parseFilters(value: unknown): SearchFilters {
+  const data = record(value);
+  if (!data) return {};
+  const facets: Record<string, string[]> = Object.create(null), measurements: NonNullable<SearchFilters['measurements']> = Object.create(null);
+  for (const [key, values] of Object.entries(record(data.facets) ?? {})) facets[key] = strings(values);
+  for (const [key, value] of Object.entries(record(data.measurements) ?? {})) {
+    const range = record(value);
+    if (range) measurements[key] = { ...(typeof range.min === 'number' && Number.isFinite(range.min) ? { min: range.min } : {}),
+      ...(typeof range.max === 'number' && Number.isFinite(range.max) ? { max: range.max } : {}) };
+  }
+  return { ...(Object.keys(facets).length ? { facets } : {}), ...(Object.keys(measurements).length ? { measurements } : {}),
+    ...(typeof data.price_min === 'number' && Number.isFinite(data.price_min) ? { price_min: data.price_min } : {}),
+    ...(typeof data.price_max === 'number' && Number.isFinite(data.price_max) ? { price_max: data.price_max } : {}),
+    ...(typeof data.include_reserved === 'boolean' ? { include_reserved: data.include_reserved } : {}) };
+}
+
+export function parseScope(value: unknown): CollectionScope | null {
+  const data = record(value);
+  if (!data || !timestamp(data.observed_at) || count(data.candidates) === null || count(data.search_pages) === null
+    || count(data.model_delivered_photos) === null || count(data.recorded_assessments) === null) return null;
+  const arms: CollectionScope['arms'] = [];
+  for (const value of Array.isArray(data.arms) ? data.arms : []) {
+    const arm = record(value);
+    if (!arm || typeof arm.arm_id !== 'string' || typeof arm.route !== 'string' || count(arm.pages) === null || typeof arm.status !== 'string') continue;
+    arms.push({ arm_id: arm.arm_id, route: arm.route, query: string(arm.query), filters: parseFilters(arm.filters),
+      category_relaxed: arm.category_relaxed === true, pages: arm.pages as number, candidates: count(arm.candidates),
+      native_total: count(arm.native_total), native_window: count(arm.native_window), status: arm.status, observed_at: timestamp(arm.observed_at) });
+  }
+  return { observed_at: data.observed_at as string, candidates: data.candidates as number, search_pages: data.search_pages as number,
+    detail_observations: count(data.detail_observations), stored_descriptions: count(data.stored_descriptions),
+    model_delivered_photos: data.model_delivered_photos as number, model_delivered_fact_items: count(data.model_delivered_fact_items),
+    model_delivered_description_items: count(data.model_delivered_description_items), widget_delivered_photos: count(data.widget_delivered_photos),
+    recorded_assessments: data.recorded_assessments as number, collection_members: count(data.collection_members), arms, notes: strings(data.notes) };
+}
+
+export function detailFromResult(value: unknown): CollectionDetail | null {
+  const result = record(value), meta = record(result?._meta), detail = record(meta?.collection_detail), card = parseCard(detail?.card);
+  if (result?.isError || !detail || !card || typeof detail.run_id !== 'string' || typeof detail.collection_id !== 'string') return null;
+  return { run_id: detail.run_id, collection_id: detail.collection_id, card,
+    ...(typeof detail.request_id === 'string' ? { request_id: detail.request_id } : {}) };
+}
+
+/** Bounded LRU by both entry count and estimated resident bytes. */
+export class BoundedCache<K, V> {
+  private entries = new Map<K, { value: V; bytes: number }>();
+  private totalBytes = 0;
+  constructor(readonly maxEntries: number, readonly maxBytes: number, private sizeOf: (value: V) => number) {}
+  get size(): number { return this.entries.size; }
+  get bytes(): number { return this.totalBytes; }
+  get(key: K): V | undefined {
+    const entry = this.entries.get(key);
+    if (!entry) return undefined;
+    this.entries.delete(key); this.entries.set(key, entry);
+    return entry.value;
+  }
+  peek(key: K): V | undefined { return this.entries.get(key)?.value; }
+  has(key: K): boolean { return this.entries.has(key); }
+  set(key: K, value: V): boolean {
+    const bytes = Math.max(0, this.sizeOf(value));
+    this.delete(key);
+    if (!Number.isFinite(bytes) || bytes > this.maxBytes || this.maxEntries < 1) return false;
+    this.entries.set(key, { value, bytes }); this.totalBytes += bytes;
+    while (this.entries.size > this.maxEntries || this.totalBytes > this.maxBytes) this.delete(this.entries.keys().next().value!);
+    return true;
+  }
+  delete(key: K): void { const entry = this.entries.get(key); if (entry) { this.totalBytes -= entry.bytes; this.entries.delete(key); } }
+  clear(): void { this.entries.clear(); this.totalBytes = 0; }
+  keys(): IterableIterator<K> { return this.entries.keys(); }
+  *values(): IterableIterator<V> { for (const entry of this.entries.values()) yield entry.value; }
 }
 
 export function galleryFromResult(value: unknown): GalleryData | null {

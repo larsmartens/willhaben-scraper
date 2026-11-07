@@ -1,59 +1,75 @@
 # Sellpy gallery integration
 
-The gallery uses `App` from the official `@modelcontextprotocol/ext-apps` package. It registers result handlers before connecting and runs in a sandboxed MCP Apps iframe. It does not need direct browser fetch access to Sellpy APIs, external JavaScript, fonts or a frontend deployment.
+The gallery uses `App` from the official `@modelcontextprotocol/ext-apps` 2.0.4 package. It registers handlers before connecting and runs in a sandboxed MCP Apps iframe. It requires no direct browser access to Sellpy APIs, external JavaScript, fonts or separate frontend deployment.
 
-## Server interface
+## Server contract
 
-`src/presentation.ts` exports:
+The canonical resource is `ui://sellpy/gallery-v3.html` with MIME type `text/html;profile=mcp-app`. The previous v2 URI remains a compatibility alias. Only `present_items` declares the rendering resource. The current page, collection identity and research scope are in `_meta.gallery`; exact original photo data is in `_meta.images`. The model receives a smaller structured card projection.
 
-- `PRESENTATION_URI`: `ui://sellpy/gallery-v2.html`. The versioned URI prevents a host from reusing the v1 UI resource after upgrading tools.
-- `PRESENTATION_MIME`: `text/html;profile=mcp-app`.
-- `PRESENTATION_RESOURCE_META`: UI border preference, exact permitted photo origins and supported display modes.
-- `PRESENTATION_HTML`: the complete bundled HTML resource.
-- `buildGallery({run_id, language, title, candidates, selection, next_cursor?, warnings?, feedback?})`: canonical items in selection order, with reasons, exact-item feedback and visual assessments kept separate. The optional feedback map is keyed by item ID and each record must independently match that ID.
-- `galleryResult(gallery, images?)`: compact structured card facts for the assistant, full gallery data in `_meta.gallery`, and original raster data URLs in `_meta.images`, keyed by exact item image ID.
+`present_items({run_id})` opens every observed candidate without an explicit ID list. `source` can select one retrieval arm, a refinement or the shortlist. An explicit `selection` preserves intentional order and reasons. Collection membership/order is stable. Item facts are current stored observations with their own timestamps, not a fabricated point-in-time catalog snapshot.
 
-Only the `present_items` rendering tool should declare `_meta.ui.resourceUri`. The image, detail and rendering tools called by the widget must permit app visibility. The widget calls:
+| App operation | Tool and input | Returned identity |
+|---|---|---|
+| Page navigation | `browse_collection({run_id,collection_id,cursor,page_size,request_id})` | Same run/collection plus request identity and page range |
+| Global view | `browse_collection({action:'derive',view:{kind},...})` | New derived collection with preparation progress or completed membership |
+| Stored full details | `browse_collection({action:'details',item_id,...})` | `_meta.collection_detail` with run, collection, request and exact item |
+| Research coverage | `browse_collection({action:'coverage',...})` | `_meta.collection_scope` with explicit scope counters |
+| Visible cover | `get_item_images({run_id,item_id,start_index,batch_size:1,for_model:false,refresh_details:false})` | Exact item/image references and optional original raster bytes |
+| Full photo sequence | `get_item_images({run_id,item_id,start_index,batch_size,for_model:false})` | Canonical photo enrichment, image identities and continuation |
+| Explicit source refresh | `get_items({run_id,ids:[item_id],for_model:false})` | Current canonical item observation; source cache bypassed |
+| User decision | `set_item_feedback({run_id,item_id,decision})` | Exact run/item, acknowledged decision and update time |
+| Observed history | `get_item_history({run_id,item_id,after,page_size})` | Actual retained observations and continuation |
 
-| Tool | Arguments | Required result |
-| --- | --- | --- |
-| `present_items` | `{run_id, cursor}` | Another result from `galleryResult`; the presentation cursor must not be a search cursor. |
-| `get_item_images` | `{run_id, item_id, start_index, batch_size, for_model:false}` | `structuredContent` with `item_id`, exact `{id,index,url,status,error?}` image rows, `next_index`, and optional `remaining_indices`; `_meta.images` supplies raster data URLs. |
-| `get_items` | `{run_id, ids:[item_id]}` | `structuredContent.items` containing canonical `ItemObservation` values. |
-| `set_item_feedback` | `{run_id, item_id, decision:'shortlist'|'reject'|'neutral'}` | `structuredContent` with the exact `run_id`, `item_id` and `feedback:{item_id,decision,updated_at,reason?}`. Only a successful matching response updates the UI. |
+`browse_collection` is app-only. Navigation does not repeat the entire cohort through model context and does not automatically search Sellpy or refresh item details. A preparing response resumes bounded work until the view is ready. Refinement views preserve canonical refinement order without advancing the model's refinement cursor.
 
-Photo errors can include `error.message` and `error.retry_at` in an individual row or in the whole structured result. Successful photos remain visible when another photo fails. The retry button respects the provider's retry time. A blocked direct cover URL gets one automatic server hydration attempt; further attempts are explicit. Cover images load lazily, and detail photos load in small repeatable batches. There is no cumulative photo limit or selection-count truncation in presentation.
+## Bounded browsing
 
-Original photo URLs are restricted to `prod.images.sellpy.net`, `images.sellpy.net`, `sellpy-parse-prod-files.s3.amazonaws.com` and `sellpy-parse-prod-files.s3.eu-west-1.amazonaws.com`. Hydrated data accepts JPEG, PNG and WebP only. An ambiguous image ID associated with different source URLs is never hydrated. The UI uses original pixels with `object-fit: contain`, without cropping or tinting.
+Normal pages contain twelve cards, with a twenty-four-card option. The current page replaces the prior page. At most three page payloads, four comparison selections and 48 photo buffers within 12 MiB remain cached. Collection totals are not clipped by these memory/view budgets. Back/next navigation and all original photo indices remain reachable.
 
-Widget photo display is not evidence that the assistant inspected those pixels. An assessment is shown only when its item ID and checked image IDs match the current observations. Refresh uses the same validity rule as the backend: changed price, size, size system, availability, materials, measurements, defects or missing checked photos invalidate the assessment. A newer observation of identical facts preserves it. Source category, materials and descriptions remain visible separately. The tool text instructs clients without MCP Apps to render each recommended item's exact photo in Markdown, followed by its facts and listing link; compact structured cards contain the required original URLs.
+The initial result embeds at most two covers. An IntersectionObserver-driven queue requests visible covers with a maximum of four concurrent loads. Images use original pixels and `object-fit: contain`, without inferred crops or tinting. Unused buffers and DOM nodes are released as pages change. Card photo updates preserve unrelated nodes and scroll state.
 
-## Selection, comparison and conversation
+Global shortlist, availability, assessed/unassessed and price-order controls derive views over the full collection, not only the loaded page. Scope and preparation labels identify the source cohort and observation interval. Source-order navigation remains available. Comparison intentionally limits the simultaneously displayed columns to four; users can replace those choices and continue across any number of collection pages.
 
-Each card exposes a persistent shortlist/reject toggle, a separate local comparison checkbox, and a visible checked-photo count or unexamined badge. A preference never becomes visual evidence. Filters operate only on already loaded cards and can show all, shortlisted, rejected, currently available or visually assessed items. The original observations remain accessible.
+## Structured facts and evidence
 
-Comparison is computed locally from exact selected cards without another provider request. Its scrollable, keyboard-accessible table keeps source prices, sizes, materials, measurements and categories separate from assistant reasons, image-backed requirements and uncertainties. Missing measurements/materials and unchecked requirements are shown as unknown. Card details, comparison and ranking share exact normalized requirement consolidation: conflicting records or any explicit unknown stay unknown, including differences only in casing, whitespace or Unicode compatibility forms. Negated requirements remain distinct. It does not infer fit from a size label or fabric from an appearance. All selected cards remain reachable without a three-item or other cumulative comparison cap.
+Cards, details and comparison consume the pure projector in `src/card-facts.ts`. It emits labeled fragments for source price, status, size and condition, with optional source materials, colors, category, measurements and defect notes. Exact repeated brand/size tokens and category ancestor paths are removed only from display. Canonical source observations remain unchanged.
 
-When the host advertises text-message support, an explicit **Discuss in chat** button sends the selected item IDs (or the loaded shortlist when no comparison is selected) to the current conversation. It first uses `App.updateModelContext` when supported, then `App.sendMessage`. The message also contains exact run/item identities so a rejected optional context update does not lose the selection. Merely displaying the gallery, loading images or changing its filter never sends chat messages or model context. Unsupported hosts keep the server tools, local comparison and source links without offering the chat action.
+Each recorded visual requirement has one criterion, verdict and evidence entry. Confirmed, contradicted and unknown are distinct. Conflicting or explicitly uncertain evidence remains unknown. Negated requirements are not merged with positive requirements. Legacy selection notes and source descriptions remain available on demand, without heuristic rewriting into new image claims. Large page projections carry explicit summary metadata; full details restore canonical content at the same observation version.
 
-Photo hydration updates only the affected card or comparison header, preserving unrelated cards, image nodes and scroll state. Obsolete photo buffers are released when a presentation selection is replaced; source references stay reachable through the search ledger. Run and presentation-generation checks reject stale image, refresh, pagination and feedback responses. Overlapping appended pages merge source observations and feedback by their separate timestamps; older snapshots cannot undo an acknowledged shortlist or refresh, or restore evidence invalidated by newer source facts.
+Research scope distinguishes discovered candidates, source pages/arms, stored detail observations, stored descriptions, facts/descriptions delivered to the model, model-visible photographs, widget-delivered photographs and saved assessments. Historical counters absent from older versions remain unknown. Neither widget display nor explicit shortlist feedback implies that the model inspected pixels.
 
-These choices follow the [official OpenAI plugin UI guidance](https://developers.openai.com/plugins/build/chatgpt-ui), which recommends UI for inspection and comparison while keeping tools useful independently, and the [official MCP Apps App API](https://apps.extensions.modelcontextprotocol.io/api/classes/app.App.html). The actual method signatures and capability flags were checked first against the installed `@modelcontextprotocol/ext-apps` 2.0.4 declarations. No undocumented browser globals or extra frontend framework are required.
+Source price, size, size-system, availability, material, measurement, defect or checked-photo changes invalidate a saved assessment using the backend's shared validity rule. Newer identical facts preserve it. The UI retains exact image identity and never attributes a photo to another item.
+
+Comparison uses current stored canonical values. Price totals are grouped by currency, with missing-price counts; no exchange rate or shipping charge is invented. History contains observations actually made within the search and does not imply access to Sellpy's earlier price history or a future discount schedule.
+
+## Race and identity boundaries
+
+Every asynchronous page/detail/photo response is checked against run, collection, presentation generation and request identity, as applicable. Photo responses must also match the exact requested image version. Same-run replacement is a new presentation generation. Obsolete responses cannot repopulate a replaced collection.
+
+A full stored-detail projection with the same observation timestamp may enrich its corresponding compact page; it must not be discarded as an older source refresh or restore an assessment invalidated by changed facts. Feedback has a separate serial intent order per item, so an older success or failure cannot override the latest explicit toggle. Cached pages merge source freshness and feedback timestamps separately.
+
+Only an explicit **Discuss in chat** action sends selected IDs to the conversation. It uses supported `App.updateModelContext` and `App.sendMessage` capabilities and includes exact run/item identities. Merely rendering, browsing, filtering or hydrating photos sends no chat message. Unsupported hosts retain the tools, source links and local comparison.
+
+## Rendering and source boundaries
+
+Original item links are restricted to supported Sellpy marketplaces. Original photo URLs are restricted to `prod.images.sellpy.net`, `images.sellpy.net`, and the verified Sellpy public S3 image hosts. Hydrated data accepts JPEG, PNG and WebP. Source text is untrusted display data. CSP permits no browser API connections or external scripts.
+
+A failed photo preserves successful siblings and reports its retry state. Provider Retry-After is respected. A client without MCP Apps can use the exact per-item photo URL, original link and compact facts returned to the model; fallback is conditional on actual renderer absence.
+
+These boundaries follow the [official OpenAI plugin UI guidance](https://developers.openai.com/plugins/build/chatgpt-ui), [plugin reference](https://developers.openai.com/plugins/reference) and [official MCP Apps App API](https://apps.extensions.modelcontextprotocol.io/api/classes/app.App.html). Installed package declarations were checked directly before web documentation.
 
 ## Build and verification
 
-Run the UI build before the Worker build:
-
 ```sh
-node scripts/build-ui.mjs
-node --import tsx --test test/presentation.test.ts
-node test/ui.browser.mjs
+npm run typecheck
+npm test
+npm run test:runtime
+npm run build
+npm run test:ui
 ```
 
-The browser test uses Playwright with a local simulated MCP Apps host. It covers the initialization handshake, mobile and desktop layouts, full photo continuation, partial failures, retry times, failed direct-cover recovery, price/status refresh, pagination, untrusted titles, dark mode, fullscreen, host-mediated links and stale request isolation. The v2 additions cover feedback failure/success and persistence, feedback-versus-evidence separation, a same-run late-feedback race, local filters, comparison identity/unknowns, conflicting and uncertain requirement records, unchanged and changed source refreshes, an overlapping-page race against successful feedback and refresh writes, keyboard scrolling, explicit context/message actions, host capability fallback, and a 137-card hydration regression. It needs an installed Chromium browser. If needed, set `SELLPY_UI_CHROMIUM_PATH` to an existing Chromium executable. Screenshots default to the ignored `artifacts/private/ui` directory; `SELLPY_UI_ARTIFACTS` changes that location. `SELLPY_UI_PHOTO_PATH` optionally supplies a real JPEG, PNG or WebP for layout inspection; otherwise a deterministic tiny raster fixture is used.
+The browser harness bundles current source independently of generated release artifacts and simulates the MCP Apps host bridge. It tests initialization, page navigation, bounded DOM/cache behavior, independent observation/evidence/feedback state, source detail access, stale responses, photo continuation and explicit chat actions. Large synthetic cohorts test hundreds of pages without live Sellpy traffic. Exact final counts and outcomes belong in the 1.2 verification record; a planned assertion is not a passed test.
 
-### Measured work reduction
+The harness requires Playwright and an installed Chromium. `SELLPY_UI_CHROMIUM_PATH` selects an existing binary. Optional `SELLPY_UI_PHOTO_PATH` supplies a real photograph for layout inspection; the default deterministic raster fixture is sufficient for interaction assertions. Private screenshots remain ignored. Simulated-host evidence does not replace a separately observed installed ChatGPT run.
 
-On baseline revision `92ac6218496d4057626ddcc58621687c8dc9dcc3`, one next-photo batch in a 137-card fixture replaced **all 137** card DOM nodes. The v2 implementation replaces **one**, preserving the other **136**. The browser regression checks retained DOM identity, not a favorable wall-clock sample. This establishes removal of unnecessary per-card work; it is not a claim of a 137-fold end-to-end latency improvement. The original 18 scenarios remain in the expanded 33-scenario suite, with 13 presentation/data tests covering identity, explicit unknowns, evidence consistency, observation freshness and no cumulative comparison truncation.
-
-The screenshot data consists of synthetic test listings and repeated fixture photographs. It is not a live product recommendation or a claim that the displayed fixture titles, prices and photographs describe real matching offers. The simulated-host tests do not replace installation and visual testing in the user's actual ChatGPT client.
+Historical v2 evidence remains in the 1.1 release records: a photo update in a 137-card fixture changed one card node instead of replacing all 137. Version 1.2 additionally bounds the page's total DOM size, so that old accumulated-list fixture is no longer the current navigation design.

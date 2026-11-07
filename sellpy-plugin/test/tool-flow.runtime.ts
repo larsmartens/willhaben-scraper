@@ -15,10 +15,46 @@ vi.mock('../src/sellpy/client.js',()=>{
   };
   return { createSellpyProvider:()=>provider, sharedSellpyProvider:provider };
 });
+vi.mock('../src/public-reference.js', () => ({
+  createPublicReferenceFetch: (value: typeof fetch) => value,
+  preparePublicReference: async () => ({ bytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    mime_type: 'image/png', file_name: 'controlled-reference.png', source_url: 'https://images.example.com/reference.png' }),
+}));
 import { invokeTool } from '../src/tools.js';
 
 function context() { return {env:env as Env,principal:'review-user',deadline:Date.now()+30000}; }
 describe('tool continuation and corrective errors',()=>{
+  it('public-image storage failures return structured errors after successful reference preparation', async () => {
+    const principal = `public-start-failure-${crypto.randomUUID()}`;
+    const failed = env.SEARCH_RUNS.getByName(`${principal}:forgotten`);
+    await failed.forget();
+    const failingEnv = { ...env, SEARCH_RUNS: { getByName: () => failed } } as unknown as Env;
+    const result = await invokeTool('search_by_image', { public_image_url: 'https://images.example.com/reference.png' },
+      { env: failingEnv, principal, deadline: Date.now() + 30000 });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ error: { code: 'search_forgotten', retryable: false } });
+    expect((result.structuredContent as { error: { next_action: string } }).error.next_action).toMatch(/new search/i);
+  });
+  it('stored-item image search catches an asynchronous new-run start failure', async () => {
+    const principal = `item-start-failure-${crypto.randomUUID()}`, run_id = crypto.randomUUID();
+    const source = env.SEARCH_RUNS.getByName(`${principal}:${run_id}`);
+    await source.start({ market: 'AT', language: 'de', page_size: 10, intent: { query: 'reference' }, arms: [] }, run_id);
+    const item: ItemObservation = { id: 'reference-item', market: 'AT', language: 'de', url: 'https://www.sellpy.at/item/reference-item',
+      title: 'Reference', brand: null, price: null, original_price: null, size: null, size_system: null, condition: null,
+      categories: [], colors: [], materials: [], measurements: {}, description: null, defects: [], availability: 'unknown',
+      images: [{ id: 'reference-front', index: 0, url: 'https://prod.images.sellpy.net/reference.jpg' }],
+      source: 'catalog', observed_at: new Date().toISOString(), attributes: {} };
+    await source.updateItems([item]);
+    const failed = env.SEARCH_RUNS.getByName(`${principal}:forgotten`);
+    await failed.forget();
+    const failingEnv = { ...env, SEARCH_RUNS: { getByName: (name: string) => name === `${principal}:${run_id}` ? source : failed } } as unknown as Env;
+    const result = await invokeTool('search_by_image', { item_image: { run_id, item_id: item.id, image_index: 0 } },
+      { env: failingEnv, principal, deadline: Date.now() + 30000 });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ error: { code: 'search_forgotten', retryable: false } });
+    expect((result.structuredContent as { error: { next_action: string } }).error.next_action).toMatch(/new search/i);
+  });
+
   it('upload-preparation errors retain structured corrective data',async()=>{
     const result=await invokeTool('search_by_image',{
       reference:{file_id:'test-reference',download_url:'https://untrusted.example/reference.jpg'},
