@@ -105,6 +105,22 @@ test("visual query identities distinguish page sizes and remain stable across co
   assert.equal(next.visual.searchId,first.visual.searchId);
 });
 
+test("visual query identities distinguish URL and attachment sources sharing a native picture key", async t => {
+  installUploadFixture(t);
+  const fromUrl = await provider().searchByImage({ imageUrl: publicPhoto, pageSize: 30 });
+  const fromAttachment = await provider().searchByImage({
+    image: { download_url: publicPhoto, file_id: "file-same-photo" }, pageSize: 30,
+  });
+  for (const result of [fromUrl, fromAttachment]) {
+    assert.equal(decodeVisualCursor(result.nextCursor).url.searchParams.get("pictureKey"), pictureKey);
+  }
+  assert.notEqual(fromUrl.visual.searchId, fromAttachment.visual.searchId);
+  const nextUrl = await provider().searchByImage({ cursor: fromUrl.nextCursor });
+  const nextAttachment = await provider().searchByImage({ cursor: fromAttachment.nextCursor });
+  assert.deepEqual(nextUrl.visual, fromUrl.visual);
+  assert.deepEqual(nextAttachment.visual, fromAttachment.visual);
+});
+
 test("existing listing similarity preserves native image IDs while accepting zero-based selection",async t=>{
   const calls=[];
   t.mock.method(globalThis,"fetch",async value=>{

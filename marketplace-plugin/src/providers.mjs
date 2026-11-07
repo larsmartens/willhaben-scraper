@@ -671,7 +671,8 @@ function liveProvider(env) {
       const identity = new URL(base);
       for (const key of ["rows","page","publishedDateTo","isNavigation"]) identity.searchParams.delete(key);
       const filterIdentity = JSON.stringify(Object.entries(effectiveFilters).sort(([a],[b]) => a.localeCompare(b)));
-      const searchId = (await cacheKey("visual:"+pageSize+":"+filterIdentity,identity)).slice("search:".length);
+      const sourceIdentity = JSON.stringify(Object.entries(visual).sort(([a],[b]) => a.localeCompare(b)));
+      const searchId = (await cacheKey("visual:"+sourceIdentity+":"+pageSize+":"+filterIdentity,identity)).slice("search:".length);
       return observation({...applyLocalFilters(value,"",effectiveFilters),nextCursor,visual:{...visual,searchId},filters:effectiveFilters},entry.observedAt,entry.cacheHit);
     },
     async facets({query,filters={},fresh=false,deadline}) {
